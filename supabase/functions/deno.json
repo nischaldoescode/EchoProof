@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "lib": ["deno.window"],
+    "strict": true
+  },
+  "imports": {
+    "std/http/server.ts": "https://deno.land/std@0.177.0/http/server.ts",
+    "std/node/crypto.ts": "https://deno.land/std@0.177.0/node/crypto.ts",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
+  },
+  "lint": {
+    "rules": {
+      "exclude": ["no-explicit-any"]
+    }
+  }
+}
