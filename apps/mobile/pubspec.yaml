@@ -1,0 +1,90 @@
+name: echoproof
+description: trust-layer social platform — verified opinions, community validation
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.1.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  solana: ^0.32.0+1
+  bs58: ^1.0.2
+
+  # state management
+  flutter_riverpod: ^3.1.0
+  riverpod_annotation: ^4.0.0
+
+  # supabase
+  supabase_flutter: ^2.3.0
+
+  # networking
+  dio: ^5.4.0
+
+  # local storage
+  hive_flutter: ^1.1.0
+  flutter_secure_storage: ^10.0.0
+
+  # animations
+  lottie: ^3.0.0
+  shimmer: ^3.0.0
+  rive: ^0.14.5
+
+  # navigation
+  go_router: ^17.2.1
+
+  # ui utilities
+  cached_network_image: ^3.3.1
+  image_picker: ^1.0.7
+  file_picker: ^11.0.2
+  url_launcher: ^6.2.5
+
+  # utilities
+  uuid: ^4.3.3
+  intl: ^0.20.2
+  equatable: ^2.0.5
+  dartz: ^0.10.1
+  freezed_annotation: ^3.1.0
+  json_annotation: ^4.8.1
+  crypto: ^3.0.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+  build_runner: ^2.4.7
+  riverpod_generator: ^4.0.0+1
+  freezed: ^3.2.3
+  json_serializable: ^6.7.1
+  mockito: ^5.4.4
+  mocktail: ^1.0.1
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/icons/
+
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Inter/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter/Inter-SemiBold.ttf
+          weight: 600
+
+flutter_native_splash:
+  color: "#E8F5EE"
+  image: assets/images/logo.png
+  android: true
+  ios: true
+  android_12:
+    image: assets/images/logo.png
+    color: "#E8F5EE"
+    icon_background_color: "#E8F5EE"
