@@ -1,7 +1,7 @@
 // auth service
-// manages authentication state using changenotifier
-// replaces auth_provider.dart (riverpod version)
-// screens access via context.watch<AuthService>() and context.read<AuthService>()
+// manages authentication state using ChangeNotifier
+// screens listen to this via context.watch<AuthService>()
+// replaces: auth_provider.dart (riverpod version)
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -11,6 +11,7 @@ class AuthService extends ChangeNotifier {
   final SupabaseClient _client = Supabase.instance.client;
 
   User? get currentUser => _client.auth.currentUser;
+
   bool get isLoggedIn => currentUser != null;
 
   bool _isLoading = false;
@@ -20,15 +21,13 @@ class AuthService extends ChangeNotifier {
   String? get error => _error;
 
   AuthService() {
-    // listen to supabase auth state changes and notify all listeners
+    // listen to auth state changes and notify listeners
     _client.auth.onAuthStateChange.listen((event) {
-      AppLogger.info('auth: state changed ${event.event.name}');
+      AppLogger.info('auth: state changed to ${event.event.name}');
       notifyListeners();
     });
   }
 
-  // signs in with email and password
-  // sets error on failure, navigates automatically via auth state listener
   Future<void> signInWithEmail({
     required String email,
     required String password,
@@ -36,7 +35,7 @@ class AuthService extends ChangeNotifier {
     _setLoading(true);
     try {
       await _client.auth.signInWithPassword(
-        email: email,
+        email:    email,
         password: password,
       );
       _error = null;
@@ -52,7 +51,6 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  // creates a new account with email and password
   Future<void> signUpWithEmail({
     required String email,
     required String password,
@@ -60,23 +58,20 @@ class AuthService extends ChangeNotifier {
     _setLoading(true);
     try {
       await _client.auth.signUp(
-        email: email,
+        email:    email,
         password: password,
       );
       _error = null;
       AppLogger.info('auth: signed up with email');
     } on AuthException catch (e) {
       _error = e.message;
-      AppLogger.error('auth: sign up failed', e);
     } catch (e) {
       _error = 'sign up failed, try again';
-      AppLogger.error('auth: unexpected sign up error', e);
     } finally {
       _setLoading(false);
     }
   }
 
-  // opens google oauth flow — completes via deep link redirect
   Future<void> signInWithGoogle() async {
     _setLoading(true);
     try {
@@ -94,14 +89,12 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  // signs out and clears local session
   Future<void> signOut() async {
     await _client.auth.signOut();
     AppLogger.info('auth: signed out');
     notifyListeners();
   }
 
-  // clears the current error — call after showing error snackbar
   void clearError() {
     _error = null;
     notifyListeners();

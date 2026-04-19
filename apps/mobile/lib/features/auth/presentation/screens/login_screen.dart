@@ -1,42 +1,37 @@
 // login screen
 // email + password + google oauth
-// 3d perspective tilt on the logo card — driven by device orientation feel
-// fully responsive: works on phones, tablets, foldables
+// 3d perspective tilt on form card
+// uses AuthService via provider — no riverpod
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import 'dart:math' as math;
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
-import '../providers/auth_provider.dart';
+import '../services/auth_service.dart';
 
-class LoginScreen extends ConsumerStatefulWidget {
+class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  ConsumerState<LoginScreen> createState() => _LoginScreenState();
+  State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends ConsumerState<LoginScreen>
+class _LoginScreenState extends State<LoginScreen>
     with SingleTickerProviderStateMixin {
 
   final _emailController    = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey            = GlobalKey<FormState>();
 
-  // 3d card tilt state
   late final AnimationController _cardController;
-  late final Animation<double> _cardEntranceY;
-  late final Animation<double> _cardFade;
-
-  // mouse/touch position for 3d tilt effect
-  Offset _pointerOffset = Offset.zero;
-  bool _isHovering = false;
+  late final Animation<double>   _cardEntranceY;
+  late final Animation<double>   _cardFade;
 
   bool _obscurePassword = true;
-  bool _isSignUp = false;
+  bool _isSignUp        = false;
 
   @override
   void initState() {
@@ -49,7 +44,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       CurvedAnimation(parent: _cardController, curve: Curves.easeOutCubic),
     );
     _cardFade = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _cardController, curve: const Interval(0, 0.6, curve: Curves.easeOut)),
+      CurvedAnimation(
+        parent: _cardController,
+        curve: const Interval(0, 0.6, curve: Curves.easeOut),
+      ),
     );
     _cardController.forward();
   }
@@ -64,15 +62,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    final notifier = ref.read(authNotifierProvider.notifier);
+    final auth = context.read<AuthService>();
     if (_isSignUp) {
-      await notifier.signUpWithEmail(
-        email: _emailController.text.trim(),
+      await auth.signUpWithEmail(
+        email:    _emailController.text.trim(),
         password: _passwordController.text,
       );
     } else {
-      await notifier.signInWithEmail(
-        email: _emailController.text.trim(),
+      await auth.signInWithEmail(
+        email:    _emailController.text.trim(),
         password: _passwordController.text,
       );
     }
@@ -80,22 +78,35 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   @override
   Widget build(BuildContext context) {
-    final size    = MediaQuery.sizeOf(context);
-    final isWide  = size.width > 600;
-    final authState = ref.watch(authNotifierProvider);
+    final size  = MediaQuery.sizeOf(context);
+    final isWide = size.width > 600;
+    final auth  = context.watch<AuthService>();
 
-    // listen for auth success
-    ref.listen(authNotifierProvider, (_, next) {
-      if (next.valueOrNull != null) context.go('/onboarding');
-      if (next.hasError) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(next.error.toString()),
-            backgroundColor: AppColors.sunsetCoral,
-          ),
-        );
-      }
-    });
+    // navigate when login succeeds
+    if (auth.isLoggedIn && !auth.isLoading) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.go('/onboarding');
+      });
+    }
+
+    // show error snackbar
+    if (auth.error != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content:          Text(auth.error!),
+              backgroundColor:  AppColors.sunsetCoral,
+              behavior:         SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          );
+          context.read<AuthService>().clearError();
+        }
+      });
+    }
 
     return Scaffold(
       backgroundColor: AppColors.charcoal,
@@ -104,7 +115,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           child: SingleChildScrollView(
             padding: EdgeInsets.symmetric(
               horizontal: isWide ? size.width * 0.2 : AppSpacing.xl,
-              vertical: AppSpacing.xl,
+              vertical:   AppSpacing.xl,
             ),
             child: AnimatedBuilder(
               animation: _cardController,
@@ -119,17 +130,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
               },
               child: Column(
                 children: [
-                  // 3d logo card
+                  // 3d tilt logo
                   _TiltCard(
-                    child: Container(
-                      width: 72,
-                      height: 72,
-                      decoration: BoxDecoration(
-                        color: AppColors.charcoal,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: AppColors.fernGreen, width: 1.5),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(18),
+                      child: Image.asset(
+                        'assets/images/logo.png',
+                        width: 72,
+                        height: 72,
+                        fit: BoxFit.cover,
                       ),
-                      child: const _EchoWaveMark(),
                     ),
                   ),
 
@@ -151,7 +161,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
                   const SizedBox(height: AppSpacing.xxxl),
 
-                  // form card
+                  // 3d tilt form card
                   _TiltCard(
                     tiltStrength: 0.03,
                     child: Container(
@@ -165,89 +175,112 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // tab row: sign in / sign up
                             _AuthTabRow(
                               isSignUp: _isSignUp,
-                              onToggle: (val) => setState(() => _isSignUp = val),
+                              onToggle: (val) =>
+                                  setState(() => _isSignUp = val),
                             ),
 
                             const SizedBox(height: AppSpacing.xl),
 
-                            // email
                             TextFormField(
-                              controller: _emailController,
+                              controller:  _emailController,
                               keyboardType: TextInputType.emailAddress,
                               autocorrect: false,
                               decoration: const InputDecoration(
-                                hintText: 'email address',
-                                prefixIcon: Icon(Icons.alternate_email, size: 18),
+                                hintText:   'email address',
+                                prefixIcon: Icon(
+                                  Icons.alternate_email,
+                                  size: 18,
+                                ),
                               ),
                               validator: (v) {
-                                if (v == null || v.isEmpty) return 'email is required';
-                                if (!v.contains('@')) return 'enter a valid email';
+                                if (v == null || v.isEmpty) {
+                                  return 'email is required';
+                                }
+                                if (!v.contains('@')) {
+                                  return 'enter a valid email';
+                                }
                                 return null;
                               },
                             ),
 
                             const SizedBox(height: AppSpacing.md),
 
-                            // password
                             TextFormField(
-                              controller: _passwordController,
+                              controller:  _passwordController,
                               obscureText: _obscurePassword,
                               decoration: InputDecoration(
-                                hintText: 'password',
-                                prefixIcon: const Icon(Icons.lock_outline, size: 18),
+                                hintText:   'password',
+                                prefixIcon: const Icon(
+                                  Icons.lock_outline,
+                                  size: 18,
+                                ),
                                 suffixIcon: IconButton(
                                   icon: Icon(
-                                    _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                                    _obscurePassword
+                                        ? Icons.visibility_off_outlined
+                                        : Icons.visibility_outlined,
                                     size: 18,
                                     color: AppColors.textTertiary,
                                   ),
-                                  onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                                  onPressed: () => setState(
+                                    () => _obscurePassword = !_obscurePassword,
+                                  ),
                                 ),
                               ),
                               validator: (v) {
-                                if (v == null || v.isEmpty) return 'password is required';
-                                if (_isSignUp && v.length < 8) return 'minimum 8 characters';
+                                if (v == null || v.isEmpty) {
+                                  return 'password is required';
+                                }
+                                if (_isSignUp && v.length < 8) {
+                                  return 'minimum 8 characters';
+                                }
                                 return null;
                               },
                             ),
 
                             const SizedBox(height: AppSpacing.xl),
 
-                            // submit button
                             SizedBox(
                               width: double.infinity,
                               child: AnimatedSwitcher(
                                 duration: const Duration(milliseconds: 200),
-                                child: authState.isLoading
-                                  ? const Center(
-                                      child: SizedBox(
-                                        width: 24,
-                                        height: 24,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: AppColors.charcoal,
+                                child: auth.isLoading
+                                    ? const Center(
+                                        child: SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: AppColors.charcoal,
+                                          ),
+                                        ),
+                                      )
+                                    : ElevatedButton(
+                                        onPressed: _submit,
+                                        child: Text(
+                                          _isSignUp
+                                              ? 'Create account'
+                                              : 'Sign in',
                                         ),
                                       ),
-                                    )
-                                  : ElevatedButton(
-                                      onPressed: _submit,
-                                      child: Text(_isSignUp ? 'Create account' : 'Sign in'),
-                                    ),
                               ),
                             ),
 
                             const SizedBox(height: AppSpacing.lg),
 
-                            // divider
                             Row(
                               children: [
                                 const Expanded(child: Divider()),
                                 Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-                                  child: Text('or', style: AppTypography.textTheme.labelMedium),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: AppSpacing.sm,
+                                  ),
+                                  child: Text(
+                                    'or',
+                                    style: AppTypography.textTheme.labelMedium,
+                                  ),
                                 ),
                                 const Expanded(child: Divider()),
                               ],
@@ -255,19 +288,25 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
                             const SizedBox(height: AppSpacing.lg),
 
-                            // google sign in
                             SizedBox(
                               width: double.infinity,
                               child: OutlinedButton.icon(
-                                onPressed: () => ref.read(authNotifierProvider.notifier).signInWithGoogle(),
-                                icon: const _GoogleIcon(),
+                                onPressed: () =>
+                                    context.read<AuthService>().signInWithGoogle(),
+                                icon:  const _GoogleIcon(),
                                 label: const Text('Continue with Google'),
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: AppColors.charcoal,
-                                  side: const BorderSide(color: AppColors.borderMedium),
-                                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+                                  side: const BorderSide(
+                                    color: AppColors.borderMedium,
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: AppSpacing.md,
+                                  ),
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                                    borderRadius: BorderRadius.circular(
+                                      AppSpacing.radiusMd,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -287,7 +326,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 }
 
-/// interactive 3d tilt card — responds to pointer/touch drag
+// interactive 3d tilt card — responds to touch drag
 class _TiltCard extends StatefulWidget {
   const _TiltCard({required this.child, this.tiltStrength = 0.06});
   final Widget child;
@@ -312,19 +351,22 @@ class _TiltCardState extends State<_TiltCard> {
   }
 
   void _onPanEnd(DragEndDetails _) {
-    setState(() { _rotX = 0; _rotY = 0; });
+    setState(() {
+      _rotX = 0;
+      _rotY = 0;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onPanUpdate: _onPanUpdate,
-      onPanEnd: _onPanEnd,
+      onPanEnd:    _onPanEnd,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
         transform: Matrix4.identity()
-          ..setEntry(3, 2, 0.001) // perspective
+          ..setEntry(3, 2, 0.001)
           ..rotateX(_rotX)
           ..rotateY(_rotY),
         transformAlignment: Alignment.center,
@@ -336,25 +378,37 @@ class _TiltCardState extends State<_TiltCard> {
 
 class _AuthTabRow extends StatelessWidget {
   const _AuthTabRow({required this.isSignUp, required this.onToggle});
-  final bool isSignUp;
+  final bool             isSignUp;
   final void Function(bool) onToggle;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        _Tab(label: 'Sign in', active: !isSignUp, onTap: () => onToggle(false)),
+        _Tab(
+          label:  'Sign in',
+          active: !isSignUp,
+          onTap:  () => onToggle(false),
+        ),
         const SizedBox(width: AppSpacing.md),
-        _Tab(label: 'Create account', active: isSignUp, onTap: () => onToggle(true)),
+        _Tab(
+          label:  'Create account',
+          active: isSignUp,
+          onTap:  () => onToggle(true),
+        ),
       ],
     );
   }
 }
 
 class _Tab extends StatelessWidget {
-  const _Tab({required this.label, required this.active, required this.onTap});
-  final String label;
-  final bool active;
+  const _Tab({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+  final String   label;
+  final bool     active;
   final VoidCallback onTap;
 
   @override
@@ -375,58 +429,15 @@ class _Tab extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            fontSize: 14,
+            fontSize:   14,
             fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-            color: active ? AppColors.charcoal : AppColors.textTertiary,
+            color:      active ? AppColors.charcoal : AppColors.textTertiary,
             fontFamily: AppTypography.fontFamily,
           ),
         ),
       ),
     );
   }
-}
-
-class _EchoWaveMark extends StatelessWidget {
-  const _EchoWaveMark();
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
-      child: Image.asset(
-        'assets/images/logo.png',
-        width: 72,
-        height: 72,
-        fit: BoxFit.cover,
-      ),
-    );
-  }
-}
-
-class _WavePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = AppColors.fernGreen
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5
-      ..strokeCap = StrokeCap.round;
-
-    final cx = size.width / 2;
-    final cy = size.height / 2;
-
-    for (int i = 1; i <= 3; i++) {
-      canvas.drawArc(
-        Rect.fromCircle(center: Offset(cx, cy), radius: i * 7.0),
-        -0.6, 3.5, false, paint,
-      );
-    }
-
-    canvas.drawCircle(Offset(cx, cy), 2.5, paint..style = PaintingStyle.fill);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _GoogleIcon extends StatelessWidget {
@@ -447,7 +458,6 @@ class _GooglePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // simplified google 'G' mark using arcs — avoids svg dependency
     final cx = size.width / 2;
     final cy = size.height / 2;
     final r  = size.width / 2;
@@ -459,21 +469,22 @@ class _GooglePainter extends CustomPainter {
       const Color(0xFFEA4335),
     ];
 
-    final sweeps = [math.pi * 0.5, math.pi * 0.5, math.pi * 0.5, math.pi * 0.5];
     final starts = [
       -math.pi * 0.25,
-      math.pi * 0.25,
-      math.pi * 0.75,
-      math.pi * 1.25,
+       math.pi * 0.25,
+       math.pi * 0.75,
+       math.pi * 1.25,
     ];
 
     for (int i = 0; i < 4; i++) {
       canvas.drawArc(
         Rect.fromCircle(center: Offset(cx, cy), radius: r - 1),
-        starts[i], sweeps[i], false,
+        starts[i],
+        math.pi * 0.5,
+        false,
         Paint()
-          ..color = colors[i]
-          ..style = PaintingStyle.stroke
+          ..color       = colors[i]
+          ..style       = PaintingStyle.stroke
           ..strokeWidth = 2.5,
       );
     }

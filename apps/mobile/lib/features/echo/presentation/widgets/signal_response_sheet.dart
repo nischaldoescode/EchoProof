@@ -1,21 +1,17 @@
-// signal response sheet — the echoproof comment system
-// called from echo detail screen
-// user writes a response with optional stance (support/challenge/neutral)
-// can attach proof image
+// signal response sheet — echoproof comment system
+// plain StatefulWidget — no riverpod
+// uses Supabase.instance.client directly
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
-import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../core/utils/logger.dart';
 
 void showSignalResponseSheet({
   required BuildContext context,
-  required WidgetRef ref,
   required String echoId,
   required VoidCallback onPosted,
 }) {
@@ -24,11 +20,12 @@ void showSignalResponseSheet({
     isScrollControlled: true,
     backgroundColor: AppColors.white,
     shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(AppSpacing.radiusLg)),
+      borderRadius: BorderRadius.vertical(
+        top: Radius.circular(AppSpacing.radiusLg),
+      ),
     ),
     builder: (_) => _SignalResponseSheet(
       echoId: echoId,
-      ref: ref,
       onPosted: onPosted,
     ),
   );
@@ -37,12 +34,10 @@ void showSignalResponseSheet({
 class _SignalResponseSheet extends StatefulWidget {
   const _SignalResponseSheet({
     required this.echoId,
-    required this.ref,
     required this.onPosted,
   });
 
   final String echoId;
-  final WidgetRef ref;
   final VoidCallback onPosted;
 
   @override
@@ -51,13 +46,13 @@ class _SignalResponseSheet extends StatefulWidget {
 
 class _SignalResponseSheetState extends State<_SignalResponseSheet> {
   final _controller = TextEditingController();
-  String  _stance    = 'neutral';
-  bool    _submitting = false;
+  String _stance = 'neutral';
+  bool _submitting = false;
 
-  final _stances = [
-    (value: 'support',   label: 'Supporting',   color: AppColors.fernGreen),
-    (value: 'neutral',   label: 'Neutral',       color: AppColors.textTertiary),
-    (value: 'challenge', label: 'Challenging',   color: AppColors.sunsetCoral),
+  static const _stances = [
+    (value: 'support', label: 'Supporting', color: AppColors.fernGreen),
+    (value: 'neutral', label: 'Neutral', color: AppColors.textTertiary),
+    (value: 'challenge', label: 'Challenging', color: AppColors.sunsetCoral),
   ];
 
   @override
@@ -74,18 +69,21 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
     HapticFeedback.lightImpact();
 
     try {
-      final client = widget.ref.read(supabaseProvider);
+      final client = Supabase.instance.client;
       final userId = client.auth.currentUser?.id;
       if (userId == null) throw Exception('not authenticated');
 
       await client.from('signal_responses').insert({
-        'echo_id':  widget.echoId,
-        'user_id':  userId,
-        'content':  content,
-        'stance':   _stance,
+        'echo_id': widget.echoId,
+        'user_id': userId,
+        'content': content,
+        'stance': _stance,
       });
 
-      await client.rpc('increment_response_count', params: {'p_echo_id': widget.echoId});
+      await client.rpc(
+        'increment_response_count',
+        params: {'p_echo_id': widget.echoId},
+      );
 
       AppLogger.info('signal response posted for echo ${widget.echoId}');
 
@@ -101,7 +99,9 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
             content: Text(e.toString()),
             backgroundColor: AppColors.sunsetCoral,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
         );
         setState(() => _submitting = false);
@@ -112,7 +112,9 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.viewInsetsOf(context).bottom,
+      ),
       child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.xl),
@@ -120,10 +122,10 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // drag handle
               Center(
                 child: Container(
-                  width: 36, height: 4,
+                  width: 36,
+                  height: 4,
                   margin: const EdgeInsets.only(bottom: AppSpacing.lg),
                   decoration: BoxDecoration(
                     color: AppColors.borderMedium,
@@ -131,17 +133,16 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
                   ),
                 ),
               ),
-
-              Text('Signal response', style: AppTypography.textTheme.titleMedium),
+              Text(
+                'Signal response',
+                style: AppTypography.textTheme.titleMedium,
+              ),
               const SizedBox(height: AppSpacing.sm),
               Text(
                 'Your response adds to the verification weight of this echo.',
                 style: AppTypography.textTheme.bodySmall,
               ),
-
               const SizedBox(height: AppSpacing.lg),
-
-              // stance selector
               Row(
                 children: _stances.map((s) {
                   final selected = _stance == s.value;
@@ -151,10 +152,15 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 180),
                         margin: const EdgeInsets.only(right: AppSpacing.xs),
-                        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppSpacing.sm,
+                        ),
                         decoration: BoxDecoration(
-                          color: selected ? s.color.withOpacity(0.1) : AppColors.softSand,
-                          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                          color: selected
+                              ? s.color.withOpacity(0.1)
+                              : AppColors.softSand,
+                          borderRadius:
+                              BorderRadius.circular(AppSpacing.radiusMd),
                           border: Border.all(
                             color: selected ? s.color : AppColors.borderSubtle,
                           ),
@@ -164,8 +170,10 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
                             s.label,
                             style: TextStyle(
                               fontSize: 12,
-                              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                              color: selected ? s.color : AppColors.textSecondary,
+                              fontWeight:
+                                  selected ? FontWeight.w600 : FontWeight.w400,
+                              color:
+                                  selected ? s.color : AppColors.textSecondary,
                               fontFamily: AppTypography.fontFamily,
                             ),
                           ),
@@ -175,10 +183,7 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
                   );
                 }).toList(),
               ),
-
               const SizedBox(height: AppSpacing.lg),
-
-              // text input
               TextField(
                 controller: _controller,
                 maxLines: 4,
@@ -190,18 +195,18 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
                 ),
                 style: AppTypography.textTheme.bodyMedium,
               ),
-
               const SizedBox(height: AppSpacing.lg),
-
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: _submitting ? null : _submit,
                   child: _submitting
                       ? const SizedBox(
-                          width: 18, height: 18,
+                          width: 18,
+                          height: 18,
                           child: CircularProgressIndicator(
-                            strokeWidth: 2, color: AppColors.white,
+                            strokeWidth: 2,
+                            color: AppColors.white,
                           ),
                         )
                       : const Text('Send response'),

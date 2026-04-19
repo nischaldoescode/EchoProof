@@ -30,6 +30,7 @@ serve(async (req: Request) => {
       return new Response("missing echo data", { status: 400 });
     }
 
+    
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!

@@ -1,20 +1,16 @@
 // truth bond button — shown on verified echoes only
-// lets users stake their reputation on a verified claim
-// calls solana service to mint a compressed nft
-// updates truth_bonds table in supabase
+// plain StatefulWidget — no riverpod
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../domain/entities/echo_status.dart';
-import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../core/utils/logger.dart';
 
-class TruthBondButton extends ConsumerStatefulWidget {
+class TruthBondButton extends StatefulWidget {
   const TruthBondButton({
     super.key,
     required this.echoId,
@@ -27,16 +23,16 @@ class TruthBondButton extends ConsumerStatefulWidget {
   final int bondCount;
 
   @override
-  ConsumerState<TruthBondButton> createState() => _TruthBondButtonState();
+  State<TruthBondButton> createState() => _TruthBondButtonState();
 }
 
-class _TruthBondButtonState extends ConsumerState<TruthBondButton>
+class _TruthBondButtonState extends State<TruthBondButton>
     with SingleTickerProviderStateMixin {
+  bool _hasBonded = false;
+  bool _isLoading = false;
 
-  bool _hasBonded    = false;
-  bool _isLoading    = false;
   late final AnimationController _pulseController;
-  late final Animation<double>   _pulse;
+  late final Animation<double> _pulse;
 
   @override
   void initState() {
@@ -59,7 +55,7 @@ class _TruthBondButtonState extends ConsumerState<TruthBondButton>
 
   Future<void> _checkExistingBond() async {
     try {
-      final client = ref.read(supabaseProvider);
+      final client = Supabase.instance.client;
       final userId = client.auth.currentUser?.id;
       if (userId == null) return;
 
@@ -84,35 +80,41 @@ class _TruthBondButtonState extends ConsumerState<TruthBondButton>
     HapticFeedback.mediumImpact();
 
     try {
-      final client = ref.read(supabaseProvider);
+      final client = Supabase.instance.client;
       final userId = client.auth.currentUser?.id;
       if (userId == null) throw Exception('not authenticated');
 
-      // insert the bond record
-      // mint_tx is null for now — solana minting happens asynchronously
-      // the on-truth-bond edge function handles the actual nft mint
       await client.from('truth_bonds').insert({
         'echo_id': widget.echoId,
         'user_id': userId,
       });
 
-      // increment bond count on echo
-      await client.rpc('increment_bond_count', params: {'p_echo_id': widget.echoId});
+      await client.rpc(
+        'increment_bond_count',
+        params: {'p_echo_id': widget.echoId},
+      );
 
       await _pulseController.forward();
       await _pulseController.reverse();
 
-      if (mounted) setState(() { _hasBonded = true; _isLoading = false; });
+      if (mounted)
+        setState(() {
+          _hasBonded = true;
+          _isLoading = false;
+        });
 
       AppLogger.info('truth bond created for echo ${widget.echoId}');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Bond created — you are staking your reputation on this truth'),
+            content: const Text(
+                'Bond created — staking your reputation on this truth'),
             backgroundColor: AppColors.fernGreen,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
         );
       }
@@ -122,10 +124,16 @@ class _TruthBondButtonState extends ConsumerState<TruthBondButton>
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.toString().contains('duplicate') ? 'already bonded' : 'bond failed, try again'),
+            content: Text(
+              e.toString().contains('duplicate')
+                  ? 'already bonded'
+                  : 'bond failed, try again',
+            ),
             backgroundColor: AppColors.sunsetCoral,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
         );
       }
@@ -160,15 +168,21 @@ class _TruthBondButtonState extends ConsumerState<TruthBondButton>
             children: [
               _isLoading
                   ? const SizedBox(
-                      width: 12, height: 12,
-                      child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.fernGreen),
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 1.5,
+                        color: AppColors.fernGreen,
+                      ),
                     )
                   : Icon(
                       _hasBonded
                           ? Icons.verified_outlined
                           : Icons.link_outlined,
                       size: 13,
-                      color: _hasBonded ? AppColors.fernGreen : AppColors.textTertiary,
+                      color: _hasBonded
+                          ? AppColors.fernGreen
+                          : AppColors.textTertiary,
                     ),
               const SizedBox(width: 4),
               Text(
@@ -180,7 +194,9 @@ class _TruthBondButtonState extends ConsumerState<TruthBondButton>
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: _hasBonded ? AppColors.fernGreenDark : AppColors.textSecondary,
+                  color: _hasBonded
+                      ? AppColors.fernGreenDark
+                      : AppColors.textSecondary,
                   fontFamily: AppTypography.fontFamily,
                 ),
               ),

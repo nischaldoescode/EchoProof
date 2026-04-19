@@ -3,7 +3,9 @@
 abstract final class Validators {
   static String? email(String? value) {
     if (value == null || value.trim().isEmpty) return 'email is required';
-    if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) return 'enter a valid email';
+    if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
+      return 'enter a valid email';
+    }
     return null;
   }
 

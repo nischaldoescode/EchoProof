@@ -1,18 +1,24 @@
 // echoproof app entry point
-// initializes supabase, hive, and flutter before runApp
+// initializes supabase, hive, and all services before runApp
+// uses provider package for dependency injection — no riverpod
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:provider/provider.dart';
 import 'app/app.dart';
+import 'app/router.dart';
+import 'features/auth/presentation/services/auth_service.dart';
+import 'features/onboarding/presentation/services/onboarding_service.dart';
+import 'features/echo/presentation/services/echo_feed_service.dart';
+import 'features/echo/presentation/services/create_echo_service.dart';
+import 'features/notifications/presentation/services/notification_service.dart';
+import 'core/utils/logger.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // lock to portrait — echoproof is a portrait-first app
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
@@ -23,25 +29,40 @@ Future<void> main() async {
     statusBarIconBrightness: Brightness.dark,
   ));
 
-  // initialize hive for local caching + draft storage
   await Hive.initFlutter();
   await Hive.openBox('app_settings');
   await Hive.openBox('echo_cache');
 
-  // initialize supabase
-  // TODO: move url and anonKey to --dart-define or a .env loader
-  // never hardcode production keys here
-  // wire: use flutter_dotenv or --dart-define-from-file=.env at build time
-  // parameters: SUPABASE_URL, SUPABASE_ANON_KEY as environment variables
+  // supabase url and anon key are injected at build time via --dart-define
+  // never hardcode these values here
   await Supabase.initialize(
-    url: const String.fromEnvironment('SUPABASE_URL'),
+    url:     const String.fromEnvironment('SUPABASE_URL'),
     anonKey: const String.fromEnvironment('SUPABASE_ANON_KEY'),
   );
-  final supabaseUrl = const String.fromEnvironment('SUPABASE_URL');
+
+  AppLogger.info('main: supabase initialized');
+
+  final authService         = AuthService();
+  final onboardingService   = OnboardingService();
+  final echoFeedService     = EchoFeedService();
+  final createEchoService   = CreateEchoService();
+  final notificationService = NotificationService();
+
+  final router = createRouter(
+    authService:      authService,
+    onboardingService: onboardingService,
+  );
 
   runApp(
-    const ProviderScope(
-      child: EchoProofApp(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider<AuthService>.value(value: authService),
+        ChangeNotifierProvider<OnboardingService>.value(value: onboardingService),
+        ChangeNotifierProvider<EchoFeedService>.value(value: echoFeedService),
+        ChangeNotifierProvider<CreateEchoService>.value(value: createEchoService),
+        ChangeNotifierProvider<NotificationService>.value(value: notificationService),
+      ],
+      child: EchoProofApp(router: router),
     ),
   );
 }

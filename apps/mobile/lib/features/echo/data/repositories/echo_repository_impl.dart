@@ -3,7 +3,8 @@
 // maps exceptions to failures
 
 import 'package:dartz/dartz.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' hide StorageException;
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../../core/errors/exceptions.dart' hide StorageException;
 import '../../../../core/errors/failures.dart';
 import '../../../../core/errors/exceptions.dart';
 import '../../../../core/utils/logger.dart';
@@ -22,7 +23,8 @@ class EchoRepositoryImpl implements EchoRepository {
     required int limit,
   }) async {
     try {
-      final echoes = await _remoteSource.fetchFeed(offset: offset, limit: limit);
+      final echoes =
+          await _remoteSource.fetchFeed(offset: offset, limit: limit);
       return Right(echoes);
     } on NetworkException catch (e) {
       AppLogger.error('repo: get feed failed', e);
@@ -55,9 +57,9 @@ class EchoRepositoryImpl implements EchoRepository {
   }) async {
     try {
       final echo = await _remoteSource.createEcho(
-        title:                title,
-        content:              content,
-        category:             category,
+        title: title,
+        content: content,
+        category: category,
         verificationRequired: verificationRequired,
       );
       return Right(echo);
@@ -88,7 +90,8 @@ class EchoRepositoryImpl implements EchoRepository {
     String? description,
   }) async {
     try {
-      await _remoteSource.report(echoId: echoId, reason: reason, description: description);
+      await _remoteSource.report(
+          echoId: echoId, reason: reason, description: description);
       return const Right(null);
     } catch (e) {
       return Left(ServerFailure());

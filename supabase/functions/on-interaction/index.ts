@@ -38,13 +38,13 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const anonKey     = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const serviceKey  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     // user client — used only to verify the jwt token
     const userClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
-      auth:   { autoRefreshToken: false, persistSession: false },
+      auth: { autoRefreshToken: false, persistSession: false },
     });
 
     // service client — bypasses rls, used for all db reads and writes
@@ -52,7 +52,10 @@ serve(async (req: Request): Promise<Response> => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const { data: { user }, error: authError } = await userClient.auth.getUser();
+    const {
+      data: { user },
+      error: authError,
+    } = await userClient.auth.getUser();
     if (authError || !user) {
       return errorResponse(401, "unauthenticated");
     }
@@ -133,8 +136,10 @@ serve(async (req: Request): Promise<Response> => {
 
     // 6. calculate weight based on trust tier
 
-    const { data: weightData } = await serviceClient
-      .rpc("calculate_interaction_weight", { p_user_id: user.id });
+    const { data: weightData } = await serviceClient.rpc(
+      "calculate_interaction_weight",
+      { p_user_id: user.id },
+    );
 
     const weight = (weightData as number) ?? 1;
 
@@ -151,12 +156,12 @@ serve(async (req: Request): Promise<Response> => {
       .upsert(
         {
           echo_id,
-          user_id:    user.id,
+          user_id: user.id,
           type,
-          weight:     effectiveWeight,
+          weight: effectiveWeight,
           updated_at: new Date().toISOString(),
         },
-        { onConflict: "echo_id,user_id" }
+        { onConflict: "echo_id,user_id" },
       );
 
     if (interactionError) {
@@ -172,11 +177,12 @@ serve(async (req: Request): Promise<Response> => {
       // fire and forget — never block the response for signal recording
       Promise.resolve(
         serviceClient.rpc("record_feed_signal", {
-          p_user_id:      user.id,
-          p_signal_type:  type === "support" ? "category_support" : "category_challenge",
+          p_user_id: user.id,
+          p_signal_type:
+            type === "support" ? "category_support" : "category_challenge",
           p_signal_value: echo.category,
-          p_weight:       type === "support" ? 2.0 : 1.0,
-        })
+          p_weight: type === "support" ? 2.0 : 1.0,
+        }),
       ).catch((err: unknown) => {
         console.warn("feed signal recording failed:", err);
       });
@@ -185,11 +191,30 @@ serve(async (req: Request): Promise<Response> => {
     // 9. run trust engine to recalculate echo scores
     // non-fatal — if this fails, scores will be recalculated by the hourly trust-engine run
 
-    const { error: engineError } = await serviceClient
-      .rpc("recalculate_echo_scores", { p_echo_id: echo_id });
+    const { error: engineError } = await serviceClient.rpc(
+      "recalculate_echo_scores",
+      { p_echo_id: echo_id },
+    );
 
     if (engineError) {
       console.error("engine recalculation error:", engineError);
+    }
+
+    // invalidate the user's feed cache in redis so next fetch is fresh
+    // this ensures they do not see stale scores after interacting
+    const redisUrl = Deno.env.get("UPSTASH_REDIS_REST_URL");
+    const redisToken = Deno.env.get("UPSTASH_REDIS_REST_TOKEN");
+
+    if (redisUrl && redisToken) {
+      // delete the first 5 pages of this user's feed cache
+      // page 0 and 1 are the most likely to be stale
+      const deletePromises = [0, 20, 40].map((offset) =>
+        fetch(
+          `${redisUrl}/del/${encodeURIComponent(`feed:${user.id}:${offset}:20`)}`,
+          { headers: { Authorization: `Bearer ${redisToken}` } },
+        ).catch(() => {}),
+      );
+      await Promise.all(deletePromises);
     }
 
     // 10. fetch updated echo scores and return to flutter
@@ -198,19 +223,15 @@ serve(async (req: Request): Promise<Response> => {
     const { data: updatedEcho } = await serviceClient
       .from("echoes")
       .select(
-        "trust_score, confidence_score, controversy_score, status, support_count, challenge_count"
+        "trust_score, confidence_score, controversy_score, status, support_count, challenge_count",
       )
       .eq("id", echo_id)
       .single();
 
-    return new Response(
-      JSON.stringify({ success: true, echo: updatedEcho }),
-      {
-        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-        status:  200,
-      }
-    );
-
+    return new Response(JSON.stringify({ success: true, echo: updatedEcho }), {
+      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+      status: 200,
+    });
   } catch (err) {
     console.error("on-interaction unhandled error:", err);
     return errorResponse(500, "internal server error");
@@ -218,11 +239,8 @@ serve(async (req: Request): Promise<Response> => {
 });
 
 function errorResponse(status: number, message: string): Response {
-  return new Response(
-    JSON.stringify({ success: false, error: message }),
-    {
-      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-      status,
-    }
-  );
+  return new Response(JSON.stringify({ success: false, error: message }), {
+    headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+    status,
+  });
 }
