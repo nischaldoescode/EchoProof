@@ -1,33 +1,39 @@
 // feed screen — main home screen
-// shows ranked echo feed with animated card entrances
-// supports pull-to-refresh, infinite scroll pagination
-// fully responsive: 1-col phone, 2-col tablet
+// shows personalized echo feed with 3d card entrance animations
+// uses EchoFeedService via provider — no riverpod
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../domain/entities/echo_entity.dart';
-import '../providers/echo_feed_provider.dart';
+import '../../domain/entities/echo_status.dart';
+import '../services/echo_feed_service.dart';
 import '../widgets/echo_card.dart';
 import '../../../../shared/widgets/shimmer_loader.dart';
 
-class FeedScreen extends ConsumerStatefulWidget {
+class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
 
   @override
-  ConsumerState<FeedScreen> createState() => _FeedScreenState();
+  State<FeedScreen> createState() => _FeedScreenState();
 }
 
-class _FeedScreenState extends ConsumerState<FeedScreen> {
+class _FeedScreenState extends State<FeedScreen> {
   final _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+
+    // load feed after first frame so context is available
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final feed = context.read<EchoFeedService>();
+      if (feed.echoes.isEmpty) feed.loadFeed();
+    });
   }
 
   @override
@@ -39,64 +45,76 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   void _onScroll() {
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 400) {
-      ref.read(echoFeedProvider.notifier).loadMore();
+      context.read<EchoFeedService>().loadMore();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final feedAsync = ref.watch(echoFeedProvider);
-    final size = MediaQuery.sizeOf(context);
+    final feed     = context.watch<EchoFeedService>();
+    final size     = MediaQuery.sizeOf(context);
     final isTablet = size.width > 700;
 
     return Scaffold(
       backgroundColor: AppColors.white,
-      appBar: _FeedAppBar(),
+      appBar:               _FeedAppBar(),
       floatingActionButton: _CreateEchoFab(),
-      body: feedAsync.when(
-        loading: () => const _FeedShimmer(),
-        error: (e, _) =>
-            _ErrorState(onRetry: () => ref.refresh(echoFeedProvider)),
-        data: (feed) {
-          if (feed.echoes.isEmpty) return const _EmptyFeed();
+      bottomNavigationBar:  _BottomNav(currentIndex: 0),
+      body: _buildBody(feed, isTablet),
+    );
+  }
 
-          if (isTablet) {
-            return _TabletGrid(
-              echoes: feed.echoes,
-              isLoadingMore: feed.isLoadingMore,
-              scrollController: _scrollController,
-              hasMore: feed.hasMore,
+  Widget _buildBody(EchoFeedService feed, bool isTablet) {
+    if (feed.isLoading && feed.echoes.isEmpty) {
+      return const _FeedShimmer();
+    }
+
+    if (feed.loadState == FeedLoadState.error && feed.echoes.isEmpty) {
+      return _ErrorState(
+        onRetry: () => context.read<EchoFeedService>().loadFeed(),
+      );
+    }
+
+    if (feed.echoes.isEmpty) {
+      return const _EmptyFeed();
+    }
+
+    if (isTablet) {
+      return _TabletGrid(
+        echoes:           feed.echoes,
+        isLoadingMore:    feed.isLoadingMore,
+        scrollController: _scrollController,
+        hasMore:          feed.hasMore,
+      );
+    }
+
+    return RefreshIndicator(
+      color:    AppColors.fernGreen,
+      onRefresh: () => context.read<EchoFeedService>().refresh(),
+      child: ListView.builder(
+        controller: _scrollController,
+        padding: const EdgeInsets.only(top: AppSpacing.sm, bottom: 120),
+        itemCount: feed.echoes.length + (feed.hasMore ? 1 : 0),
+        itemBuilder: (context, index) {
+          if (index == feed.echoes.length) {
+            return const Padding(
+              padding: EdgeInsets.all(AppSpacing.xl),
+              child: Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.fernGreen,
+                  ),
+                ),
+              ),
             );
           }
-
-          return RefreshIndicator(
-            color: AppColors.fernGreen,
-            onRefresh: () => ref.read(echoFeedProvider.notifier).refresh(),
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.only(top: AppSpacing.sm, bottom: 120),
-              itemCount: feed.echoes.length + (feed.hasMore ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index == feed.echoes.length) {
-                  return const Padding(
-                    padding: EdgeInsets.all(AppSpacing.xl),
-                    child: Center(
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: AppColors.fernGreen),
-                      ),
-                    ),
-                  );
-                }
-                return _AnimatedEchoCard(
-                  key: ValueKey(feed.echoes[index].id),
-                  echo: feed.echoes[index],
-                  index: index,
-                );
-              },
-            ),
+          return _AnimatedEchoCard(
+            key:   ValueKey(feed.echoes[index].id),
+            echo:  feed.echoes[index],
+            index: index,
           );
         },
       ),
@@ -104,7 +122,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   }
 }
 
-/// staggered 3d entrance animation for each echo card
+// staggered 3d entrance animation for each card
 class _AnimatedEchoCard extends StatefulWidget {
   const _AnimatedEchoCard({
     super.key,
@@ -113,7 +131,7 @@ class _AnimatedEchoCard extends StatefulWidget {
   });
 
   final EchoEntity echo;
-  final int index;
+  final int        index;
 
   @override
   State<_AnimatedEchoCard> createState() => _AnimatedEchoCardState();
@@ -121,10 +139,11 @@ class _AnimatedEchoCard extends StatefulWidget {
 
 class _AnimatedEchoCardState extends State<_AnimatedEchoCard>
     with SingleTickerProviderStateMixin {
+
   late final AnimationController _controller;
-  late final Animation<double> _opacity;
-  late final Animation<double> _translateY;
-  late final Animation<double> _rotX; // 3d flip-up entrance
+  late final Animation<double>   _opacity;
+  late final Animation<double>   _translateY;
+  late final Animation<double>   _rotX;
 
   @override
   void initState() {
@@ -134,15 +153,15 @@ class _AnimatedEchoCardState extends State<_AnimatedEchoCard>
       duration: const Duration(milliseconds: 500),
     );
 
-    // stagger based on index — first 8 cards animate, rest appear instantly
     final delay = widget.index < 8
         ? Duration(milliseconds: widget.index * 60)
         : Duration.zero;
 
     _opacity = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(
-          parent: _controller,
-          curve: const Interval(0, 0.6, curve: Curves.easeOut)),
+        parent: _controller,
+        curve: const Interval(0, 0.6, curve: Curves.easeOut),
+      ),
     );
     _translateY = Tween<double>(begin: 24, end: 0).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
@@ -180,14 +199,13 @@ class _AnimatedEchoCardState extends State<_AnimatedEchoCard>
         );
       },
       child: EchoCard(
-        echo: widget.echo,
+        echo:  widget.echo,
         onTap: () => context.push('/feed/echo/${widget.echo.id}'),
       ),
     );
   }
 }
 
-/// two-column grid layout for tablets
 class _TabletGrid extends StatelessWidget {
   const _TabletGrid({
     required this.echoes,
@@ -196,20 +214,20 @@ class _TabletGrid extends StatelessWidget {
     required this.hasMore,
   });
 
-  final List<EchoEntity> echoes;
-  final bool isLoadingMore;
-  final ScrollController scrollController;
-  final bool hasMore;
+  final List<EchoEntity>  echoes;
+  final bool              isLoadingMore;
+  final ScrollController  scrollController;
+  final bool              hasMore;
 
   @override
   Widget build(BuildContext context) {
     return GridView.builder(
-      controller: scrollController,
+      controller:  scrollController,
       padding: const EdgeInsets.all(AppSpacing.lg),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
+        crossAxisCount:   2,
         crossAxisSpacing: AppSpacing.md,
-        mainAxisSpacing: AppSpacing.md,
+        mainAxisSpacing:  AppSpacing.md,
         childAspectRatio: 0.85,
       ),
       itemCount: echoes.length + (hasMore ? 1 : 0),
@@ -217,12 +235,14 @@ class _TabletGrid extends StatelessWidget {
         if (index == echoes.length) {
           return const Center(
             child: CircularProgressIndicator(
-                strokeWidth: 2, color: AppColors.fernGreen),
+              strokeWidth: 2,
+              color: AppColors.fernGreen,
+            ),
           );
         }
         return _AnimatedEchoCard(
-          key: ValueKey(echoes[index].id),
-          echo: echoes[index],
+          key:   ValueKey(echoes[index].id),
+          echo:  echoes[index],
           index: index,
         );
       },
@@ -255,56 +275,72 @@ class _FeedAppBar extends StatelessWidget implements PreferredSizeWidget {
       actions: [
         IconButton(
           icon: const Icon(Icons.notifications_none_outlined, size: 22),
-          onPressed: () {},
+          onPressed: () => context.push('/notifications'),
         ),
         IconButton(
           icon: const Icon(Icons.person_outline, size: 22),
-          onPressed: () {},
+          onPressed: () => context.push('/profile'),
         ),
       ],
     );
   }
 }
 
-class _MiniWavePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = AppColors.fernGreen
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2
-      ..strokeCap = StrokeCap.round;
-    final cx = size.width / 2;
-    final cy = size.height / 2;
-    for (int i = 1; i <= 2; i++) {
-      canvas.drawArc(
-        Rect.fromCircle(center: Offset(cx, cy), radius: i * 5.0),
-        -0.6,
-        3.5,
-        false,
-        paint,
-      );
-    }
-    canvas.drawCircle(Offset(cx, cy), 1.5, paint..style = PaintingStyle.fill);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter old) => false;
-}
-
 class _CreateEchoFab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FloatingActionButton.extended(
-      onPressed: () => context.push('/create'),
+      onPressed:       () => context.push('/create'),
       backgroundColor: AppColors.charcoal,
       foregroundColor: AppColors.white,
       elevation: 2,
-      icon: const Icon(Icons.add, size: 20),
+      icon:  const Icon(Icons.add, size: 20),
       label: Text(
         'Create Echo',
-        style: AppTypography.textTheme.labelLarge
-            ?.copyWith(color: AppColors.white),
+        style: AppTypography.textTheme.labelLarge?.copyWith(
+          color: AppColors.white,
+        ),
+      ),
+    );
+  }
+}
+
+class _BottomNav extends StatelessWidget {
+  const _BottomNav({required this.currentIndex});
+  final int currentIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(
+          top: BorderSide(color: AppColors.borderSubtle, width: 1),
+        ),
+      ),
+      child: BottomNavigationBar(
+        currentIndex: currentIndex,
+        onTap: (i) {
+          if (i == 0) context.go('/feed');
+          if (i == 1) context.go('/discover');
+          if (i == 2) context.go('/profile');
+        },
+        items: const [
+          BottomNavigationBarItem(
+            icon:       Icon(Icons.home_outlined),
+            activeIcon: Icon(Icons.home),
+            label:      'Feed',
+          ),
+          BottomNavigationBarItem(
+            icon:       Icon(Icons.explore_outlined),
+            activeIcon: Icon(Icons.explore),
+            label:      'Discover',
+          ),
+          BottomNavigationBarItem(
+            icon:       Icon(Icons.person_outline),
+            activeIcon: Icon(Icons.person),
+            label:      'Profile',
+          ),
+        ],
       ),
     );
   }
@@ -320,7 +356,9 @@ class _FeedShimmer extends StatelessWidget {
       itemCount: 6,
       itemBuilder: (_, __) => const Padding(
         padding: EdgeInsets.symmetric(
-            horizontal: AppSpacing.lg, vertical: AppSpacing.sm),
+          horizontal: AppSpacing.lg,
+          vertical:   AppSpacing.sm,
+        ),
         child: EchoCardShimmer(),
       ),
     );
@@ -345,60 +383,24 @@ class _EmptyFeed extends StatelessWidget {
                 color: AppColors.softSand,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Icon(Icons.wb_sunny_outlined,
-                  size: 36, color: AppColors.textTertiary),
+              child: const Icon(
+                Icons.wb_sunny_outlined,
+                size: 36,
+                color: AppColors.textTertiary,
+              ),
             ),
             const SizedBox(height: AppSpacing.xl),
             Text('Nothing yet', style: AppTypography.textTheme.headlineSmall),
             const SizedBox(height: AppSpacing.sm),
             Text(
               'Be the first to create an echo in your communities.',
-              style: AppTypography.textTheme.bodyMedium
-                  ?.copyWith(color: AppColors.textSecondary),
+              style: AppTypography.textTheme.bodyMedium?.copyWith(
+                color: AppColors.textSecondary,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _BottomNav extends StatelessWidget {
-  const _BottomNav({required this.currentIndex});
-  final int currentIndex;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        border:
-            Border(top: BorderSide(color: AppColors.borderSubtle, width: 1)),
-      ),
-      child: BottomNavigationBar(
-        currentIndex: currentIndex,
-        onTap: (i) {
-          if (i == 0) context.go('/feed');
-          if (i == 1) context.go('/discover');
-          if (i == 2) context.go('/feed'); // profile — wire to /profile
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home),
-            label: 'Feed',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.explore_outlined),
-            activeIcon: Icon(Icons.explore),
-            label: 'Discover',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            activeIcon: Icon(Icons.person),
-            label: 'Profile',
-          ),
-        ],
       ),
     );
   }
@@ -414,13 +416,21 @@ class _ErrorState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.cloud_off_outlined,
-              size: 48, color: AppColors.textTertiary),
+          const Icon(
+            Icons.cloud_off_outlined,
+            size: 48,
+            color: AppColors.textTertiary,
+          ),
           const SizedBox(height: AppSpacing.lg),
-          Text('Could not load feed',
-              style: AppTypography.textTheme.titleMedium),
+          Text(
+            'Could not load feed',
+            style: AppTypography.textTheme.titleMedium,
+          ),
           const SizedBox(height: AppSpacing.md),
-          ElevatedButton(onPressed: onRetry, child: const Text('Try again')),
+          ElevatedButton(
+            onPressed: onRetry,
+            child: const Text('Try again'),
+          ),
         ],
       ),
     );

@@ -1,24 +1,25 @@
-// onboarding step 5: optional first echo creation
-// skip allowed — completes onboarding either way
+// onboarding step 5 — optional first echo creation
+// skip is allowed — completes onboarding either way
+// uses OnboardingService and CreateEchoService via provider
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:provider/provider.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
-import '../providers/onboarding_provider.dart';
+import '../services/onboarding_service.dart';
 import '../widgets/onboarding_progress.dart';
 import '../../../echo/domain/entities/echo_entity.dart';
-import '../../../echo/presentation/providers/create_echo_provider.dart';
+import '../../../echo/presentation/services/create_echo_service.dart';
 
-class StepFirstEcho extends ConsumerStatefulWidget {
+class StepFirstEcho extends StatefulWidget {
   const StepFirstEcho({super.key});
 
   @override
-  ConsumerState<StepFirstEcho> createState() => _StepFirstEchoState();
+  State<StepFirstEcho> createState() => _StepFirstEchoState();
 }
 
-class _StepFirstEchoState extends ConsumerState<StepFirstEcho> {
+class _StepFirstEchoState extends State<StepFirstEcho> {
   final _controller = TextEditingController();
   EchoCategory? _selectedCategory;
 
@@ -29,22 +30,26 @@ class _StepFirstEchoState extends ConsumerState<StepFirstEcho> {
   }
 
   Future<void> _skip() async {
-    await ref.read(onboardingProvider.notifier).completeOnboarding();
+    await context.read<OnboardingService>().completeOnboarding();
   }
 
   Future<void> _submit() async {
     if (_controller.text.trim().isEmpty || _selectedCategory == null) return;
-    final notifier = ref.read(createEchoProvider.notifier);
-    notifier.setTitle(_controller.text.trim());
-    notifier.setContent(_controller.text.trim());
-    notifier.setCategory(_selectedCategory!);
-    await notifier.submit();
-    if (mounted) await ref.read(onboardingProvider.notifier).completeOnboarding();
+
+    final createService = context.read<CreateEchoService>();
+    createService.setTitle(_controller.text.trim());
+    createService.setContent(_controller.text.trim());
+    createService.setCategory(_selectedCategory!);
+    await createService.submit();
+
+    if (mounted) {
+      await context.read<OnboardingService>().completeOnboarding();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isSubmitting = ref.watch(createEchoProvider).isSubmitting;
+    final createService = context.watch<CreateEchoService>();
 
     return Scaffold(
       backgroundColor: AppColors.white,
@@ -58,22 +63,26 @@ class _StepFirstEchoState extends ConsumerState<StepFirstEcho> {
               const OnboardingProgress(currentStep: 5, totalSteps: 5),
               const SizedBox(height: AppSpacing.xxl),
 
-              Text('Share your first Echo', style: AppTypography.textTheme.headlineMedium),
+              Text(
+                'Share your first Echo',
+                style: AppTypography.textTheme.headlineMedium,
+              ),
               const SizedBox(height: AppSpacing.sm),
               Text(
                 'Optional — you can always create one later from the feed.',
-                style: AppTypography.textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
+                style: AppTypography.textTheme.bodyMedium?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
               ),
 
               const SizedBox(height: AppSpacing.xxl),
 
-              // echo text area
               TextField(
                 controller: _controller,
-                maxLines: 5,
-                maxLength: 2000,
+                maxLines:   5,
+                maxLength:  2000,
                 decoration: const InputDecoration(
-                  hintText: 'What do you want the community to verify?',
+                  hintText:           'What do you want the community to verify?',
                   alignLabelWithHint: true,
                 ),
                 style: AppTypography.textTheme.bodyMedium,
@@ -81,7 +90,6 @@ class _StepFirstEchoState extends ConsumerState<StepFirstEcho> {
 
               const SizedBox(height: AppSpacing.lg),
 
-              // quick category picker — horizontal scroll
               SizedBox(
                 height: 38,
                 child: ListView(
@@ -89,27 +97,38 @@ class _StepFirstEchoState extends ConsumerState<StepFirstEcho> {
                   children: EchoCategory.values.map((cat) {
                     final selected = _selectedCategory == cat;
                     return GestureDetector(
-                      onTap: () => setState(() => _selectedCategory = cat),
+                      onTap: () =>
+                          setState(() => _selectedCategory = cat),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 180),
                         margin: const EdgeInsets.only(right: AppSpacing.sm),
                         padding: const EdgeInsets.symmetric(
                           horizontal: AppSpacing.md,
-                          vertical: AppSpacing.xs,
+                          vertical:   AppSpacing.xs,
                         ),
                         decoration: BoxDecoration(
-                          color: selected ? AppColors.charcoal : AppColors.softSand,
-                          borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                          color: selected
+                              ? AppColors.charcoal
+                              : AppColors.softSand,
+                          borderRadius: BorderRadius.circular(
+                            AppSpacing.radiusFull,
+                          ),
                           border: Border.all(
-                            color: selected ? AppColors.charcoal : AppColors.borderSubtle,
+                            color: selected
+                                ? AppColors.charcoal
+                                : AppColors.borderSubtle,
                           ),
                         ),
                         child: Text(
                           cat.displayName,
                           style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                            color: selected ? AppColors.white : AppColors.textPrimary,
+                            fontSize:   13,
+                            fontWeight: selected
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                            color: selected
+                                ? AppColors.white
+                                : AppColors.textPrimary,
                             fontFamily: AppTypography.fontFamily,
                           ),
                         ),
@@ -121,15 +140,18 @@ class _StepFirstEchoState extends ConsumerState<StepFirstEcho> {
 
               const Spacer(),
 
-              // submit
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: isSubmitting ? null : _submit,
-                  child: isSubmitting
+                  onPressed: createService.isSubmitting ? null : _submit,
+                  child: createService.isSubmitting
                       ? const SizedBox(
-                          width: 20, height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.white),
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.white,
+                          ),
                         )
                       : const Text('Publish and enter'),
                 ),
@@ -137,7 +159,6 @@ class _StepFirstEchoState extends ConsumerState<StepFirstEcho> {
 
               const SizedBox(height: AppSpacing.md),
 
-              // skip
               Center(
                 child: TextButton(
                   onPressed: _skip,

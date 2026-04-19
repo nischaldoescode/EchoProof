@@ -1,5 +1,5 @@
 // animated category selection chip for onboarding
-// smooth scale + color transition on tap
+// scale + color transition on tap — no riverpod dependency
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -25,7 +25,6 @@ class CategoryChip extends StatefulWidget {
 
 class _CategoryChipState extends State<CategoryChip>
     with SingleTickerProviderStateMixin {
-
   late final AnimationController _controller;
   late final Animation<double> _scale;
 
@@ -72,7 +71,9 @@ class _CategoryChipState extends State<CategoryChip>
             color: widget.isSelected ? AppColors.charcoal : AppColors.softSand,
             borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
             border: Border.all(
-              color: widget.isSelected ? AppColors.charcoal : AppColors.borderSubtle,
+              color: widget.isSelected
+                  ? AppColors.charcoal
+                  : AppColors.borderSubtle,
               width: 1.0,
             ),
           ),
@@ -81,7 +82,8 @@ class _CategoryChipState extends State<CategoryChip>
             style: TextStyle(
               fontSize: 14,
               fontWeight: widget.isSelected ? FontWeight.w600 : FontWeight.w400,
-              color: widget.isSelected ? AppColors.white : AppColors.textPrimary,
+              color:
+                  widget.isSelected ? AppColors.white : AppColors.textPrimary,
               fontFamily: AppTypography.fontFamily,
             ),
           ),

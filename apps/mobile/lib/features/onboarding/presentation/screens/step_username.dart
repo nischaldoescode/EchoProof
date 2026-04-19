@@ -1,28 +1,28 @@
-// onboarding step 3: anonymous username
-// auto-generates suggestions, checks uniqueness against supabase
+// onboarding step 3 — anonymous username
+// checks uniqueness against supabase users_public
+// uses OnboardingService via provider — no riverpod
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:math';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
-import '../providers/onboarding_provider.dart';
+import '../services/onboarding_service.dart';
 import '../widgets/onboarding_progress.dart';
-import '../../../auth/presentation/providers/auth_provider.dart';
 
-class StepUsername extends ConsumerStatefulWidget {
+class StepUsername extends StatefulWidget {
   const StepUsername({super.key});
 
   @override
-  ConsumerState<StepUsername> createState() => _StepUsernameState();
+  State<StepUsername> createState() => _StepUsernameState();
 }
 
-class _StepUsernameState extends ConsumerState<StepUsername> {
+class _StepUsernameState extends State<StepUsername> {
   final _controller = TextEditingController();
   String? _errorText;
-  bool _isChecking = false;
+  bool    _isChecking = false;
 
   static const _adjectives = [
     'quiet', 'silent', 'swift', 'calm', 'bold',
@@ -39,8 +39,7 @@ class _StepUsernameState extends ConsumerState<StepUsername> {
   void initState() {
     super.initState();
     _generateSuggestions();
-    // restore saved username if any
-    final saved = ref.read(onboardingProvider).username;
+    final saved = context.read<OnboardingService>().username;
     if (saved.isNotEmpty) _controller.text = saved;
   }
 
@@ -74,10 +73,13 @@ class _StepUsernameState extends ConsumerState<StepUsername> {
       return;
     }
 
-    setState(() { _isChecking = true; _errorText = null; });
+    setState(() {
+      _isChecking = true;
+      _errorText  = null;
+    });
 
     try {
-      final client = ref.read(supabaseProvider);
+      final client = Supabase.instance.client;
       final result = await client
           .from('users_public')
           .select('id')
@@ -92,10 +94,13 @@ class _StepUsernameState extends ConsumerState<StepUsername> {
         return;
       }
 
-      ref.read(onboardingProvider.notifier).setUsername(username);
-      ref.read(onboardingProvider.notifier).nextStep();
+      context.read<OnboardingService>().setUsername(username);
+      context.read<OnboardingService>().nextStep();
     } catch (_) {
-      setState(() { _isChecking = false; _errorText = 'could not check username, try again'; });
+      setState(() {
+        _isChecking = false;
+        _errorText  = 'could not check username, try again';
+      });
     }
   }
 
@@ -113,30 +118,38 @@ class _StepUsernameState extends ConsumerState<StepUsername> {
               const OnboardingProgress(currentStep: 3, totalSteps: 5),
               const SizedBox(height: AppSpacing.xxl),
 
-              Text('Choose your alias', style: AppTypography.textTheme.headlineMedium),
+              Text(
+                'Choose your alias',
+                style: AppTypography.textTheme.headlineMedium,
+              ),
               const SizedBox(height: AppSpacing.sm),
               Text(
                 'This is your public identity. Keep it anonymous — never use your real name.',
-                style: AppTypography.textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
+                style: AppTypography.textTheme.bodyMedium?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
               ),
 
               const SizedBox(height: AppSpacing.xxl),
 
-              // username input
               TextField(
                 controller: _controller,
-                onChanged: (_) => setState(() => _errorText = null),
+                onChanged:  (_) => setState(() => _errorText = null),
                 autocorrect: false,
                 decoration: InputDecoration(
-                  hintText: 'your_alias',
+                  hintText:  'your_alias',
                   prefixText: '@',
-                  errorText: _errorText,
+                  errorText:  _errorText,
                   suffixIcon: _isChecking
                       ? const Padding(
                           padding: EdgeInsets.all(12),
                           child: SizedBox(
-                            width: 16, height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.fernGreen),
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.fernGreen,
+                            ),
                           ),
                         )
                       : null,
@@ -145,9 +158,12 @@ class _StepUsernameState extends ConsumerState<StepUsername> {
 
               const SizedBox(height: AppSpacing.lg),
 
-              // suggestions
-              Text('Suggestions', style: AppTypography.textTheme.labelLarge),
+              Text(
+                'Suggestions',
+                style: AppTypography.textTheme.labelLarge,
+              ),
               const SizedBox(height: AppSpacing.sm),
+
               Wrap(
                 spacing: AppSpacing.sm,
                 children: [
@@ -159,30 +175,41 @@ class _StepUsernameState extends ConsumerState<StepUsername> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: AppSpacing.sm,
-                        vertical: AppSpacing.xs,
+                        vertical:   AppSpacing.xs,
                       ),
                       decoration: BoxDecoration(
                         color: AppColors.softSand,
-                        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                        borderRadius: BorderRadius.circular(
+                          AppSpacing.radiusFull,
+                        ),
                         border: Border.all(color: AppColors.borderSubtle),
                       ),
-                      child: Text('@$s', style: AppTypography.textTheme.labelLarge),
+                      child: Text(
+                        '@$s',
+                        style: AppTypography.textTheme.labelLarge,
+                      ),
                     ),
                   )),
-                  // refresh suggestions
+
                   GestureDetector(
                     onTap: _generateSuggestions,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: AppSpacing.sm,
-                        vertical: AppSpacing.xs,
+                        vertical:   AppSpacing.xs,
                       ),
                       decoration: BoxDecoration(
                         color: AppColors.softSand,
-                        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                        borderRadius: BorderRadius.circular(
+                          AppSpacing.radiusFull,
+                        ),
                         border: Border.all(color: AppColors.borderSubtle),
                       ),
-                      child: const Icon(Icons.refresh, size: 16, color: AppColors.textTertiary),
+                      child: const Icon(
+                        Icons.refresh,
+                        size:  16,
+                        color: AppColors.textTertiary,
+                      ),
                     ),
                   ),
                 ],

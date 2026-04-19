@@ -1,10 +1,8 @@
-// echoproof echo card widget
+// echo card widget
 // the main content unit shown in the feed
-// displays: username, trust badge, content, confidence bar, interaction buttons
-// all animations are implicit — no explicit controllers needed here
+// plain StatelessWidget — no riverpod
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
@@ -14,7 +12,7 @@ import 'confidence_bar.dart';
 import 'trust_badge.dart';
 import 'interaction_buttons.dart';
 
-class EchoCard extends ConsumerWidget {
+class EchoCard extends StatelessWidget {
   const EchoCard({
     super.key,
     required this.echo,
@@ -25,7 +23,7 @@ class EchoCard extends ConsumerWidget {
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -46,10 +44,7 @@ class EchoCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // top row: avatar, username, trust badge, timestamp
             _CardHeader(echo: echo),
-
-            // main content
             Padding(
               padding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.lg,
@@ -76,13 +71,9 @@ class EchoCard extends ConsumerWidget {
                 ],
               ),
             ),
-
-            // status label (only for non-active statuses)
             if (echo.status != EchoStatus.active &&
                 echo.status != EchoStatus.pendingVerification)
               _StatusLabel(status: echo.status),
-
-            // confidence bar
             Padding(
               padding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.lg,
@@ -93,11 +84,11 @@ class EchoCard extends ConsumerWidget {
                 status: echo.status,
               ),
             ),
-
-            // divider
-            const Divider(height: 1, indent: AppSpacing.lg, endIndent: AppSpacing.lg),
-
-            // interaction buttons
+            const Divider(
+              height: 1,
+              indent: AppSpacing.lg,
+              endIndent: AppSpacing.lg,
+            ),
             InteractionButtons(echo: echo),
           ],
         ),
@@ -107,12 +98,13 @@ class EchoCard extends ConsumerWidget {
 
   Color _borderColor(EchoStatus status) {
     return switch (status) {
-      EchoStatus.verified     => AppColors.fernGreen.withOpacity(0.4),
-      EchoStatus.disputed     => AppColors.sunsetCoral.withOpacity(0.4),
-      EchoStatus.controversial => AppColors.statusControversial.withOpacity(0.4),
-      EchoStatus.underReview  => AppColors.statusUnderReview.withOpacity(0.3),
-      EchoStatus.hidden       => AppColors.borderSubtle,
-      _                       => AppColors.borderSubtle,
+      EchoStatus.verified => AppColors.fernGreen.withOpacity(0.4),
+      EchoStatus.disputed => AppColors.sunsetCoral.withOpacity(0.4),
+      EchoStatus.controversial =>
+        AppColors.statusControversial.withOpacity(0.4),
+      EchoStatus.underReview => AppColors.statusUnderReview.withOpacity(0.3),
+      EchoStatus.hidden => AppColors.borderSubtle,
+      _ => AppColors.borderSubtle,
     };
   }
 }
@@ -132,14 +124,11 @@ class _CardHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // avatar — grayscale with verified ring
           _AvatarWithRing(
             avatarUrl: echo.userAvatarUrl,
             isVerified: echo.userIsVerified,
           ),
           const SizedBox(width: AppSpacing.sm),
-
-          // username + category
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -156,17 +145,9 @@ class _CardHeader extends StatelessWidget {
               ],
             ),
           ),
-
-          // trust badge
           TrustBadge(tier: echo.userTrustTier),
-
           const SizedBox(width: AppSpacing.sm),
-
-          // timestamp
-          Text(
-            echo.timeAgo,
-            style: AppTypography.textTheme.labelMedium,
-          ),
+          Text(echo.timeAgo, style: AppTypography.textTheme.labelMedium),
         ],
       ),
     );
@@ -195,12 +176,13 @@ class _AvatarWithRing extends StatelessWidget {
         child: CircleAvatar(
           radius: AppSpacing.avatarSizeSm / 2,
           backgroundColor: AppColors.softSand,
-          backgroundImage: avatarUrl != null
-              ? NetworkImage(avatarUrl!)
-              : null,
-          // grayscale effect for anonymous vibe
+          backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl!) : null,
           child: avatarUrl == null
-              ? const Icon(Icons.person_outline, size: 18, color: AppColors.textTertiary)
+              ? const Icon(
+                  Icons.person_outline,
+                  size: 18,
+                  color: AppColors.textTertiary,
+                )
               : null,
         ),
       ),
@@ -215,16 +197,45 @@ class _StatusLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, color, bg) = switch (status) {
-      EchoStatus.verified     => ('Verified by community', AppColors.fernGreenDark, AppColors.fernGreenLight),
-      EchoStatus.disputed     => ('Disputed', AppColors.sunsetCoralDark, AppColors.sunsetCoralLight),
-      EchoStatus.controversial => ('Controversial — community split', const Color(0xFF7A5200), const Color(0xFFFFF3E0)),
-      EchoStatus.underReview  => ('Under community review', const Color(0xFF7A5200), const Color(0xFFFFF8E1)),
-      EchoStatus.rejected     => ('Rejected', AppColors.sunsetCoralDark, AppColors.sunsetCoralLight),
-      _                       => ('Awaiting echoes...', AppColors.textTertiary, AppColors.softSand),
+      EchoStatus.verified => (
+          'Verified by community',
+          AppColors.fernGreenDark,
+          AppColors.fernGreenLight,
+        ),
+      EchoStatus.disputed => (
+          'Disputed',
+          AppColors.sunsetCoralDark,
+          AppColors.sunsetCoralLight,
+        ),
+      EchoStatus.controversial => (
+          'Controversial — community split',
+          const Color(0xFF7A5200),
+          const Color(0xFFFFF3E0),
+        ),
+      EchoStatus.underReview => (
+          'Under community review',
+          const Color(0xFF7A5200),
+          const Color(0xFFFFF8E1),
+        ),
+      EchoStatus.rejected => (
+          'Rejected',
+          AppColors.sunsetCoralDark,
+          AppColors.sunsetCoralLight,
+        ),
+      _ => (
+          'Awaiting echoes...',
+          AppColors.textTertiary,
+          AppColors.softSand,
+        ),
     };
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.sm),
+      margin: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        0,
+        AppSpacing.lg,
+        AppSpacing.sm,
+      ),
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.sm,
         vertical: AppSpacing.xs,

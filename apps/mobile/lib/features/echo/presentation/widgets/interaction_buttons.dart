@@ -1,24 +1,27 @@
 // interaction buttons — support and challenge
-// ripple animation on tap, optimistic update, haptic feedback
+// applies optimistic update, calls edge function, reverts on failure
+// uses EchoFeedService via provider — no riverpod
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../domain/entities/echo_entity.dart';
-import '../../../../shared/widgets/echo_action_sheet.dart';
+import '../../domain/entities/echo_status.dart';
 import '../../../../core/services/echo_interaction_service.dart';
-import '../../../auth/presentation/providers/auth_provider.dart';
-import '../providers/echo_feed_provider.dart';
+import '../../../../core/utils/logger.dart';
+import '../../../../shared/widgets/echo_action_sheet.dart';
+import '../services/echo_feed_service.dart';
 
-class InteractionButtons extends ConsumerWidget {
+class InteractionButtons extends StatelessWidget {
   const InteractionButtons({super.key, required this.echo});
   final EchoEntity echo;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.md,
@@ -26,32 +29,28 @@ class InteractionButtons extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          // support button
           _InteractionButton(
             label: '${echo.supportCount}',
             icon: Icons.arrow_upward_rounded,
             activeColor: AppColors.fernGreen,
-            onTap: () => _interact(context, ref, 'support'),
+            onTap: () => _interact(context, 'support'),
           ),
-
           const SizedBox(width: AppSpacing.sm),
-
-          // challenge button
           _InteractionButton(
             label: '${echo.challengeCount}',
             icon: Icons.arrow_downward_rounded,
             activeColor: AppColors.sunsetCoral,
-            onTap: () => _interact(context, ref, 'challenge'),
+            onTap: () => _interact(context, 'challenge'),
           ),
-
           const Spacer(),
-
-          // proof count
           if (echo.proofCount > 0)
             Row(
               children: [
-                const Icon(Icons.attach_file_outlined,
-                    size: 14, color: AppColors.textTertiary),
+                const Icon(
+                  Icons.attach_file_outlined,
+                  size: 14,
+                  color: AppColors.textTertiary,
+                ),
                 const SizedBox(width: 3),
                 Text(
                   '${echo.proofCount}',
@@ -60,73 +59,65 @@ class InteractionButtons extends ConsumerWidget {
                 const SizedBox(width: AppSpacing.sm),
               ],
             ),
-
-          // share / menu
           IconButton(
             icon: const Icon(Icons.more_horiz, size: 18),
             color: AppColors.textTertiary,
-            onPressed: () {
-              showEchoActionSheet(
-                context: context,
-                ref: ref,
-                echoId: echo.id,
-              );
-            },
+            onPressed: () => showEchoActionSheet(
+              context: context,
+              echoId: echo.id,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _interact(
-      BuildContext context, WidgetRef ref, String type) async {
+  Future<void> _interact(BuildContext context, String type) async {
     HapticFeedback.selectionClick();
-    ref.read(echoFeedProvider.notifier).applyOptimisticInteraction(
-          echoId: echo.id,
-          type: type,
-        );
 
-    final service = ref.read(echoInteractionServiceProvider);
+    final feed = context.read<EchoFeedService>();
+    feed.applyOptimisticInteraction(echoId: echo.id, type: type);
 
-    final session = ref.read(supabaseProvider).auth.currentSession;
-    final jwt = session?.accessToken;
-
-    if (jwt == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Not authenticated'),
-          backgroundColor: AppColors.charcoal,
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session == null) {
+      feed.revertOptimisticInteraction(echoId: echo.id, type: type);
       return;
     }
 
     try {
-      await service.interact(
+      final service = EchoInteractionService(Supabase.instance.client);
+      final result = await service.interact(
         echoId: echo.id,
         type: type,
-        jwtToken: jwt,
+        jwtToken: session.accessToken,
+      );
+
+      // sync with real server scores
+      final updated = result.updatedEcho;
+      feed.updateEchoScores(
+        echoId: echo.id,
+        trustScore: updated.trustScore,
+        confidenceScore: updated.confidenceScore,
+        supportCount: updated.supportCount,
+        challengeCount: updated.challengeCount,
+        status: updated.status,
       );
     } catch (e) {
-      final opposite = type == 'support' ? 'challenge' : 'support';
+      AppLogger.error('interaction failed', e);
+      feed.revertOptimisticInteraction(echoId: echo.id, type: type);
 
-      ref.read(echoFeedProvider.notifier).applyOptimisticInteraction(
-            echoId: echo.id,
-            type: opposite,
-          );
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString()),
-          backgroundColor: AppColors.sunsetCoral,
-          behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: AppColors.sunsetCoral,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
     }
   }
 }

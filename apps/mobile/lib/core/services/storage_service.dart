@@ -4,7 +4,6 @@
 // stores public url — never stores binary data in the database
 
 import 'dart:typed_data';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -36,7 +35,7 @@ class StorageService {
   // picks an image file and validates it before returning bytes.
   // throws StorageException if file is too large or wrong type.
   Future<PlatformFile?> pickProofImage() async {
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: _allowedExtensions,
       withData: true,
@@ -57,7 +56,8 @@ class StorageService {
 
     final ext = file.extension?.toLowerCase() ?? '';
     if (!_allowedExtensions.contains(ext)) {
-      throw StorageException('only ${_allowedExtensions.join(", ")} files allowed');
+      throw StorageException(
+          'only ${_allowedExtensions.join(", ")} files allowed');
     }
 
     AppLogger.info('storage: picked file ${file.name} ${file.size} bytes');
@@ -78,9 +78,7 @@ class StorageService {
     AppLogger.info('storage: uploading proof $path');
 
     try {
-      await _client.storage
-          .from('echo-proofs')
-          .uploadBinary(
+      await _client.storage.from('echo-proofs').uploadBinary(
             path,
             bytes,
             fileOptions: FileOptions(contentType: contentType, upsert: false),
@@ -90,9 +88,7 @@ class StorageService {
       rethrow;
     }
 
-    final publicUrl = _client.storage
-        .from('echo-proofs')
-        .getPublicUrl(path);
+    final publicUrl = _client.storage.from('echo-proofs').getPublicUrl(path);
 
     AppLogger.info('storage: uploaded successfully');
     return UploadResult(publicUrl: publicUrl, storagePath: path);
@@ -105,13 +101,9 @@ class StorageService {
   }
 
   String _contentType(String ext) => switch (ext) {
-    'jpg' || 'jpeg' => 'image/jpeg',
-    'png'           => 'image/png',
-    'webp'          => 'image/webp',
-    _               => 'application/octet-stream',
-  };
+        'jpg' || 'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'webp' => 'image/webp',
+        _ => 'application/octet-stream',
+      };
 }
-
-final storageServiceProvider = Provider<StorageService>((ref) {
-  return StorageService(Supabase.instance.client);
-});

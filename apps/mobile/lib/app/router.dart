@@ -1,57 +1,54 @@
-// app router — declarative navigation using go_router
-// redirects to login if unauthenticated, onboarding if not yet complete
+// app router
+// declarative navigation with go_router
+// no riverpod — uses plain service classes
 
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../features/auth/presentation/providers/auth_provider.dart';
 import '../features/auth/presentation/screens/splash_screen.dart';
 import '../features/auth/presentation/screens/login_screen.dart';
-import '../features/onboarding/presentation/providers/onboarding_provider.dart';
+import '../features/auth/presentation/screens/identity_verification_screen.dart';
 import '../features/onboarding/presentation/screens/onboarding_root.dart';
 import '../features/echo/presentation/screens/feed_screen.dart';
 import '../features/echo/presentation/screens/create_echo_screen.dart';
 import '../features/echo/presentation/screens/echo_detail_screen.dart';
 import '../features/echo/presentation/screens/discover_screen.dart';
+import '../features/profile/presentation/screens/profile_screen.dart';
+import '../features/notifications/presentation/screens/notifications_screen.dart';
+import '../features/auth/presentation/services/auth_service.dart';
+import '../features/onboarding/presentation/services/onboarding_service.dart';
 
-final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authStateProvider);
-
+GoRouter createRouter({
+  required AuthService authService,
+  required OnboardingService onboardingService,
+}) {
   return GoRouter(
     initialLocation: '/splash',
     redirect: (context, routerState) {
-      final isLoggedIn = authState.valueOrNull != null;
-      final isOnboardingDone = ref.read(isOnboardingCompleteProvider);
+      final isLoggedIn = authService.currentUser != null;
+      final isOnboardingDone = onboardingService.isComplete();
       final location = routerState.matchedLocation;
 
-      // still loading — stay on splash
-      if (authState.isLoading) return location == '/splash' ? null : '/splash';
+      if (location == '/splash') return null;
 
-      // not logged in — send to login
       if (!isLoggedIn && location != '/login') return '/login';
 
-      // logged in but onboarding not done — send to onboarding
       if (isLoggedIn && !isOnboardingDone && location != '/onboarding') {
         return '/onboarding';
       }
 
-      // logged in + onboarding done — if still on login or splash, go to feed
-      if (isLoggedIn && isOnboardingDone &&
+      if (isLoggedIn &&
+          isOnboardingDone &&
           (location == '/login' || location == '/splash')) {
         return '/feed';
       }
 
-      return null; // no redirect needed
+      return null;
     },
     routes: [
       GoRoute(
         path: '/splash',
         builder: (context, state) => const SplashScreen(),
       ),
-      GoRoute(
-        path: '/login',
-        builder: (context, state) => const LoginScreen(),
-      ),
+      GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
       GoRoute(
         path: '/onboarding',
         builder: (context, state) => const OnboardingRoot(),
@@ -62,9 +59,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         routes: [
           GoRoute(
             path: 'echo/:id',
-            builder: (context, state) => EchoDetailScreen(
-              echoId: state.pathParameters['id']!,
-            ),
+            builder: (context, state) =>
+                EchoDetailScreen(echoId: state.pathParameters['id']!),
           ),
         ],
       ),
@@ -73,10 +69,21 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const CreateEchoScreen(),
       ),
       GoRoute(
-  path: '/discover',
-  builder: (context, state) => const DiscoverScreen(),
-),
-      
+        path: '/discover',
+        builder: (context, state) => const DiscoverScreen(),
+      ),
+      GoRoute(
+        path: '/profile',
+        builder: (context, state) => const ProfileScreen(),
+      ),
+      GoRoute(
+        path: '/notifications',
+        builder: (context, state) => const NotificationsScreen(),
+      ),
+      GoRoute(
+        path: '/verify-identity',
+        builder: (context, state) => const IdentityVerificationScreen(),
+      ),
     ],
   );
-});
+}

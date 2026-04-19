@@ -1,5 +1,5 @@
 // onboarding step progress indicator
-// animated dots — filled for completed, current, upcoming
+// animated dots — filled for completed and current, grey for upcoming
 
 import 'package:flutter/material.dart';
 import '../../../../app/theme/colors.dart';
@@ -20,7 +20,7 @@ class OnboardingProgress extends StatelessWidget {
     return Row(
       children: List.generate(totalSteps, (i) {
         final stepNum = i + 1;
-        final isDone    = stepNum < currentStep;
+        final isDone = stepNum < currentStep;
         final isCurrent = stepNum == currentStep;
 
         return AnimatedContainer(
@@ -30,7 +30,9 @@ class OnboardingProgress extends StatelessWidget {
           width: isCurrent ? 24 : 8,
           height: 8,
           decoration: BoxDecoration(
-            color: isDone || isCurrent ? AppColors.charcoal : AppColors.borderMedium,
+            color: isDone || isCurrent
+                ? AppColors.charcoal
+                : AppColors.borderMedium,
             borderRadius: BorderRadius.circular(4),
           ),
         );
