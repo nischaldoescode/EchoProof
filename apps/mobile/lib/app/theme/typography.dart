@@ -1,77 +1,69 @@
-// echoproof typography system
-// geometric, clean, minimal — inter / sf pro feel
+// typography — Josefin Sans throughout
+// loaded from Google Fonts package — no asset files needed
 
 import 'package:flutter/material.dart';
-import 'colors.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 abstract final class AppTypography {
-  static const String fontFamily = 'Inter';
+  static const fontFamily = 'Josefin Sans';
 
-  static TextTheme get textTheme => const TextTheme(
-    // display — not used often, hero moments only
-    displayLarge: TextStyle(
-      fontSize: 40, fontWeight: FontWeight.w300,
-      color: AppColors.textPrimary, letterSpacing: -1.0, height: 1.1,
-    ),
-    displayMedium: TextStyle(
-      fontSize: 32, fontWeight: FontWeight.w300,
-      color: AppColors.textPrimary, letterSpacing: -0.8, height: 1.15,
-    ),
+  static TextTheme get textTheme {
+    return GoogleFonts.josefinSansTextTheme(
+      const TextTheme(
+        displayLarge: TextStyle(
+            fontSize: 57, fontWeight: FontWeight.w700, letterSpacing: -1.5),
+        displayMedium: TextStyle(
+            fontSize: 45, fontWeight: FontWeight.w600, letterSpacing: -1.0),
+        displaySmall: TextStyle(
+            fontSize: 36, fontWeight: FontWeight.w600, letterSpacing: -0.5),
+        headlineLarge: TextStyle(
+            fontSize: 32, fontWeight: FontWeight.w600, letterSpacing: -0.5),
+        headlineMedium: TextStyle(
+            fontSize: 28, fontWeight: FontWeight.w600, letterSpacing: -0.3),
+        headlineSmall: TextStyle(
+            fontSize: 24, fontWeight: FontWeight.w600, letterSpacing: -0.2),
+        titleLarge: TextStyle(
+            fontSize: 20, fontWeight: FontWeight.w600, letterSpacing: 0),
+        titleMedium: TextStyle(
+            fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: 0),
+        titleSmall: TextStyle(
+            fontSize: 14, fontWeight: FontWeight.w600, letterSpacing: 0.1),
+        bodyLarge: TextStyle(
+            fontSize: 16, fontWeight: FontWeight.w400, letterSpacing: 0.15),
+        bodyMedium: TextStyle(
+            fontSize: 14, fontWeight: FontWeight.w400, letterSpacing: 0.25),
+        bodySmall: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w400,
+            letterSpacing: 0.4,
+            height: 1.5),
+        labelLarge: TextStyle(
+            fontSize: 12, fontWeight: FontWeight.w500, letterSpacing: 0.5),
+        labelMedium: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            letterSpacing: 0.4,
+            color: Color(0xFF7A7A7A)),
+        labelSmall: TextStyle(
+            fontSize: 10, fontWeight: FontWeight.w500, letterSpacing: 0.5),
+      ),
+    );
+  }
 
-    // headings
-    headlineLarge: TextStyle(
-      fontSize: 26, fontWeight: FontWeight.w600,
-      color: AppColors.textPrimary, letterSpacing: -0.5, height: 1.2,
-    ),
-    headlineMedium: TextStyle(
-      fontSize: 22, fontWeight: FontWeight.w600,
-      color: AppColors.textPrimary, letterSpacing: -0.4, height: 1.25,
-    ),
-    headlineSmall: TextStyle(
-      fontSize: 18, fontWeight: FontWeight.w600,
-      color: AppColors.textPrimary, letterSpacing: -0.3, height: 1.3,
-    ),
-
-    // titles — card titles, section headers
-    titleLarge: TextStyle(
-      fontSize: 16, fontWeight: FontWeight.w600,
-      color: AppColors.textPrimary, letterSpacing: -0.2, height: 1.35,
-    ),
-    titleMedium: TextStyle(
-      fontSize: 14, fontWeight: FontWeight.w600,
-      color: AppColors.textPrimary, letterSpacing: -0.1, height: 1.4,
-    ),
-    titleSmall: TextStyle(
-      fontSize: 13, fontWeight: FontWeight.w600,
-      color: AppColors.textPrimary, letterSpacing: 0, height: 1.4,
-    ),
-
-    // body — main content
-    bodyLarge: TextStyle(
-      fontSize: 16, fontWeight: FontWeight.w400,
-      color: AppColors.textPrimary, letterSpacing: 0, height: 1.6,
-    ),
-    bodyMedium: TextStyle(
-      fontSize: 14, fontWeight: FontWeight.w400,
-      color: AppColors.textPrimary, letterSpacing: 0, height: 1.55,
-    ),
-    bodySmall: TextStyle(
-      fontSize: 12, fontWeight: FontWeight.w400,
-      color: AppColors.textSecondary, letterSpacing: 0, height: 1.5,
-    ),
-
-    // labels — badges, chips, metadata
-    labelLarge: TextStyle(
-      fontSize: 13, fontWeight: FontWeight.w500,
-      color: AppColors.textSecondary, letterSpacing: 0.1,
-    ),
-    labelMedium: TextStyle(
-      fontSize: 11, fontWeight: FontWeight.w500,
-      color: AppColors.textTertiary, letterSpacing: 0.3,
-    ),
-    labelSmall: TextStyle(
-      fontSize: 10, fontWeight: FontWeight.w600,
-      color: AppColors.textTertiary, letterSpacing: 0.5,
-    ),
-  );
+  // use this when you need a TextStyle outside of the theme
+  static TextStyle josefin({
+    double size = 14,
+    FontWeight weight = FontWeight.w400,
+    Color? color,
+    double? height,
+    double letterSpacing = 0,
+  }) {
+    return GoogleFonts.josefinSans(
+      fontSize: size,
+      fontWeight: weight,
+      color: color,
+      height: height,
+      letterSpacing: letterSpacing,
+    );
+  }
 }

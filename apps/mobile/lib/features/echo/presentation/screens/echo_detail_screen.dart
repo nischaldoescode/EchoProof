@@ -3,7 +3,6 @@
 // uses plain StatefulWidget with supabase realtime — no riverpod
 
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
@@ -15,7 +14,6 @@ import '../widgets/trust_badge.dart';
 import '../widgets/interaction_buttons.dart';
 import '../widgets/proof_attachment.dart';
 import '../widgets/truth_bond_button.dart';
-import '../widgets/verified_echo_record.dart';
 import '../../../../shared/widgets/shimmer_loader.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/logger.dart';
@@ -358,9 +356,9 @@ class _SignalChip extends StatelessWidget {
         vertical: AppSpacing.sm,
       ),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: color.withOpacity(0.25)),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

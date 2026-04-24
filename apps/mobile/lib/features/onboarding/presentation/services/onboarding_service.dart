@@ -1,6 +1,6 @@
 // onboarding service
-// manages the 5-step onboarding flow
-// replaces: onboarding_provider.dart (riverpod version)
+// manages the 5-step onboarding flow state
+// replaces onboarding_provider.dart (riverpod version)
 
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -14,19 +14,17 @@ class OnboardingService extends ChangeNotifier {
   int _currentStep = 1;
   int get currentStep => _currentStep;
 
-  List<String> _selectedCategories = [];
+  final List<String> _selectedCategories = [];
   List<String> get selectedCategories => List.unmodifiable(_selectedCategories);
 
   String _username = '';
   String get username => _username;
 
-  bool _isComplete = false;
-  bool get isComplete => _isComplete;
-
   bool _isSubmitting = false;
   bool get isSubmitting => _isSubmitting;
 
-  // checks hive to see if onboarding was previously completed
+  // reads from hive — synchronous, box must already be open
+  // called by router, splash screen, and onboarding root
   bool isComplete() {
     final box = Hive.box('app_settings');
     return box.get(_kOnboardingComplete, defaultValue: false) as bool;
@@ -64,27 +62,24 @@ class OnboardingService extends ChangeNotifier {
     _isSubmitting = true;
     notifyListeners();
 
-    // generate and cache dicebear avatar
     try {
       final client = Supabase.instance.client;
       final userId = client.auth.currentUser?.id;
       if (userId != null && _username.isNotEmpty) {
         final avatarService = AvatarService(client);
         await avatarService.generateAndStore(
-          userId:   userId,
+          userId: userId,
           username: _username,
         );
       }
     } catch (e) {
-      // avatar generation must never block onboarding completion
-      AppLogger.warn('onboarding: avatar generation failed $e');
+      AppLogger.warn('onboarding: avatar generation failed — continuing');
     }
 
     final box = Hive.box('app_settings');
     await box.put(_kOnboardingComplete, true);
 
-    _isComplete    = true;
-    _isSubmitting  = false;
+    _isSubmitting = false;
     notifyListeners();
   }
 }

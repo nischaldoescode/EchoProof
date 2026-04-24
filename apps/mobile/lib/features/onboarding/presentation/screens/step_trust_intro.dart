@@ -144,7 +144,7 @@ class _StepTrustIntroState extends State<StepTrustIntro>
                               width:  32,
                               height: 32,
                               decoration: BoxDecoration(
-                                color: tier.color.withOpacity(0.12),
+                                color: tier.color.withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Center(

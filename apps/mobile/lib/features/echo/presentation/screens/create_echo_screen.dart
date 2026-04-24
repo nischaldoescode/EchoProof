@@ -5,13 +5,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'dart:math' as math;
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../domain/entities/echo_entity.dart';
 import '../services/create_echo_service.dart';
+import '../../../../core/services/ad_service.dart';
+import '../../../../features/subscription/presentation/services/subscription_service.dart';
 
 class CreateEchoScreen extends StatefulWidget {
   const CreateEchoScreen({super.key});
@@ -84,6 +86,32 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           context.read<CreateEchoService>().resetSuccess();
+
+          // show rewarded interstitial every 3rd echo for non-pro users
+          final isPro = context.read<SubscriptionService>().isPro;
+          final count =
+              context.read<CreateEchoService>().echoesCreatedThisSession;
+
+          if (!isPro && count % 3 == 0) {
+            context.read<AdService>().showRewardedInterstitial(
+              onRewarded: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      '🎉 Thanks for supporting Echoproof — 1 hour ad-free!',
+                      style: GoogleFonts.josefinSans(),
+                    ),
+                    backgroundColor: const Color(0xFF1E3A2A),
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                );
+              },
+            );
+          }
+
           context.pop();
           HapticFeedback.mediumImpact();
           ScaffoldMessenger.of(context).showSnackBar(
@@ -128,7 +156,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
               transform: Matrix4.identity()
                 ..setEntry(3, 2, 0.001)
                 ..rotateX(_rotX.value)
-                ..translate(0.0, _slideY.value),
+                ..translateByDouble(0.0, _slideY.value, 0.0, 1.0),
               alignment: Alignment.topCenter,
               child: child,
             ),
@@ -381,7 +409,7 @@ class _VerificationToggle extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
           border: Border.all(
             color: value
-                ? AppColors.fernGreen.withOpacity(0.4)
+                ? AppColors.fernGreen.withValues(alpha: 0.25)
                 : AppColors.borderSubtle,
           ),
         ),

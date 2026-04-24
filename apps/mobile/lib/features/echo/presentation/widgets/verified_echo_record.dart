@@ -33,7 +33,7 @@ class VerifiedEchoRecord extends StatelessWidget {
         color: AppColors.fernGreenLight,
         borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
         border: Border.all(
-          color: AppColors.fernGreen.withOpacity(0.3),
+          color: AppColors.fernGreen.withValues(alpha: 0.3),
         ),
       ),
       child: Column(

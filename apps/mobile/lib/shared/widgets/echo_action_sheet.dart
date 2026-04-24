@@ -94,7 +94,8 @@ class _EchoActionSheet extends StatelessWidget {
               iconColor: AppColors.charcoal,
               onTap: () {
                 Navigator.pop(context);
-                HapticFeedback.lightImpact();
+                final url = 'https://echoproof.online/echo/$echoId';
+                Clipboard.setData(ClipboardData(text: url));
                 ScaffoldMessenger.of(parentContext).showSnackBar(
                   SnackBar(
                     content: const Text('Link copied'),

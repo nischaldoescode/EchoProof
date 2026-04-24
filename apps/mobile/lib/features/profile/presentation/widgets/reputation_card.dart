@@ -1,5 +1,6 @@
-// reputation card — shown at the top of the profile screen
-// displays trust tier, score, bond stats, and on-chain identity status
+// reputation card
+// displays user trust stats on the profile screen
+// takes plain parameters — no dependency on ProfileState
 
 import 'package:flutter/material.dart';
 import '../../../../app/theme/colors.dart';
@@ -7,11 +8,34 @@ import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../../../shared/widgets/trust_tier_label.dart';
 import '../../../../shared/widgets/verified_badge.dart';
-import '../providers/profile_provider.dart';
 
 class ReputationCard extends StatelessWidget {
-  const ReputationCard({super.key, required this.profile});
-  final ProfileState profile;
+  const ReputationCard({
+    super.key,
+    required this.username,
+    required this.trustTier,
+    required this.trustScore,
+    required this.echoCount,
+    required this.proofCount,
+    required this.isIdentityVerified,
+    required this.settledBonds,
+    required this.contestedBonds,
+    required this.activeBonds,
+    this.avatarUrl,
+    this.walletAddress,
+  });
+
+  final String username;
+  final String trustTier;
+  final int trustScore;
+  final int echoCount;
+  final int proofCount;
+  final bool isIdentityVerified;
+  final int settledBonds;
+  final int contestedBonds;
+  final int activeBonds;
+  final String? avatarUrl;
+  final String? walletAddress;
 
   @override
   Widget build(BuildContext context) {
@@ -25,40 +49,43 @@ class ReputationCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // avatar + username row
           Row(
             children: [
-              // avatar
               CircleAvatar(
                 radius: AppSpacing.avatarSizeMd / 2,
                 backgroundColor: AppColors.softSand,
-                backgroundImage: profile.avatarUrl != null
-                    ? NetworkImage(profile.avatarUrl!)
-                    : null,
-                child: profile.avatarUrl == null
-                    ? const Icon(Icons.person_outline,
-                        size: 22, color: AppColors.textTertiary)
+                backgroundImage:
+                    avatarUrl != null ? NetworkImage(avatarUrl!) : null,
+                child: avatarUrl == null
+                    ? const Icon(
+                        Icons.person_outline,
+                        size: 22,
+                        color: AppColors.textTertiary,
+                      )
                     : null,
               ),
-
               const SizedBox(width: AppSpacing.md),
-
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        Text(
-                          '@${profile.username}',
-                          style: AppTypography.textTheme.titleMedium,
+                        Flexible(
+                          child: Text(
+                            '@$username',
+                            style: AppTypography.textTheme.titleMedium,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                        if (profile.isIdentityVerified) ...[
+                        if (isIdentityVerified) ...[
                           const SizedBox(width: AppSpacing.xs),
                           const VerifiedBadge(),
                         ],
                       ],
                     ),
-                    TrustTierLabel(tier: profile.trustTier),
+                    TrustTierLabel(tier: trustTier),
                   ],
                 ),
               ),
@@ -70,40 +97,59 @@ class ReputationCard extends StatelessWidget {
           // stats row
           Row(
             children: [
-              _Stat(label: 'Echoes',  value: profile.echoCount),
-              _Divider(),
-              _Stat(label: 'Proofs',  value: profile.proofCount),
-              _Divider(),
-              _Stat(label: 'Score',   value: profile.trustScore),
+              _Stat(label: 'Echoes', value: echoCount),
+              _VerticalDivider(),
+              _Stat(label: 'Proofs', value: proofCount),
+              _VerticalDivider(),
+              _Stat(label: 'Score', value: trustScore),
             ],
           ),
 
           const SizedBox(height: AppSpacing.lg),
 
-          // bonds row
+          // bond stats
           Row(
             children: [
-              _BondStat(label: 'Settled',   value: profile.settledBonds,   color: AppColors.fernGreen),
+              _BondStat(
+                label: 'Settled',
+                value: settledBonds,
+                color: AppColors.fernGreen,
+              ),
               const SizedBox(width: AppSpacing.md),
-              _BondStat(label: 'Active',    value: profile.activeBonds,    color: AppColors.textTertiary),
+              _BondStat(
+                label: 'Active',
+                value: activeBonds,
+                color: AppColors.textTertiary,
+              ),
               const SizedBox(width: AppSpacing.md),
-              _BondStat(label: 'Contested', value: profile.contestedBonds, color: AppColors.sunsetCoral),
+              _BondStat(
+                label: 'Contested',
+                value: contestedBonds,
+                color: AppColors.sunsetCoral,
+              ),
             ],
           ),
 
-          if (profile.walletAddress != null) ...[
-            const SizedBox(height: AppSpacing.md),
+          // wallet address if connected
+          if (walletAddress != null) ...[
+            const SizedBox(height: AppSpacing.lg),
+            const Divider(),
+            const SizedBox(height: AppSpacing.sm),
             Row(
               children: [
-                const Icon(Icons.circle, size: 6, color: AppColors.fernGreen),
+                const Icon(
+                  Icons.link_outlined,
+                  size: 14,
+                  color: AppColors.textTertiary,
+                ),
                 const SizedBox(width: AppSpacing.xs),
                 Text(
-                  'Reputation anchored',
+                  '${walletAddress!.substring(0, 6)}...${walletAddress!.substring(walletAddress!.length - 6)}',
                   style: TextStyle(
-                    fontSize: 11,
-                    color: AppColors.fernGreenDark,
+                    fontSize: 12,
+                    color: AppColors.textTertiary,
                     fontFamily: AppTypography.fontFamily,
-                    fontWeight: FontWeight.w500,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
               ],
@@ -118,17 +164,14 @@ class ReputationCard extends StatelessWidget {
 class _Stat extends StatelessWidget {
   const _Stat({required this.label, required this.value});
   final String label;
-  final int    value;
+  final int value;
 
   @override
   Widget build(BuildContext context) {
     return Expanded(
       child: Column(
         children: [
-          Text(
-            '$value',
-            style: AppTypography.textTheme.headlineSmall,
-          ),
+          Text('$value', style: AppTypography.textTheme.headlineSmall),
           Text(label, style: AppTypography.textTheme.labelMedium),
         ],
       ),
@@ -137,10 +180,14 @@ class _Stat extends StatelessWidget {
 }
 
 class _BondStat extends StatelessWidget {
-  const _BondStat({required this.label, required this.value, required this.color});
+  const _BondStat({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
   final String label;
-  final int    value;
-  final Color  color;
+  final int value;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -148,8 +195,12 @@ class _BondStat extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 8, height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
         ),
         const SizedBox(width: 4),
         Text(
@@ -166,11 +217,12 @@ class _BondStat extends StatelessWidget {
   }
 }
 
-class _Divider extends StatelessWidget {
+class _VerticalDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 1, height: 24,
+      width: 1,
+      height: 24,
       color: AppColors.borderSubtle,
       margin: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
     );

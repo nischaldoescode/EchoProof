@@ -18,6 +18,7 @@ import '../../../../shared/widgets/trust_tier_label.dart';
 import '../../../../shared/widgets/verified_badge.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/logger.dart';
+import '../widgets/reputation_card.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -162,12 +163,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: ListView(
                     padding: const EdgeInsets.all(AppSpacing.xl),
                     children: [
-                      _ReputationCard(
-                        profile: _profile!,
+                      ReputationCard(
+                        username: _profile!['username'] as String? ?? '',
+                        trustTier:
+                            _profile!['trust_tier'] as String? ?? 'unverified',
+                        trustScore:
+                            (_profile!['trust_score'] as num?)?.toInt() ?? 0,
+                        echoCount:
+                            (_profile!['echo_count'] as num?)?.toInt() ?? 0,
+                        proofCount:
+                            (_profile!['proof_count'] as num?)?.toInt() ?? 0,
                         isIdentityVerified: _isIdentityVerified,
                         settledBonds: _settledBonds,
                         contestedBonds: _contestedBonds,
                         activeBonds: _activeBonds,
+                        avatarUrl: _profile!['avatar_url'] as String?,
+                        walletAddress: _profile!['wallet_address'] as String?,
                       ),
 
                       const SizedBox(height: AppSpacing.lg),
@@ -184,7 +195,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 AppSpacing.radiusMd,
                               ),
                               border: Border.all(
-                                color: AppColors.fernGreen.withOpacity(0.3),
+                                color: AppColors.fernGreen.withValues(alpha: 0.3),
                               ),
                             ),
                             child: Row(

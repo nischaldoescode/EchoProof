@@ -1,183 +1,262 @@
-import { createClient } from "@/lib/supabase/server";
-import { Sidebar } from "@/components/layout/sidebar";
-import { Topbar } from "@/components/layout/topbar";
+// echo detail page — admin view
+// shows full echo content, trust scores, interactions, reports, moderation actions
+
+import { createServerClient } from "@/lib/supabase/client";
 import { notFound } from "next/navigation";
+import {
+  Badge,
+  Card,
+  Text,
+  Heading,
+  Flex,
+  Box,
+  Button,
+} from "@radix-ui/themes";
 
-export default async function EchoDetailPage({
-  params,
-}: {
+interface Props {
   params: { id: string };
-}) {
-  const supabase = await createClient();
+}
 
-  const { data: echo } = await supabase
+export default async function EchoDetailPage({ params }: Props) {
+  const supabase = createServerClient();
+
+  const { data: echo, error } = await supabase
     .from("echoes")
-    .select(`
-      id, title, content, category, status,
-      trust_score, confidence_score, controversy_score, report_score,
-      support_count, challenge_count, bond_count, response_count,
-      admin_verified, admin_note, verified_record_tx, ai_metadata, created_at,
-      users_public!inner(username, trust_tier, avatar_url)
-    `)
+    .select(
+      `
+      *,
+      users_public(username, trust_tier, avatar_url),
+      echo_reports(id, reason, reporter_id, created_at),
+      echo_proofs(id, proof_type, proof_url, description)
+    `,
+    )
     .eq("id", params.id)
     .single();
 
-  if (!echo) notFound();
-
-  const { data: reports } = await supabase
-    .from("echo_reports")
-    .select("id, reason, description, reporter_weight, resolved, created_at")
-    .eq("echo_id", params.id)
-    .order("reporter_weight", { ascending: false });
-
-  const { data: proofs } = await supabase
-    .from("echo_proofs")
-    .select("id, proof_type, proof_url, description, created_at, users_public(username)")
-    .eq("echo_id", params.id)
-    .order("created_at");
-
-  const { data: responses } = await supabase
-    .from("signal_responses")
-    .select("id, content, stance, author_weight, created_at, users_public(username, trust_tier)")
-    .eq("echo_id", params.id)
-    .order("created_at", { ascending: false })
-    .limit(20);
-
-  const { data: bonds } = await supabase
-    .from("truth_bonds")
-    .select("id, bond_status, created_at, users_public(username)")
-    .eq("echo_id", params.id)
-    .order("created_at", { ascending: false });
+  if (error || !echo) return notFound();
 
   return (
-    <div className="flex min-h-screen">
-      <Sidebar />
-      <main className="flex-1 flex flex-col">
-        <Topbar
-          title={echo.title || "Untitled echo"}
-          subtitle={`${echo.category} · ${echo.status.replace("_", " ")}`}
-        />
-        <div className="p-6 space-y-6 max-w-4xl">
-          <div className="grid grid-cols-3 gap-4">
-            <StatCard label="Trust score"    value={echo.trust_score} />
-            <StatCard label="Report score"   value={echo.report_score} danger={echo.report_score >= 40} />
-            <StatCard label="Confidence"     value={`${echo.confidence_score.toFixed(0)}%`} />
-            <StatCard label="Support"        value={echo.support_count} />
-            <StatCard label="Challenge"      value={echo.challenge_count} />
-            <StatCard label="Bonds"          value={echo.bond_count} />
-          </div>
+    <div className="p-6 max-w-4xl mx-auto space-y-6">
+      <Heading size="6">Echo detail</Heading>
 
-          <div className="bg-white rounded-xl border border-border-subtle p-5">
-            <p className="text-xs font-medium text-gray-400 mb-2">Content</p>
-            <p className="text-sm text-charcoal leading-relaxed">{echo.content}</p>
-          </div>
+      {/* main card */}
+      <Card>
+        <Flex direction="column" gap="4" p="4">
+          {/* author */}
+          <Flex gap="3" align="center">
+            <Box>
+              <Text size="2" color="gray">
+                Posted by
+              </Text>
+              <Text size="3" weight="bold">
+                @{echo.users_public?.username ?? "unknown"}
+              </Text>
+            </Box>
+            <Badge color={tierColor(echo.users_public?.trust_tier)}>
+              {echo.users_public?.trust_tier ?? "unverified"}
+            </Badge>
+          </Flex>
 
-          {echo.ai_metadata && (
-            <div className="bg-white rounded-xl border border-border-subtle p-5">
-              <p className="text-xs font-medium text-gray-400 mb-3">AI analysis</p>
-              <div className="grid grid-cols-3 gap-3 text-xs">
-                <div><p className="text-gray-400">Spam score</p><p className="font-semibold">{echo.ai_metadata.spam_score ?? "—"}</p></div>
-                <div><p className="text-gray-400">Clarity</p><p className="font-semibold">{echo.ai_metadata.clarity_score ?? "—"}</p></div>
-                <div><p className="text-gray-400">Provider</p><p className="font-semibold truncate">{echo.ai_metadata.provider ?? "none"}</p></div>
-              </div>
-              {echo.ai_metadata.summary && (
-                <p className="text-xs text-gray-500 mt-2 italic">{echo.ai_metadata.summary}</p>
-              )}
-            </div>
-          )}
+          {/* content */}
+          <Box>
+            <Text size="5" weight="bold">
+              {echo.title}
+            </Text>
+            <Text
+              size="3"
+              color="gray"
+              style={{ marginTop: 8, display: "block" }}
+            >
+              {echo.content}
+            </Text>
+          </Box>
 
-          {echo.verified_record_tx && (
-            <div className="bg-fern-light rounded-xl border border-fern-green/20 p-4">
-              <p className="text-xs font-semibold text-fern-dark mb-1">On-chain record</p>
-              <p className="text-xs font-mono text-fern-dark break-all">{echo.verified_record_tx}</p>
-              
-                href={`https://explorer.solana.com/tx/${echo.verified_record_tx}?cluster=devnet`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-fern-dark underline mt-1 inline-block"
-              >
-                View on explorer
-              </a>
-            </div>
-          )}
+          {/* scores */}
+          <Flex gap="4">
+            <Box>
+              <Text size="1" color="gray">
+                Trust score
+              </Text>
+              <Text size="4" weight="bold">
+                {echo.trust_score}
+              </Text>
+            </Box>
+            <Box>
+              <Text size="1" color="gray">
+                Confidence
+              </Text>
+              <Text size="4" weight="bold">
+                {echo.confidence_score?.toFixed(0)}%
+              </Text>
+            </Box>
+            <Box>
+              <Text size="1" color="gray">
+                Support
+              </Text>
+              <Text size="4" weight="bold" color="green">
+                {echo.support_count}
+              </Text>
+            </Box>
+            <Box>
+              <Text size="1" color="gray">
+                Challenge
+              </Text>
+              <Text size="4" weight="bold" color="red">
+                {echo.challenge_count}
+              </Text>
+            </Box>
+            <Box>
+              <Text size="1" color="gray">
+                Reports
+              </Text>
+              <Text size="4" weight="bold">
+                {echo.report_score ?? 0}
+              </Text>
+            </Box>
+          </Flex>
 
-          {(reports ?? []).length > 0 && (
-            <div className="bg-white rounded-xl border border-border-subtle overflow-hidden">
-              <p className="px-4 py-3 text-xs font-medium text-charcoal border-b border-border-subtle">
-                Reports ({reports?.length})
-              </p>
-              {reports?.map(r => (
-                <div key={r.id} className="px-4 py-3 border-b border-border-subtle last:border-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-coral-dark capitalize">
-                      {r.reason.replace("_", " ")}
-                    </span>
-                    <span className="text-xs text-gray-400">weight: {r.reporter_weight}</span>
-                    {r.resolved && <span className="text-xs text-fern-dark">resolved</span>}
-                  </div>
-                  {r.description && <p className="text-xs text-gray-500 mt-0.5">{r.description}</p>}
-                </div>
+          {/* status badge */}
+          <Flex align="center" gap="2">
+            <Text size="2" color="gray">
+              Status:
+            </Text>
+            <Badge color={statusColor(echo.status)}>{echo.status}</Badge>
+          </Flex>
+        </Flex>
+      </Card>
+
+      {/* moderation actions */}
+      <Card>
+        <Box p="4">
+          <Heading size="4" mb="4">
+            Moderation actions
+          </Heading>
+          <Flex gap="3" wrap="wrap">
+            <ModerationButton
+              label="Mark verified"
+              echoId={params.id}
+              action="verified"
+              color="green"
+            />
+            <ModerationButton
+              label="Mark disputed"
+              echoId={params.id}
+              action="disputed"
+              color="yellow"
+            />
+            <ModerationButton
+              label="Hide echo"
+              echoId={params.id}
+              action="hidden"
+              color="red"
+            />
+            <ModerationButton
+              label="Reject echo"
+              echoId={params.id}
+              action="rejected"
+              color="red"
+            />
+          </Flex>
+        </Box>
+      </Card>
+
+      {/* reports */}
+      {echo.echo_reports?.length > 0 && (
+        <Card>
+          <Box p="4">
+            <Heading size="4" mb="4">
+              Reports ({echo.echo_reports.length})
+            </Heading>
+            <div className="space-y-2">
+              {echo.echo_reports.map((r: any) => (
+                <Flex key={r.id} gap="3" align="center">
+                  <Badge color="red">{r.reason}</Badge>
+                  <Text size="2" color="gray">
+                    {new Date(r.created_at).toLocaleDateString()}
+                  </Text>
+                </Flex>
               ))}
             </div>
-          )}
+          </Box>
+        </Card>
+      )}
 
-          {(proofs ?? []).length > 0 && (
-            <div className="bg-white rounded-xl border border-border-subtle overflow-hidden">
-              <p className="px-4 py-3 text-xs font-medium text-charcoal border-b border-border-subtle">
-                Proofs ({proofs?.length})
-              </p>
-              {proofs?.map(p => (
-                <div key={p.id} className="px-4 py-3 border-b border-border-subtle last:border-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-charcoal capitalize">{p.proof_type}</span>
-                    {p.description && <span className="text-xs text-gray-500">{p.description}</span>}
-                  </div>
-                  <a href={p.proof_url} target="_blank" rel="noopener noreferrer"
-                    className="text-xs text-gray-400 underline truncate block max-w-xs">
-                    {p.proof_url}
+      {/* proofs */}
+      {echo.echo_proofs?.length > 0 && (
+        <Card>
+          <Box p="4">
+            <Heading size="4" mb="4">
+              Evidence ({echo.echo_proofs.length})
+            </Heading>
+            <div className="space-y-3">
+              {echo.echo_proofs.map((p: any) => (
+                <Flex key={p.id} gap="3" direction="column">
+                  <Badge>{p.proof_type}</Badge>
+                  {p.description && <Text size="2">{p.description}</Text>}
+                  <a
+                    href={p.proof_url}
+                    target="_blank"
+                    className="text-blue-600 text-sm underline"
+                  >
+                    View proof
                   </a>
-                </div>
+                </Flex>
               ))}
             </div>
-          )}
-
-          {(bonds ?? []).length > 0 && (
-            <div className="bg-white rounded-xl border border-border-subtle overflow-hidden">
-              <p className="px-4 py-3 text-xs font-medium text-charcoal border-b border-border-subtle">
-                Truth bonds ({bonds?.length})
-              </p>
-              {bonds?.map(b => (
-                <div key={b.id} className="px-4 py-3 border-b border-border-subtle last:border-0 flex items-center justify-between">
-                  <span className="text-xs text-charcoal">
-                    @{(b.users_public as { username: string })?.username}
-                  </span>
-                  <span className={`text-xs font-semibold ${
-                    b.bond_status === 'settled'   ? 'text-fern-dark' :
-                    b.bond_status === 'contested' ? 'text-coral-dark' : 'text-gray-400'
-                  }`}>
-                    {b.bond_status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </main>
+          </Box>
+        </Card>
+      )}
     </div>
   );
 }
 
-function StatCard({ label, value, danger = false }: {
+function tierColor(tier?: string): "gray" | "green" | "blue" | "gold" {
+  return (
+    ({
+      unverified: "gray",
+      low: "gray",
+      medium: "blue",
+      high: "green",
+      elite: "gold",
+    }[tier ?? "unverified"] as any) ?? "gray"
+  );
+}
+
+function statusColor(
+  status?: string,
+): "gray" | "green" | "red" | "yellow" | "orange" {
+  return (
+    ({
+      pending_verification: "gray",
+      active: "blue",
+      verified: "green",
+      disputed: "red",
+      controversial: "yellow",
+      under_review: "orange",
+      hidden: "red",
+      rejected: "red",
+    }[status ?? "active"] as any) ?? "gray"
+  );
+}
+
+// client component for moderation actions
+function ModerationButton({
+  label,
+  echoId,
+  action,
+  color,
+}: {
   label: string;
-  value: string | number;
-  danger?: boolean;
+  echoId: string;
+  action: string;
+  color: string;
 }) {
   return (
-    <div className="bg-white rounded-xl border border-border-subtle p-4">
-      <p className="text-xs text-gray-400">{label}</p>
-      <p className={`text-xl font-semibold mt-0.5 ${danger ? "text-coral-dark" : "text-charcoal"}`}>
-        {value}
-      </p>
-    </div>
+    <form action={`/api/admin/echo/${echoId}/status`} method="POST">
+      <input type="hidden" name="status" value={action} />
+      <Button type="submit" color={color as any} variant="soft">
+        {label}
+      </Button>
+    </form>
   );
 }
