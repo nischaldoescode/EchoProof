@@ -11,27 +11,29 @@ import '../../../../core/utils/logger.dart';
 const _kDraftKey = 'echo_draft';
 
 class CreateEchoService extends ChangeNotifier {
-  String _title   = '';
+  String _title = '';
   String _content = '';
   EchoCategory? _category;
   bool _requiresVerification = true;
   bool _isSubmitting = false;
-  bool _success      = false;
+  bool _success = false;
   String? _error;
+  int _echoesCreatedThisSession = 0;
 
-  String        get title                => _title;
-  String        get content              => _content;
-  EchoCategory? get category            => _category;
-  bool          get requiresVerification => _requiresVerification;
-  bool          get isSubmitting        => _isSubmitting;
-  bool          get success             => _success;
-  String?       get error               => _error;
+  String get title => _title;
+  String get content => _content;
+  EchoCategory? get category => _category;
+  bool get requiresVerification => _requiresVerification;
+  bool get isSubmitting => _isSubmitting;
+  bool get success => _success;
+  String? get error => _error;
+  int get echoesCreatedThisSession => _echoesCreatedThisSession;
 
   bool get canSubmit =>
-    _title.trim().isNotEmpty &&
-    _content.trim().isNotEmpty &&
-    _category != null &&
-    !_isSubmitting;
+      _title.trim().isNotEmpty &&
+      _content.trim().isNotEmpty &&
+      _category != null &&
+      !_isSubmitting;
 
   CreateEchoService() {
     _restoreDraft();
@@ -68,7 +70,7 @@ class CreateEchoService extends ChangeNotifier {
     if (!canSubmit) return;
 
     _isSubmitting = true;
-    _error        = null;
+    _error = null;
     notifyListeners();
 
     try {
@@ -77,20 +79,22 @@ class CreateEchoService extends ChangeNotifier {
       if (userId == null) throw Exception('not authenticated');
 
       await client.from('echoes').insert({
-        'user_id':              userId,
-        'title':                _title.trim(),
-        'content':              _content.trim(),
-        'category':             _category!.name,
+        'user_id': userId,
+        'title': _title.trim(),
+        'content': _content.trim(),
+        'category': _category!.name,
         'verification_required': _requiresVerification,
-        'status':               'pending_verification',
+        'status': 'pending_verification',
       });
+
+      _echoesCreatedThisSession++;
 
       await Hive.box('app_settings').delete(_kDraftKey);
 
-      _title    = '';
-      _content  = '';
+      _title = '';
+      _content = '';
       _category = null;
-      _success  = true;
+      _success = true;
 
       AppLogger.info('echo: created successfully');
     } catch (e) {
@@ -104,7 +108,7 @@ class CreateEchoService extends ChangeNotifier {
 
   void _saveDraft() {
     Hive.box('app_settings').put(_kDraftKey, {
-      'title':   _title,
+      'title': _title,
       'content': _content,
     });
   }
@@ -112,7 +116,7 @@ class CreateEchoService extends ChangeNotifier {
   void _restoreDraft() {
     final draft = Hive.box('app_settings').get(_kDraftKey) as Map?;
     if (draft != null) {
-      _title   = draft['title']   as String? ?? '';
+      _title = draft['title'] as String? ?? '';
       _content = draft['content'] as String? ?? '';
     }
   }

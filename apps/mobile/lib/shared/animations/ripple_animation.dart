@@ -87,7 +87,7 @@ class _RipplePainter extends CustomPainter {
         center,
         radius,
         Paint()
-          ..color = color.withOpacity(opacity)
+          ..color = color.withValues(alpha: opacity)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.2,
       );
@@ -97,7 +97,7 @@ class _RipplePainter extends CustomPainter {
     canvas.drawCircle(
       center, 3,
       Paint()
-        ..color = color.withOpacity(0.7)
+        ..color = color.withValues(alpha: 0.7)
         ..style = PaintingStyle.fill,
     );
   }

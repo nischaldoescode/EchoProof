@@ -21,17 +21,16 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen>
     with SingleTickerProviderStateMixin {
-
-  final _emailController    = TextEditingController();
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _formKey            = GlobalKey<FormState>();
+  final _formKey = GlobalKey<FormState>();
 
   late final AnimationController _cardController;
-  late final Animation<double>   _cardEntranceY;
-  late final Animation<double>   _cardFade;
+  late final Animation<double> _cardEntranceY;
+  late final Animation<double> _cardFade;
 
   bool _obscurePassword = true;
-  bool _isSignUp        = false;
+  bool _isSignUp = false;
 
   @override
   void initState() {
@@ -62,28 +61,45 @@ class _LoginScreenState extends State<LoginScreen>
 
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+
+    final email = _emailController.text.trim();
     final auth = context.read<AuthService>();
+
     if (_isSignUp) {
       await auth.signUpWithEmail(
-        email:    _emailController.text.trim(),
+        email: email,
         password: _passwordController.text,
       );
+
+      if (!mounted) return; // <— REQUIRED FIX
+      if (auth.error == null) {
+        context.push('/verify-email', // <— redirect AFTER mounted
+            extra: email);
+      }
     } else {
       await auth.signInWithEmail(
-        email:    _emailController.text.trim(),
+        email: email,
         password: _passwordController.text,
       );
+
+      // sign-in navigation does NOT happen here
+      // handled by auth.isLoggedIn listener in build()
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final size  = MediaQuery.sizeOf(context);
+    final size = MediaQuery.sizeOf(context);
     final isWide = size.width > 600;
-    final auth  = context.watch<AuthService>();
+    final auth = context.watch<AuthService>();
 
-    // navigate when login succeeds
-    if (auth.isLoggedIn && !auth.isLoading) {
+// in auth_service.dart signUpWithEmail, after successful signup:
+// the navigation happens in login_screen.dart after watching isLoggedIn
+// but for signup we need to navigate to OTP first
+
+// in login_screen.dart build, change the navigation logic:
+    if (auth.isLoggedIn && !auth.isLoading && !_isSignUp) {
+      // existing sign in — go to onboarding
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) context.go('/onboarding');
       });
@@ -95,9 +111,9 @@ class _LoginScreenState extends State<LoginScreen>
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content:          Text(auth.error!),
-              backgroundColor:  AppColors.sunsetCoral,
-              behavior:         SnackBarBehavior.floating,
+              content: Text(auth.error!),
+              backgroundColor: AppColors.sunsetCoral,
+              behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
@@ -115,7 +131,7 @@ class _LoginScreenState extends State<LoginScreen>
           child: SingleChildScrollView(
             padding: EdgeInsets.symmetric(
               horizontal: isWide ? size.width * 0.2 : AppSpacing.xl,
-              vertical:   AppSpacing.xl,
+              vertical: AppSpacing.xl,
             ),
             child: AnimatedBuilder(
               animation: _cardController,
@@ -168,7 +184,8 @@ class _LoginScreenState extends State<LoginScreen>
                       padding: const EdgeInsets.all(AppSpacing.xl),
                       decoration: BoxDecoration(
                         color: AppColors.white,
-                        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+                        borderRadius:
+                            BorderRadius.circular(AppSpacing.radiusLg),
                       ),
                       child: Form(
                         key: _formKey,
@@ -180,15 +197,13 @@ class _LoginScreenState extends State<LoginScreen>
                               onToggle: (val) =>
                                   setState(() => _isSignUp = val),
                             ),
-
                             const SizedBox(height: AppSpacing.xl),
-
                             TextFormField(
-                              controller:  _emailController,
+                              controller: _emailController,
                               keyboardType: TextInputType.emailAddress,
                               autocorrect: false,
                               decoration: const InputDecoration(
-                                hintText:   'email address',
+                                hintText: 'email address',
                                 prefixIcon: Icon(
                                   Icons.alternate_email,
                                   size: 18,
@@ -204,14 +219,12 @@ class _LoginScreenState extends State<LoginScreen>
                                 return null;
                               },
                             ),
-
                             const SizedBox(height: AppSpacing.md),
-
                             TextFormField(
-                              controller:  _passwordController,
+                              controller: _passwordController,
                               obscureText: _obscurePassword,
                               decoration: InputDecoration(
-                                hintText:   'password',
+                                hintText: 'password',
                                 prefixIcon: const Icon(
                                   Icons.lock_outline,
                                   size: 18,
@@ -239,9 +252,7 @@ class _LoginScreenState extends State<LoginScreen>
                                 return null;
                               },
                             ),
-
                             const SizedBox(height: AppSpacing.xl),
-
                             SizedBox(
                               width: double.infinity,
                               child: AnimatedSwitcher(
@@ -267,9 +278,7 @@ class _LoginScreenState extends State<LoginScreen>
                                       ),
                               ),
                             ),
-
                             const SizedBox(height: AppSpacing.lg),
-
                             Row(
                               children: [
                                 const Expanded(child: Divider()),
@@ -285,15 +294,14 @@ class _LoginScreenState extends State<LoginScreen>
                                 const Expanded(child: Divider()),
                               ],
                             ),
-
                             const SizedBox(height: AppSpacing.lg),
-
                             SizedBox(
                               width: double.infinity,
                               child: OutlinedButton.icon(
-                                onPressed: () =>
-                                    context.read<AuthService>().signInWithGoogle(),
-                                icon:  const _GoogleIcon(),
+                                onPressed: () => context
+                                    .read<AuthService>()
+                                    .signInWithGoogle(),
+                                icon: const _GoogleIcon(),
                                 label: const Text('Continue with Google'),
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: AppColors.charcoal,
@@ -343,7 +351,7 @@ class _TiltCardState extends State<_TiltCard> {
   void _onPanUpdate(DragUpdateDetails d) {
     final size = context.size ?? const Size(300, 300);
     setState(() {
-      _rotY += d.delta.dx / size.width  * widget.tiltStrength * math.pi;
+      _rotY += d.delta.dx / size.width * widget.tiltStrength * math.pi;
       _rotX -= d.delta.dy / size.height * widget.tiltStrength * math.pi;
       _rotX = _rotX.clamp(-0.3, 0.3);
       _rotY = _rotY.clamp(-0.3, 0.3);
@@ -361,7 +369,7 @@ class _TiltCardState extends State<_TiltCard> {
   Widget build(BuildContext context) {
     return GestureDetector(
       onPanUpdate: _onPanUpdate,
-      onPanEnd:    _onPanEnd,
+      onPanEnd: _onPanEnd,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
@@ -378,7 +386,7 @@ class _TiltCardState extends State<_TiltCard> {
 
 class _AuthTabRow extends StatelessWidget {
   const _AuthTabRow({required this.isSignUp, required this.onToggle});
-  final bool             isSignUp;
+  final bool isSignUp;
   final void Function(bool) onToggle;
 
   @override
@@ -386,15 +394,15 @@ class _AuthTabRow extends StatelessWidget {
     return Row(
       children: [
         _Tab(
-          label:  'Sign in',
+          label: 'Sign in',
           active: !isSignUp,
-          onTap:  () => onToggle(false),
+          onTap: () => onToggle(false),
         ),
         const SizedBox(width: AppSpacing.md),
         _Tab(
-          label:  'Create account',
+          label: 'Create account',
           active: isSignUp,
-          onTap:  () => onToggle(true),
+          onTap: () => onToggle(true),
         ),
       ],
     );
@@ -407,8 +415,8 @@ class _Tab extends StatelessWidget {
     required this.active,
     required this.onTap,
   });
-  final String   label;
-  final bool     active;
+  final String label;
+  final bool active;
   final VoidCallback onTap;
 
   @override
@@ -429,9 +437,9 @@ class _Tab extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            fontSize:   14,
+            fontSize: 14,
             fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-            color:      active ? AppColors.charcoal : AppColors.textTertiary,
+            color: active ? AppColors.charcoal : AppColors.textTertiary,
             fontFamily: AppTypography.fontFamily,
           ),
         ),
@@ -460,7 +468,7 @@ class _GooglePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final cx = size.width / 2;
     final cy = size.height / 2;
-    final r  = size.width / 2;
+    final r = size.width / 2;
 
     final colors = [
       const Color(0xFF4285F4),
@@ -471,9 +479,9 @@ class _GooglePainter extends CustomPainter {
 
     final starts = [
       -math.pi * 0.25,
-       math.pi * 0.25,
-       math.pi * 0.75,
-       math.pi * 1.25,
+      math.pi * 0.25,
+      math.pi * 0.75,
+      math.pi * 1.25,
     ];
 
     for (int i = 0; i < 4; i++) {
@@ -483,8 +491,8 @@ class _GooglePainter extends CustomPainter {
         math.pi * 0.5,
         false,
         Paint()
-          ..color       = colors[i]
-          ..style       = PaintingStyle.stroke
+          ..color = colors[i]
+          ..style = PaintingStyle.stroke
           ..strokeWidth = 2.5,
       );
     }

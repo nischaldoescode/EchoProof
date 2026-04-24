@@ -11,6 +11,8 @@ import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../services/onboarding_service.dart';
 import '../widgets/onboarding_progress.dart';
+import '../../../../core/utils/username_validator.dart';
+import 'package:go_router/go_router.dart';
 
 class StepUsername extends StatefulWidget {
   const StepUsername({super.key});
@@ -22,15 +24,31 @@ class StepUsername extends StatefulWidget {
 class _StepUsernameState extends State<StepUsername> {
   final _controller = TextEditingController();
   String? _errorText;
-  bool    _isChecking = false;
+  bool _isChecking = false;
 
   static const _adjectives = [
-    'quiet', 'silent', 'swift', 'calm', 'bold',
-    'clear', 'sharp', 'bright', 'deep', 'true',
+    'quiet',
+    'silent',
+    'swift',
+    'calm',
+    'bold',
+    'clear',
+    'sharp',
+    'bright',
+    'deep',
+    'true',
   ];
   static const _nouns = [
-    'signal', 'wave', 'echo', 'voice', 'proof',
-    'mark', 'trace', 'lens', 'beam', 'node',
+    'signal',
+    'wave',
+    'echo',
+    'voice',
+    'proof',
+    'mark',
+    'trace',
+    'lens',
+    'beam',
+    'node',
   ];
 
   List<String> _suggestions = [];
@@ -53,9 +71,9 @@ class _StepUsernameState extends State<StepUsername> {
     final rng = Random();
     setState(() {
       _suggestions = List.generate(3, (_) {
-        final adj  = _adjectives[rng.nextInt(_adjectives.length)];
+        final adj = _adjectives[rng.nextInt(_adjectives.length)];
         final noun = _nouns[rng.nextInt(_nouns.length)];
-        final num  = rng.nextInt(900) + 100;
+        final num = rng.nextInt(900) + 100;
         return '${adj}_${noun}_$num';
       });
     });
@@ -64,18 +82,15 @@ class _StepUsernameState extends State<StepUsername> {
   Future<void> _checkAndContinue() async {
     final username = _controller.text.trim().toLowerCase();
 
-    if (username.length < 4) {
-      setState(() => _errorText = 'minimum 4 characters');
-      return;
-    }
-    if (!RegExp(r'^[a-z0-9_]+$').hasMatch(username)) {
-      setState(() => _errorText = 'only letters, numbers, and underscores');
+    final validationError = UsernameValidator.validate(username);
+    if (validationError != null) {
+      setState(() => _errorText = validationError);
       return;
     }
 
     setState(() {
       _isChecking = true;
-      _errorText  = null;
+      _errorText = null;
     });
 
     try {
@@ -87,19 +102,27 @@ class _StepUsernameState extends State<StepUsername> {
           .maybeSingle();
 
       if (result != null) {
+        if (!mounted) return;
         setState(() {
           _isChecking = false;
-          _errorText  = 'username already taken, try another';
+          _errorText = 'username already taken, try another';
         });
         return;
       }
 
+      if (!mounted) return;
       context.read<OnboardingService>().setUsername(username);
       context.read<OnboardingService>().nextStep();
+
+      // go to age/gender step instead of generic nextStep
+      if (mounted) {
+        context.read<OnboardingService>().setUsername(username);
+        context.push('/age-gender');
+      }
     } catch (_) {
       setState(() {
         _isChecking = false;
-        _errorText  = 'could not check username, try again';
+        _errorText = 'could not check username, try again';
       });
     }
   }
@@ -117,7 +140,6 @@ class _StepUsernameState extends State<StepUsername> {
               const SizedBox(height: AppSpacing.xl),
               const OnboardingProgress(currentStep: 3, totalSteps: 5),
               const SizedBox(height: AppSpacing.xxl),
-
               Text(
                 'Choose your alias',
                 style: AppTypography.textTheme.headlineMedium,
@@ -129,17 +151,15 @@ class _StepUsernameState extends State<StepUsername> {
                   color: AppColors.textSecondary,
                 ),
               ),
-
               const SizedBox(height: AppSpacing.xxl),
-
               TextField(
                 controller: _controller,
-                onChanged:  (_) => setState(() => _errorText = null),
+                onChanged: (_) => setState(() => _errorText = null),
                 autocorrect: false,
                 decoration: InputDecoration(
-                  hintText:  'your_alias',
+                  hintText: 'your_alias',
                   prefixText: '@',
-                  errorText:  _errorText,
+                  errorText: _errorText,
                   suffixIcon: _isChecking
                       ? const Padding(
                           padding: EdgeInsets.all(12),
@@ -155,48 +175,44 @@ class _StepUsernameState extends State<StepUsername> {
                       : null,
                 ),
               ),
-
               const SizedBox(height: AppSpacing.lg),
-
               Text(
                 'Suggestions',
                 style: AppTypography.textTheme.labelLarge,
               ),
               const SizedBox(height: AppSpacing.sm),
-
               Wrap(
                 spacing: AppSpacing.sm,
                 children: [
                   ..._suggestions.map((s) => GestureDetector(
-                    onTap: () {
-                      _controller.text = s;
-                      setState(() => _errorText = null);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.sm,
-                        vertical:   AppSpacing.xs,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.softSand,
-                        borderRadius: BorderRadius.circular(
-                          AppSpacing.radiusFull,
+                        onTap: () {
+                          _controller.text = s;
+                          setState(() => _errorText = null);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.sm,
+                            vertical: AppSpacing.xs,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.softSand,
+                            borderRadius: BorderRadius.circular(
+                              AppSpacing.radiusFull,
+                            ),
+                            border: Border.all(color: AppColors.borderSubtle),
+                          ),
+                          child: Text(
+                            '@$s',
+                            style: AppTypography.textTheme.labelLarge,
+                          ),
                         ),
-                        border: Border.all(color: AppColors.borderSubtle),
-                      ),
-                      child: Text(
-                        '@$s',
-                        style: AppTypography.textTheme.labelLarge,
-                      ),
-                    ),
-                  )),
-
+                      )),
                   GestureDetector(
                     onTap: _generateSuggestions,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: AppSpacing.sm,
-                        vertical:   AppSpacing.xs,
+                        vertical: AppSpacing.xs,
                       ),
                       decoration: BoxDecoration(
                         color: AppColors.softSand,
@@ -207,16 +223,14 @@ class _StepUsernameState extends State<StepUsername> {
                       ),
                       child: const Icon(
                         Icons.refresh,
-                        size:  16,
+                        size: 16,
                         color: AppColors.textTertiary,
                       ),
                     ),
                   ),
                 ],
               ),
-
               const Spacer(),
-
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -224,7 +238,6 @@ class _StepUsernameState extends State<StepUsername> {
                   child: const Text('Continue'),
                 ),
               ),
-
               const SizedBox(height: AppSpacing.xl),
             ],
           ),

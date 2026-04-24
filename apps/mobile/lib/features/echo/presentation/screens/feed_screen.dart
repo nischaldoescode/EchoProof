@@ -9,16 +9,27 @@ import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../domain/entities/echo_entity.dart';
-import '../../domain/entities/echo_status.dart';
 import '../services/echo_feed_service.dart';
 import '../widgets/echo_card.dart';
 import '../../../../shared/widgets/shimmer_loader.dart';
+import '../../../../app/app.dart';
+import '../../../../shared/widgets/ad_card.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
 
   @override
   State<FeedScreen> createState() => _FeedScreenState();
+}
+
+int _computeItemCount(EchoFeedService feed) {
+  final echoCount = feed.echoes.length;
+
+  // one ad every 7 echoes
+  final adCount = echoCount ~/ 7;
+
+  // +1 for loading spinner if more data exists
+  return echoCount + adCount + (feed.hasMore ? 1 : 0);
 }
 
 class _FeedScreenState extends State<FeedScreen> {
@@ -51,16 +62,18 @@ class _FeedScreenState extends State<FeedScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final feed     = context.watch<EchoFeedService>();
-    final size     = MediaQuery.sizeOf(context);
+    final feed = context.watch<EchoFeedService>();
+    final size = MediaQuery.sizeOf(context);
     final isTablet = size.width > 700;
 
-    return Scaffold(
-      backgroundColor: AppColors.white,
-      appBar:               _FeedAppBar(),
-      floatingActionButton: _CreateEchoFab(),
-      bottomNavigationBar:  _BottomNav(currentIndex: 0),
-      body: _buildBody(feed, isTablet),
+    return ExitConfirmWrapper(
+      child: Scaffold(
+        backgroundColor: AppColors.white,
+        appBar: _FeedAppBar(),
+        floatingActionButton: _CreateEchoFab(),
+        bottomNavigationBar: _BottomNav(currentIndex: 0),
+        body: _buildBody(feed, isTablet),
+      ),
     );
   }
 
@@ -81,22 +94,34 @@ class _FeedScreenState extends State<FeedScreen> {
 
     if (isTablet) {
       return _TabletGrid(
-        echoes:           feed.echoes,
-        isLoadingMore:    feed.isLoadingMore,
+        echoes: feed.echoes,
+        isLoadingMore: feed.isLoadingMore,
         scrollController: _scrollController,
-        hasMore:          feed.hasMore,
+        hasMore: feed.hasMore,
       );
     }
 
     return RefreshIndicator(
-      color:    AppColors.fernGreen,
+      color: AppColors.fernGreen,
       onRefresh: () => context.read<EchoFeedService>().refresh(),
       child: ListView.builder(
         controller: _scrollController,
         padding: const EdgeInsets.only(top: AppSpacing.sm, bottom: 120),
-        itemCount: feed.echoes.length + (feed.hasMore ? 1 : 0),
+        itemCount: _computeItemCount(feed),
         itemBuilder: (context, index) {
-          if (index == feed.echoes.length) {
+          // show ad card every 7th slot (index 6, 13, 20...)
+          if (index > 0 && index % 7 == 6) {
+            return const Padding(
+              padding: EdgeInsets.only(bottom: AppSpacing.sm),
+              child: AdCard(),
+            );
+          }
+
+          final adsBefore = index ~/ 7;
+          final echoIndex = index - adsBefore;
+
+          // loader at end
+          if (echoIndex >= feed.echoes.length) {
             return const Padding(
               padding: EdgeInsets.all(AppSpacing.xl),
               child: Center(
@@ -111,10 +136,11 @@ class _FeedScreenState extends State<FeedScreen> {
               ),
             );
           }
+
           return _AnimatedEchoCard(
-            key:   ValueKey(feed.echoes[index].id),
-            echo:  feed.echoes[index],
-            index: index,
+            key: ValueKey(feed.echoes[echoIndex].id),
+            echo: feed.echoes[echoIndex],
+            index: echoIndex,
           );
         },
       ),
@@ -131,7 +157,7 @@ class _AnimatedEchoCard extends StatefulWidget {
   });
 
   final EchoEntity echo;
-  final int        index;
+  final int index;
 
   @override
   State<_AnimatedEchoCard> createState() => _AnimatedEchoCardState();
@@ -139,11 +165,10 @@ class _AnimatedEchoCard extends StatefulWidget {
 
 class _AnimatedEchoCardState extends State<_AnimatedEchoCard>
     with SingleTickerProviderStateMixin {
-
   late final AnimationController _controller;
-  late final Animation<double>   _opacity;
-  late final Animation<double>   _translateY;
-  late final Animation<double>   _rotX;
+  late final Animation<double> _opacity;
+  late final Animation<double> _translateY;
+  late final Animation<double> _rotX;
 
   @override
   void initState() {
@@ -192,14 +217,14 @@ class _AnimatedEchoCardState extends State<_AnimatedEchoCard>
             transform: Matrix4.identity()
               ..setEntry(3, 2, 0.001)
               ..rotateX(_rotX.value)
-              ..translate(0.0, _translateY.value),
+              ..translateByDouble(0.0, _translateY.value, 0.0, 1.0),
             alignment: Alignment.topCenter,
             child: child,
           ),
         );
       },
       child: EchoCard(
-        echo:  widget.echo,
+        echo: widget.echo,
         onTap: () => context.push('/feed/echo/${widget.echo.id}'),
       ),
     );
@@ -214,25 +239,36 @@ class _TabletGrid extends StatelessWidget {
     required this.hasMore,
   });
 
-  final List<EchoEntity>  echoes;
-  final bool              isLoadingMore;
-  final ScrollController  scrollController;
-  final bool              hasMore;
+  final List<EchoEntity> echoes;
+  final bool isLoadingMore;
+  final ScrollController scrollController;
+  final bool hasMore;
 
   @override
   Widget build(BuildContext context) {
     return GridView.builder(
-      controller:  scrollController,
+      controller: scrollController,
       padding: const EdgeInsets.all(AppSpacing.lg),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount:   2,
+        crossAxisCount: 2,
         crossAxisSpacing: AppSpacing.md,
-        mainAxisSpacing:  AppSpacing.md,
+        mainAxisSpacing: AppSpacing.md,
         childAspectRatio: 0.85,
       ),
       itemCount: echoes.length + (hasMore ? 1 : 0),
       itemBuilder: (context, index) {
-        if (index == echoes.length) {
+        // ads every 7 items
+        if (index > 0 && index % 7 == 6) {
+          return const Padding(
+            padding: EdgeInsets.all(AppSpacing.sm),
+            child: AdCard(),
+          );
+        }
+
+        final adsBefore = index ~/ 7;
+        final echoIndex = index - adsBefore;
+
+        if (echoIndex >= echoes.length) {
           return const Center(
             child: CircularProgressIndicator(
               strokeWidth: 2,
@@ -240,10 +276,11 @@ class _TabletGrid extends StatelessWidget {
             ),
           );
         }
+
         return _AnimatedEchoCard(
-          key:   ValueKey(echoes[index].id),
-          echo:  echoes[index],
-          index: index,
+          key: ValueKey(echoes[echoIndex].id),
+          echo: echoes[echoIndex],
+          index: echoIndex,
         );
       },
     );
@@ -290,11 +327,11 @@ class _CreateEchoFab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FloatingActionButton.extended(
-      onPressed:       () => context.push('/create'),
+      onPressed: () => context.push('/create'),
       backgroundColor: AppColors.charcoal,
       foregroundColor: AppColors.white,
       elevation: 2,
-      icon:  const Icon(Icons.add, size: 20),
+      icon: const Icon(Icons.add, size: 20),
       label: Text(
         'Create Echo',
         style: AppTypography.textTheme.labelLarge?.copyWith(
@@ -326,19 +363,19 @@ class _BottomNav extends StatelessWidget {
         },
         items: const [
           BottomNavigationBarItem(
-            icon:       Icon(Icons.home_outlined),
+            icon: Icon(Icons.home_outlined),
             activeIcon: Icon(Icons.home),
-            label:      'Feed',
+            label: 'Feed',
           ),
           BottomNavigationBarItem(
-            icon:       Icon(Icons.explore_outlined),
+            icon: Icon(Icons.explore_outlined),
             activeIcon: Icon(Icons.explore),
-            label:      'Discover',
+            label: 'Discover',
           ),
           BottomNavigationBarItem(
-            icon:       Icon(Icons.person_outline),
+            icon: Icon(Icons.person_outline),
             activeIcon: Icon(Icons.person),
-            label:      'Profile',
+            label: 'Profile',
           ),
         ],
       ),
@@ -357,7 +394,7 @@ class _FeedShimmer extends StatelessWidget {
       itemBuilder: (_, __) => const Padding(
         padding: EdgeInsets.symmetric(
           horizontal: AppSpacing.lg,
-          vertical:   AppSpacing.sm,
+          vertical: AppSpacing.sm,
         ),
         child: EchoCardShimmer(),
       ),

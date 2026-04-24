@@ -17,19 +17,18 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
-
   late final AnimationController _logoController;
-  late final Animation<double>   _logoScale;
-  late final Animation<double>   _logoOpacity;
+  late final Animation<double> _logoScale;
+  late final Animation<double> _logoOpacity;
 
   late final AnimationController _ringsController;
-  late final Animation<double>   _ringsOpacity;
+  late final Animation<double> _ringsOpacity;
 
   late final AnimationController _glowController;
 
   late final AnimationController _exitController;
-  late final Animation<double>   _exitFade;
-  late final Animation<Color?>   _bgColor;
+  late final Animation<double> _exitFade;
+  late final Animation<Color?> _bgColor;
 
   @override
   void initState() {
@@ -79,7 +78,7 @@ class _SplashScreenState extends State<SplashScreen>
     );
     _bgColor = ColorTween(
       begin: const Color(0xFFE8F5EE),
-      end:   Colors.white,
+      end: Colors.white,
     ).animate(_exitController);
   }
 
@@ -97,8 +96,8 @@ class _SplashScreenState extends State<SplashScreen>
   void _scheduleNavigation() {
     Future.delayed(const Duration(milliseconds: 2400), () {
       if (!mounted) return;
-      final auth        = context.read<AuthService>();
-      final onboarding  = context.read<OnboardingService>();
+      final auth = context.read<AuthService>();
+      final onboarding = context.read<OnboardingService>();
 
       if (auth.isLoggedIn) {
         if (onboarding.isComplete()) {
@@ -158,7 +157,8 @@ class _SplashScreenState extends State<SplashScreen>
                         children: [
                           // echo wave rings pulsing out from logo
                           ...List.generate(3, (i) {
-                            final ringAnim = Tween<double>(begin: 0, end: 1).animate(
+                            final ringAnim =
+                                Tween<double>(begin: 0, end: 1).animate(
                               CurvedAnimation(
                                 parent: _ringsController,
                                 curve: Interval(
@@ -170,7 +170,8 @@ class _SplashScreenState extends State<SplashScreen>
                             );
                             return Opacity(
                               opacity: _ringsOpacity.value *
-                                  (1 - ringAnim.value) * 0.35,
+                                  (1 - ringAnim.value) *
+                                  0.35,
                               child: Transform.scale(
                                 scale: 0.55 + ringAnim.value * 0.8,
                                 child: Container(
@@ -201,9 +202,7 @@ class _SplashScreenState extends State<SplashScreen>
                         ],
                       ),
                     ),
-
                     const SizedBox(height: 32),
-
                     Opacity(
                       opacity: _logoOpacity.value,
                       child: Transform.translate(
@@ -220,9 +219,7 @@ class _SplashScreenState extends State<SplashScreen>
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 6),
-
                     Opacity(
                       opacity: _logoOpacity.value * 0.7,
                       child: const Text(
@@ -267,8 +264,8 @@ class _LogoMark extends StatelessWidget {
               borderRadius: BorderRadius.circular(28),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF4CAF6E)
-                      .withOpacity(0.25 * glowOpacity),
+                  color:
+                      const Color(0xFF4CAF6E).withValues(alpha: glowOpacity * 0.25),
                   blurRadius: 24,
                   spreadRadius: 4,
                 ),

@@ -54,7 +54,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       duration: const Duration(milliseconds: 300),
                       color: n.read
                           ? AppColors.white
-                          : AppColors.fernGreenLight.withOpacity(0.4),
+                          : AppColors.fernGreenLight.withValues(alpha: 0.4),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: AppSpacing.xl,
@@ -157,7 +157,7 @@ class _NotificationIcon extends StatelessWidget {
       width: 36,
       height: 36,
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Icon(icon, size: 18, color: color),

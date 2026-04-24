@@ -15,6 +15,8 @@ import 'features/echo/presentation/services/echo_feed_service.dart';
 import 'features/echo/presentation/services/create_echo_service.dart';
 import 'features/notifications/presentation/services/notification_service.dart';
 import 'core/utils/logger.dart';
+import 'features/subscription/presentation/services/subscription_service.dart';
+import '../../core/services/ad_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -36,31 +38,40 @@ Future<void> main() async {
   // supabase url and anon key are injected at build time via --dart-define
   // never hardcode these values here
   await Supabase.initialize(
-    url:     const String.fromEnvironment('SUPABASE_URL'),
+    url: const String.fromEnvironment('SUPABASE_URL'),
     anonKey: const String.fromEnvironment('SUPABASE_ANON_KEY'),
   );
 
   AppLogger.info('main: supabase initialized');
 
-  final authService         = AuthService();
-  final onboardingService   = OnboardingService();
-  final echoFeedService     = EchoFeedService();
-  final createEchoService   = CreateEchoService();
+  final authService = AuthService();
+  final onboardingService = OnboardingService();
+  final echoFeedService = EchoFeedService();
+  final createEchoService = CreateEchoService();
   final notificationService = NotificationService();
+  final adService = AdService();
+  final subscriptionService = SubscriptionService();
 
   final router = createRouter(
-    authService:      authService,
+    authService: authService,
     onboardingService: onboardingService,
+    subscriptionService: subscriptionService,
   );
 
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider<AuthService>.value(value: authService),
-        ChangeNotifierProvider<OnboardingService>.value(value: onboardingService),
+        ChangeNotifierProvider<OnboardingService>.value(
+            value: onboardingService),
         ChangeNotifierProvider<EchoFeedService>.value(value: echoFeedService),
-        ChangeNotifierProvider<CreateEchoService>.value(value: createEchoService),
-        ChangeNotifierProvider<NotificationService>.value(value: notificationService),
+        ChangeNotifierProvider<CreateEchoService>.value(
+            value: createEchoService),
+        ChangeNotifierProvider<NotificationService>.value(
+            value: notificationService),
+        ChangeNotifierProvider<SubscriptionService>.value(
+            value: subscriptionService),
+        ChangeNotifierProvider<AdService>.value(value: adService),
       ],
       child: EchoProofApp(router: router),
     ),

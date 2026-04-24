@@ -3,6 +3,7 @@
 // requires: integration_test sdk in pubspec.yaml dev_dependencies
 // run with: flutter test test/integration/auth_flow_test.dart -d DEVICE_ID
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:echoproof/main.dart' as app;
@@ -13,9 +14,7 @@ void main() {
   group('auth flow', () {
     testWidgets('login screen renders after splash', (tester) async {
       app.main();
-      // wait for splash animation and navigation
       await tester.pumpAndSettle(const Duration(seconds: 4));
-      // login screen should show echoproof title
       expect(find.text('Echoproof'), findsWidgets);
     });
 
@@ -23,7 +22,6 @@ void main() {
       app.main();
       await tester.pumpAndSettle(const Duration(seconds: 4));
 
-      // tap sign in without filling anything
       final buttons = find.text('Sign in');
       if (buttons.evaluate().isNotEmpty) {
         await tester.tap(buttons.last);

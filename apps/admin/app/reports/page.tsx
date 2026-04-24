@@ -17,6 +17,12 @@ export default async function ReportsPage() {
     .order("reporter_weight", { ascending: false })
     .limit(100);
 
+  const transformedReports = reports?.map(report => ({
+    ...report,
+    echoes: report.echoes[0],
+    users_public: report.users_public[0],
+  }));
+
   return (
     <div className="flex min-h-screen">
       <Sidebar />

@@ -10,7 +10,6 @@ import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../domain/entities/echo_entity.dart';
-import '../../domain/entities/echo_status.dart';
 import '../../../../core/services/echo_interaction_service.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../shared/widgets/echo_action_sheet.dart';
@@ -78,21 +77,25 @@ class InteractionButtons extends StatelessWidget {
     final feed = context.read<EchoFeedService>();
     feed.applyOptimisticInteraction(echoId: echo.id, type: type);
 
-    final session = Supabase.instance.client.auth.currentSession;
+    final client = Supabase.instance.client;
+    final session = client.auth.currentSession;
+
     if (session == null) {
       feed.revertOptimisticInteraction(echoId: echo.id, type: type);
       return;
     }
 
     try {
-      final service = EchoInteractionService(Supabase.instance.client);
+      // pass client and supabaseUrl explicitly — no Riverpod provider needed
+      const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
+
+      final service = EchoInteractionService(client, supabaseUrl);
       final result = await service.interact(
         echoId: echo.id,
         type: type,
         jwtToken: session.accessToken,
       );
 
-      // sync with real server scores
       final updated = result.updatedEcho;
       feed.updateEchoScores(
         echoId: echo.id,

@@ -157,7 +157,7 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
                         ),
                         decoration: BoxDecoration(
                           color: selected
-                              ? s.color.withOpacity(0.1)
+                              ? s.color.withValues(alpha: 0.1)
                               : AppColors.softSand,
                           borderRadius:
                               BorderRadius.circular(AppSpacing.radiusMd),

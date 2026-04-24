@@ -15,10 +15,16 @@ import '../features/profile/presentation/screens/profile_screen.dart';
 import '../features/notifications/presentation/screens/notifications_screen.dart';
 import '../features/auth/presentation/services/auth_service.dart';
 import '../features/onboarding/presentation/services/onboarding_service.dart';
+import '../features/auth/presentation/screens/otp_screen.dart';
+import '../features/auth/presentation/screens/permissions_screen.dart';
+import '../features/auth/presentation/screens/age_gender_screen.dart';
+import '../features/subscription/presentation/services/subscription_service.dart';
+import '../features/subscription/presentation/screens/subscribe_screen.dart';
 
 GoRouter createRouter({
   required AuthService authService,
   required OnboardingService onboardingService,
+  required SubscriptionService subscriptionService,
 }) {
   return GoRouter(
     initialLocation: '/splash',
@@ -46,7 +52,7 @@ GoRouter createRouter({
     routes: [
       GoRoute(
         path: '/splash',
-        builder: (context, state) => const SplashScreen(),
+        builder: (context, state) => SplashScreen(),
       ),
       GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
       GoRoute(
@@ -84,6 +90,21 @@ GoRouter createRouter({
         path: '/verify-identity',
         builder: (context, state) => const IdentityVerificationScreen(),
       ),
+      GoRoute(
+        path: '/verify-email',
+        builder: (context, state) => OtpScreen(
+          email: state.extra as String? ?? '',
+        ),
+      ),
+      GoRoute(
+        path: '/onboarding-age-gender',
+        builder: (context, state) => const AgeGenderScreen(),
+      ),
+      GoRoute(
+        path: '/permissions',
+        builder: (context, state) => const PermissionsScreen(),
+      ),
+GoRoute(path: '/subscribe', builder: (_, __) => const SubscribeScreen()), 
     ],
   );
 }

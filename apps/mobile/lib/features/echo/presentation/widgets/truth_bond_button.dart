@@ -159,7 +159,7 @@ class _TruthBondButtonState extends State<TruthBondButton>
             borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
             border: Border.all(
               color: _hasBonded
-                  ? AppColors.fernGreen.withOpacity(0.5)
+                  ? AppColors.fernGreen.withValues(alpha: 0.5)
                   : AppColors.borderSubtle,
             ),
           ),

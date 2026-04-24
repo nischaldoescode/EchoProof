@@ -98,11 +98,11 @@ class EchoCard extends StatelessWidget {
 
   Color _borderColor(EchoStatus status) {
     return switch (status) {
-      EchoStatus.verified => AppColors.fernGreen.withOpacity(0.4),
-      EchoStatus.disputed => AppColors.sunsetCoral.withOpacity(0.4),
+      EchoStatus.verified => AppColors.fernGreen.withValues(alpha: 0.4),
+      EchoStatus.disputed => AppColors.sunsetCoral.withValues(alpha: 0.4),
       EchoStatus.controversial =>
-        AppColors.statusControversial.withOpacity(0.4),
-      EchoStatus.underReview => AppColors.statusUnderReview.withOpacity(0.3),
+        AppColors.statusControversial.withValues(alpha: 0.4),
+      EchoStatus.underReview => AppColors.statusUnderReview.withValues(alpha: 0.3),
       EchoStatus.hidden => AppColors.borderSubtle,
       _ => AppColors.borderSubtle,
     };
