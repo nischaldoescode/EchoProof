@@ -4,10 +4,12 @@
 -- if echo is downgraded: bond is contested (no boost, public record)
 -- run order: 008
 
+create extension if not exists "pgcrypto";
+create extension if not exists "pg_trgm";
 create type bond_status as enum ('active', 'settled', 'contested');
 
 create table truth_bonds (
-  id              uuid primary key default uuid_generate_v4(),
+  id              uuid primary key default gen_random_uuid(),
   echo_id         uuid not null references echoes(id) on delete cascade,
   user_id         uuid not null references users_public(id) on delete cascade,
   mint_tx         text,            -- solana compressed nft mint transaction

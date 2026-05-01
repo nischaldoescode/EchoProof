@@ -2,8 +2,11 @@
 -- signals use ~ prefix in content and are indexed for search
 -- run order: 007 (after 006_solana_fields)
 
+create extension if not exists "pgcrypto";
+create extension if not exists "pg_trgm";
+
 create table echo_signals (
-  id         uuid primary key default uuid_generate_v4(),
+  id         uuid primary key default gen_random_uuid(),
   echo_id    uuid not null references echoes(id) on delete cascade,
   signal     text not null check (signal ~ '^~[a-z0-9_]+$'),
   created_at timestamptz not null default now()

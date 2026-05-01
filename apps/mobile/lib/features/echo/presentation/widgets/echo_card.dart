@@ -71,9 +71,7 @@ class EchoCard extends StatelessWidget {
                 ],
               ),
             ),
-            if (echo.status != EchoStatus.active &&
-                echo.status != EchoStatus.pendingVerification)
-              _StatusLabel(status: echo.status),
+            _StatusLabel(status: echo.status),
             Padding(
               padding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.lg,
@@ -102,9 +100,17 @@ class EchoCard extends StatelessWidget {
       EchoStatus.disputed => AppColors.sunsetCoral.withValues(alpha: 0.4),
       EchoStatus.controversial =>
         AppColors.statusControversial.withValues(alpha: 0.4),
+<<<<<<< HEAD
       EchoStatus.underReview => AppColors.statusUnderReview.withValues(alpha: 0.3),
+=======
+      EchoStatus.underReview =>
+        AppColors.statusUnderReview.withValues(alpha: 0.3),
+      EchoStatus.pendingVerification =>
+        const Color(0xFF9B59B6).withValues(alpha: 0.3),
+      EchoStatus.active => const Color(0xFF3498DB).withValues(alpha: 0.3),
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
       EchoStatus.hidden => AppColors.borderSubtle,
-      _ => AppColors.borderSubtle,
+      EchoStatus.rejected => AppColors.borderSubtle,
     };
   }
 }
@@ -208,12 +214,12 @@ class _StatusLabel extends StatelessWidget {
           AppColors.sunsetCoralLight,
         ),
       EchoStatus.controversial => (
-          'Controversial — community split',
+          'Controversial',
           const Color(0xFF7A5200),
           const Color(0xFFFFF3E0),
         ),
       EchoStatus.underReview => (
-          'Under community review',
+          'Under review',
           const Color(0xFF7A5200),
           const Color(0xFFFFF8E1),
         ),
@@ -222,8 +228,18 @@ class _StatusLabel extends StatelessWidget {
           AppColors.sunsetCoralDark,
           AppColors.sunsetCoralLight,
         ),
-      _ => (
-          'Awaiting echoes...',
+      EchoStatus.active => (
+          'Active',
+          const Color(0xFF1A6DB5),
+          const Color(0xFFE8F4FD),
+        ),
+      EchoStatus.pendingVerification => (
+          'Awaiting signals',
+          const Color(0xFF6B4FA0),
+          const Color(0xFFF3EEF9),
+        ),
+      EchoStatus.hidden => (
+          'Hidden',
           AppColors.textTertiary,
           AppColors.softSand,
         ),

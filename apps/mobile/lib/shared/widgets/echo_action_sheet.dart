@@ -79,6 +79,7 @@ class _EchoActionSheet extends StatelessWidget {
                     content: const Text('Share coming soon'),
                     backgroundColor: AppColors.charcoal,
                     behavior: SnackBarBehavior.floating,
+                    margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -101,6 +102,7 @@ class _EchoActionSheet extends StatelessWidget {
                     content: const Text('Link copied'),
                     backgroundColor: AppColors.charcoal,
                     behavior: SnackBarBehavior.floating,
+                    margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -219,6 +221,7 @@ class _ReportSheetState extends State<_ReportSheet> {
             content: const Text('Report submitted — thank you'),
             backgroundColor: AppColors.fernGreen,
             behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),
@@ -239,6 +242,7 @@ class _ReportSheetState extends State<_ReportSheet> {
             ),
             backgroundColor: AppColors.sunsetCoral,
             behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),

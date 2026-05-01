@@ -25,7 +25,7 @@ const CACHE_TTL_SECONDS = 120; // 2 minutes per user per page
 // lightweight upstash redis client using the rest api
 // no npm package needed — just http calls
 async function redisGet(key: string): Promise<string | null> {
-  const url   = Deno.env.get("UPSTASH_REDIS_REST_URL");
+  const url = Deno.env.get("UPSTASH_REDIS_REST_URL");
   const token = Deno.env.get("UPSTASH_REDIS_REST_TOKEN");
 
   if (!url || !token) return null;
@@ -35,30 +35,37 @@ async function redisGet(key: string): Promise<string | null> {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return null;
-    const data = await res.json() as { result: string | null };
+    const data = (await res.json()) as { result: string | null };
     return data.result;
   } catch {
     return null;
   }
 }
 
-async function redisSet(key: string, value: string, ttlSeconds: number): Promise<void> {
-  const url   = Deno.env.get("UPSTASH_REDIS_REST_URL");
+async function redisSet(
+  key: string,
+  value: string,
+  ttlSeconds: number,
+): Promise<void> {
+  const url = Deno.env.get("UPSTASH_REDIS_REST_URL");
   const token = Deno.env.get("UPSTASH_REDIS_REST_TOKEN");
 
   if (!url || !token) return;
 
   try {
-    await fetch(`${url}/set/${encodeURIComponent(key)}/${encodeURIComponent(value)}/ex/${ttlSeconds}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    await fetch(
+      `${url}/set/${encodeURIComponent(key)}/${encodeURIComponent(value)}/ex/${ttlSeconds}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
   } catch {
     // cache write failure is never fatal
   }
 }
 
 async function redisDel(pattern: string): Promise<void> {
-  const url   = Deno.env.get("UPSTASH_REDIS_REST_URL");
+  const url = Deno.env.get("UPSTASH_REDIS_REST_URL");
   const token = Deno.env.get("UPSTASH_REDIS_REST_TOKEN");
 
   if (!url || !token) return;
@@ -82,24 +89,48 @@ serve(async (req: Request): Promise<Response> => {
     if (!authHeader) return error(401, "missing authorization header");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceKey  = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const anonKey     = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
     const userClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const { data: { user }, error: authError } = await userClient.auth.getUser();
+    const {
+      data: { user },
+      error: authError,
+    } = await userClient.auth.getUser();
     if (authError || !user) return error(401, "unauthenticated");
 
     const serviceClient = createClient(supabaseUrl, serviceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    const url    = new URL(req.url);
+    // after getting user from auth:
+    const { data: userPublic } = await serviceClient
+      .from("users_public")
+      .select("id, trust_tier")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    // if user profile doesn't exist yet, return empty feed
+    if (!userPublic) {
+      return new Response(
+        JSON.stringify({ success: true, echoes: [], hasMore: false }),
+        {
+          status: 200,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    const url = new URL(req.url);
     const offset = parseInt(url.searchParams.get("offset") ?? "0", 10);
-    const limit  = Math.min(parseInt(url.searchParams.get("limit") ?? "20", 10), 50);
+    const limit = Math.min(
+      parseInt(url.searchParams.get("limit") ?? "20", 10),
+      50,
+    );
 
     // check if client requests a forced refresh (after user interaction)
     const forceRefresh = url.searchParams.get("refresh") === "1";
@@ -123,15 +154,19 @@ serve(async (req: Request): Promise<Response> => {
       }
     }
 
-    console.log(`feed: cache miss for user ${user.id} offset ${offset} — querying db`);
+    console.log(
+      `feed: cache miss for user ${user.id} offset ${offset} — querying db`,
+    );
 
     // get personalized echo ids from the sql scoring function
-    const { data: ranked, error: rankError } = await serviceClient
-      .rpc("get_personalized_feed", {
+    const { data: ranked, error: rankError } = await serviceClient.rpc(
+      "get_personalized_feed",
+      {
         p_user_id: user.id,
-        p_offset:  offset,
-        p_limit:   limit,
-      });
+        p_offset: offset,
+        p_limit: limit,
+      },
+    );
 
     if (rankError) {
       console.error("feed ranking error:", rankError);
@@ -144,7 +179,11 @@ serve(async (req: Request): Promise<Response> => {
       const emptyResponse = JSON.stringify({ echoes: [], has_more: false });
       await redisSet(cacheKey, emptyResponse, CACHE_TTL_SECONDS);
       return new Response(emptyResponse, {
-        headers: { ...CORS_HEADERS, "Content-Type": "application/json", "X-Cache": "MISS" },
+        headers: {
+          ...CORS_HEADERS,
+          "Content-Type": "application/json",
+          "X-Cache": "MISS",
+        },
         status: 200,
       });
     }
@@ -157,7 +196,7 @@ serve(async (req: Request): Promise<Response> => {
         trust_score, confidence_score, controversy_score, report_score,
         support_count, challenge_count, bond_count, response_count, created_at,
         verified_record_tx,
-        users_public!inner(username, avatar_url, trust_tier, is_identity_verified)
+        users_public(username, avatar_url, trust_tier)
       `)
       .in("id", echoIds);
 
@@ -168,11 +207,9 @@ serve(async (req: Request): Promise<Response> => {
 
     // re-sort to match ranking order — sql IN clause does not preserve order
     const echoMap = new Map(
-      (echoes ?? []).map((e: { id: string }) => [e.id, e])
+      (echoes ?? []).map((e: { id: string }) => [e.id, e]),
     );
-    const sorted = echoIds
-      .map((id: string) => echoMap.get(id))
-      .filter(Boolean);
+    const sorted = echoIds.map((id: string) => echoMap.get(id)).filter(Boolean);
 
     // record passive category signals for feed learning
     // fire and forget — never block feed response
@@ -183,16 +220,16 @@ serve(async (req: Request): Promise<Response> => {
     for (const category of [...new Set(topCategories)]) {
       Promise.resolve(
         serviceClient.rpc("record_feed_signal", {
-          p_user_id:      user.id,
-          p_signal_type:  "category_view",
+          p_user_id: user.id,
+          p_signal_type: "category_view",
           p_signal_value: category,
-          p_weight:       0.1,
-        })
+          p_weight: 0.1,
+        }),
       ).catch(() => {});
     }
 
     const responseBody = JSON.stringify({
-      echoes:   sorted,
+      echoes: sorted,
       has_more: sorted.length === limit,
     });
 
@@ -207,7 +244,6 @@ serve(async (req: Request): Promise<Response> => {
       },
       status: 200,
     });
-
   } catch (err) {
     console.error("personalized-feed unhandled error:", err);
     return error(500, "internal server error");
@@ -215,11 +251,8 @@ serve(async (req: Request): Promise<Response> => {
 });
 
 function error(status: number, message: string): Response {
-  return new Response(
-    JSON.stringify({ success: false, error: message }),
-    {
-      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-      status,
-    }
-  );
+  return new Response(JSON.stringify({ success: false, error: message }), {
+    headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+    status,
+  });
 }

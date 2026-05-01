@@ -1,17 +1,24 @@
-// feed screen — main home screen
-// shows personalized echo feed with 3d card entrance animations
-// uses EchoFeedService via provider — no riverpod
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../domain/entities/echo_entity.dart';
+<<<<<<< HEAD
+=======
+import '../../domain/entities/feed_filter.dart';
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 import '../services/echo_feed_service.dart';
 import '../widgets/echo_card.dart';
+import '../widgets/feed_filter_sheet.dart';
 import '../../../../shared/widgets/shimmer_loader.dart';
+<<<<<<< HEAD
+=======
+import 'package:echoproof/shared/widgets/app_bottom_nav.dart';
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 import '../../../../app/app.dart';
 import '../../../../shared/widgets/ad_card.dart';
 
@@ -33,14 +40,13 @@ int _computeItemCount(EchoFeedService feed) {
 }
 
 class _FeedScreenState extends State<FeedScreen> {
-  final _scrollController = ScrollController();
+  final _scrollCtrl = ScrollController();
+  FeedFilter _filter = const FeedFilter();
 
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
-
-    // load feed after first frame so context is available
+    _scrollCtrl.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final feed = context.read<EchoFeedService>();
       if (feed.echoes.isEmpty) feed.loadFeed();
@@ -49,15 +55,32 @@ class _FeedScreenState extends State<FeedScreen> {
 
   @override
   void dispose() {
-    _scrollController.dispose();
+    _scrollCtrl.dispose();
     super.dispose();
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 400) {
+    if (_scrollCtrl.position.pixels >=
+        _scrollCtrl.position.maxScrollExtent - 400) {
       context.read<EchoFeedService>().loadMore();
     }
+  }
+
+  Future<void> _openFilter() async {
+    HapticFeedback.lightImpact();
+    final result = await showFeedFilterSheet(context, _filter);
+    if (result != null) {
+      setState(() => _filter = result);
+    }
+  }
+
+  List<EchoEntity> _filtered(List<EchoEntity> echoes) {
+    return _filter.apply(echoes);
+  }
+
+  int _itemCount(List<EchoEntity> filtered, bool hasMore) {
+    final adCount = filtered.length ~/ 7;
+    return filtered.length + adCount + (hasMore ? 1 : 0);
   }
 
   @override
@@ -66,6 +89,7 @@ class _FeedScreenState extends State<FeedScreen> {
     final size = MediaQuery.sizeOf(context);
     final isTablet = size.width > 700;
 
+<<<<<<< HEAD
     return ExitConfirmWrapper(
       child: Scaffold(
         backgroundColor: AppColors.white,
@@ -75,12 +99,26 @@ class _FeedScreenState extends State<FeedScreen> {
         body: _buildBody(feed, isTablet),
       ),
     );
+=======
+    return SwipeNavigationWrapper(
+        currentLocation: '/feed',
+        child: ExitConfirmWrapper(
+          child: Scaffold(
+            backgroundColor: AppColors.white,
+            appBar: _FeedAppBar(
+              filterActive: _filter.isActive,
+              onFilterTap: _openFilter,
+            ),
+            floatingActionButton: const _CreateFab(),
+            bottomNavigationBar: const AppBottomNav(currentLocation: '/feed'),
+            body: _buildBody(feed, isTablet),
+          ),
+        ));
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
   }
 
   Widget _buildBody(EchoFeedService feed, bool isTablet) {
-    if (feed.isLoading && feed.echoes.isEmpty) {
-      return const _FeedShimmer();
-    }
+    if (feed.isLoading && feed.echoes.isEmpty) return const _Shimmer();
 
     if (feed.loadState == FeedLoadState.error && feed.echoes.isEmpty) {
       return _ErrorState(
@@ -88,10 +126,16 @@ class _FeedScreenState extends State<FeedScreen> {
       );
     }
 
-    if (feed.echoes.isEmpty) {
-      return const _EmptyFeed();
+    final filtered = _filtered(feed.echoes);
+
+    if (feed.echoes.isEmpty) return const _EmptyFeed();
+
+    if (filtered.isEmpty && _filter.isActive) {
+      return _EmptyFilter(
+          onClear: () => setState(() => _filter = const FeedFilter()));
     }
 
+<<<<<<< HEAD
     if (isTablet) {
       return _TabletGrid(
         echoes: feed.echoes,
@@ -132,8 +176,112 @@ class _FeedScreenState extends State<FeedScreen> {
                     strokeWidth: 2,
                     color: AppColors.fernGreen,
                   ),
+=======
+    return Column(
+      children: [
+        if (_filter.isActive)
+          _ActiveFilterBar(
+            filter: _filter,
+            onClear: () => setState(() => _filter = const FeedFilter()),
+            onTap: _openFilter,
+          ),
+        Expanded(
+          child: RefreshIndicator(
+            color: AppColors.fernGreen,
+            onRefresh: () => context.read<EchoFeedService>().refresh(),
+            child: ListView.builder(
+              controller: _scrollCtrl,
+              padding: const EdgeInsets.only(top: AppSpacing.xs, bottom: 120),
+              itemCount: _itemCount(filtered, feed.hasMore),
+              itemBuilder: (ctx, index) {
+                if (index > 0 && index % 7 == 6) {
+                  return const Padding(
+                    padding: EdgeInsets.only(bottom: AppSpacing.sm),
+                    child: AdCard(),
+                  );
+                }
+
+                final adsBefore = index ~/ 7;
+                final echoIndex = index - adsBefore;
+
+                if (echoIndex >= filtered.length) {
+                  if (!feed.hasMore) return const SizedBox.shrink();
+                  return const Padding(
+                    padding: EdgeInsets.all(AppSpacing.xl),
+                    child: Center(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.fernGreen,
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
+                return _AnimatedCard(
+                  key: ValueKey(filtered[echoIndex].id),
+                  echo: filtered[echoIndex],
+                  index: echoIndex,
+                );
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ActiveFilterBar extends StatelessWidget {
+  const _ActiveFilterBar({
+    required this.filter,
+    required this.onClear,
+    required this.onTap,
+  });
+
+  final FeedFilter filter;
+  final VoidCallback onClear;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = <String>[];
+    if (filter.showVerifiedOnly) parts.add('Verified only');
+    if (filter.showUnverifiedOnly) parts.add('Unverified only');
+    if (filter.statuses.isNotEmpty)
+      parts.add('${filter.statuses.length} status');
+    if (filter.categories.isNotEmpty)
+      parts.add('${filter.categories.length} categories');
+    if (filter.sortBy != FeedSortBy.trending) parts.add(filter.sortBy.label);
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.sm,
+        ),
+        color: AppColors.charcoal.withValues(alpha: 0.04),
+        child: Row(
+          children: [
+            const Icon(Icons.tune_rounded, size: 14, color: AppColors.charcoal),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                parts.join(' · '),
+                style: GoogleFonts.josefinSans(
+                  fontSize: 12,
+                  color: AppColors.charcoal,
+                  fontWeight: FontWeight.w500,
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
                 ),
+                overflow: TextOverflow.ellipsis,
               ),
+<<<<<<< HEAD
             );
           }
 
@@ -143,72 +291,78 @@ class _FeedScreenState extends State<FeedScreen> {
             index: echoIndex,
           );
         },
+=======
+            ),
+            GestureDetector(
+              onTap: onClear,
+              child: const Icon(Icons.close_rounded,
+                  size: 16, color: AppColors.textTertiary),
+            ),
+          ],
+        ),
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
       ),
     );
   }
 }
 
-// staggered 3d entrance animation for each card
-class _AnimatedEchoCard extends StatefulWidget {
-  const _AnimatedEchoCard({
-    super.key,
-    required this.echo,
-    required this.index,
-  });
-
+class _AnimatedCard extends StatefulWidget {
+  const _AnimatedCard({super.key, required this.echo, required this.index});
   final EchoEntity echo;
   final int index;
 
   @override
-  State<_AnimatedEchoCard> createState() => _AnimatedEchoCardState();
+  State<_AnimatedCard> createState() => _AnimatedCardState();
 }
 
-class _AnimatedEchoCardState extends State<_AnimatedEchoCard>
+class _AnimatedCardState extends State<_AnimatedCard>
     with SingleTickerProviderStateMixin {
+<<<<<<< HEAD
   late final AnimationController _controller;
   late final Animation<double> _opacity;
   late final Animation<double> _translateY;
   late final Animation<double> _rotX;
+=======
+  late final AnimationController _c;
+  late final Animation<double> _opacity;
+  late final Animation<double> _y;
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
+    _c = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 380),
     );
-
-    final delay = widget.index < 8
-        ? Duration(milliseconds: widget.index * 60)
-        : Duration.zero;
-
     _opacity = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(
-        parent: _controller,
+        parent: _c,
         curve: const Interval(0, 0.6, curve: Curves.easeOut),
       ),
     );
-    _translateY = Tween<double>(begin: 24, end: 0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
-    );
-    _rotX = Tween<double>(begin: 0.08, end: 0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+    _y = Tween<double>(begin: 16, end: 0).animate(
+      CurvedAnimation(parent: _c, curve: Curves.easeOutCubic),
     );
 
+    final delay = widget.index < 8
+        ? Duration(milliseconds: widget.index * 45)
+        : Duration.zero;
     Future.delayed(delay, () {
-      if (mounted) _controller.forward();
+      if (mounted) _c.forward();
     });
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _c.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
+<<<<<<< HEAD
       animation: _controller,
       builder: (context, child) {
         return Opacity(
@@ -223,6 +377,16 @@ class _AnimatedEchoCardState extends State<_AnimatedEchoCard>
           ),
         );
       },
+=======
+      animation: _c,
+      builder: (_, child) => Opacity(
+        opacity: _opacity.value,
+        child: Transform.translate(
+          offset: Offset(0, _y.value),
+          child: child,
+        ),
+      ),
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
       child: EchoCard(
         echo: widget.echo,
         onTap: () => context.push('/feed/echo/${widget.echo.id}'),
@@ -231,14 +395,13 @@ class _AnimatedEchoCardState extends State<_AnimatedEchoCard>
   }
 }
 
-class _TabletGrid extends StatelessWidget {
-  const _TabletGrid({
-    required this.echoes,
-    required this.isLoadingMore,
-    required this.scrollController,
-    required this.hasMore,
+class _FeedAppBar extends StatelessWidget implements PreferredSizeWidget {
+  const _FeedAppBar({
+    required this.filterActive,
+    required this.onFilterTap,
   });
 
+<<<<<<< HEAD
   final List<EchoEntity> echoes;
   final bool isLoadingMore;
   final ScrollController scrollController;
@@ -289,11 +452,21 @@ class _TabletGrid extends StatelessWidget {
 
 class _FeedAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
+=======
+  final bool filterActive;
+  final VoidCallback onFilterTap;
+
+  @override
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
   Size get preferredSize => const Size.fromHeight(56);
 
   @override
   Widget build(BuildContext context) {
     return AppBar(
+      backgroundColor: Colors.white,
+      elevation: 0,
+      scrolledUnderElevation: 0.5,
+      shadowColor: AppColors.borderSubtle,
       title: Row(
         children: [
           ClipRRect(
@@ -305,26 +478,53 @@ class _FeedAppBar extends StatelessWidget implements PreferredSizeWidget {
               fit: BoxFit.cover,
             ),
           ),
-          const SizedBox(width: AppSpacing.sm),
+          const SizedBox(width: 8),
           Text('Echoproof', style: AppTypography.textTheme.titleLarge),
         ],
       ),
       actions: [
-        IconButton(
-          icon: const Icon(Icons.notifications_none_outlined, size: 22),
-          onPressed: () => context.push('/notifications'),
+        // filter button with active indicator
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.tune_rounded, size: 22),
+              onPressed: onFilterTap,
+              color: filterActive ? AppColors.charcoal : AppColors.charcoal,
+              tooltip: 'Filter',
+            ),
+            if (filterActive)
+              Positioned(
+                right: 8,
+                top: 8,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: AppColors.fernGreen,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+          ],
         ),
         IconButton(
-          icon: const Icon(Icons.person_outline, size: 22),
-          onPressed: () => context.push('/profile'),
+          icon: const Icon(Icons.search_rounded, size: 22),
+          onPressed: () => context.push('/search'),
+          color: AppColors.charcoal,
+          tooltip: 'Search',
         ),
+        const SizedBox(width: 4),
       ],
     );
   }
 }
 
-class _CreateEchoFab extends StatelessWidget {
+class _CreateFab extends StatefulWidget {
+  const _CreateFab();
+
   @override
+<<<<<<< HEAD
   Widget build(BuildContext context) {
     return FloatingActionButton.extended(
       onPressed: () => context.push('/create'),
@@ -340,27 +540,45 @@ class _CreateEchoFab extends StatelessWidget {
       ),
     );
   }
+=======
+  State<_CreateFab> createState() => _CreateFabState();
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 }
 
-class _BottomNav extends StatelessWidget {
-  const _BottomNav({required this.currentIndex});
-  final int currentIndex;
+class _CreateFabState extends State<_CreateFab>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 150),
+    );
+    _scale = Tween<double>(begin: 1.0, end: 0.90).animate(
+      CurvedAnimation(parent: _c, curve: Curves.easeIn),
+    );
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        border: Border(
-          top: BorderSide(color: AppColors.borderSubtle, width: 1),
-        ),
-      ),
-      child: BottomNavigationBar(
-        currentIndex: currentIndex,
-        onTap: (i) {
-          if (i == 0) context.go('/feed');
-          if (i == 1) context.go('/discover');
-          if (i == 2) context.go('/profile');
+    return ScaleTransition(
+      scale: _scale,
+      child: GestureDetector(
+        onTapDown: (_) => _c.forward(),
+        onTapUp: (_) async {
+          await _c.reverse();
+          if (context.mounted) context.push('/create');
         },
+<<<<<<< HEAD
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.home_outlined),
@@ -378,13 +596,32 @@ class _BottomNav extends StatelessWidget {
             label: 'Profile',
           ),
         ],
+=======
+        onTapCancel: () => _c.reverse(),
+        child: Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: AppColors.charcoal,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.22),
+                blurRadius: 14,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: const Icon(Icons.edit_rounded, color: Colors.white, size: 22),
+        ),
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
       ),
     );
   }
 }
 
-class _FeedShimmer extends StatelessWidget {
-  const _FeedShimmer();
+class _Shimmer extends StatelessWidget {
+  const _Shimmer();
 
   @override
   Widget build(BuildContext context) {
@@ -420,21 +657,63 @@ class _EmptyFeed extends StatelessWidget {
                 color: AppColors.softSand,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Icon(
-                Icons.wb_sunny_outlined,
-                size: 36,
-                color: AppColors.textTertiary,
-              ),
+              child: const Icon(Icons.wb_sunny_outlined,
+                  size: 36, color: AppColors.textTertiary),
             ),
             const SizedBox(height: AppSpacing.xl),
             Text('Nothing yet', style: AppTypography.textTheme.headlineSmall),
             const SizedBox(height: AppSpacing.sm),
             Text(
-              'Be the first to create an echo in your communities.',
+              'Be the first to create an echo.',
               style: AppTypography.textTheme.bodyMedium?.copyWith(
                 color: AppColors.textSecondary,
               ),
               textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyFilter extends StatelessWidget {
+  const _EmptyFilter({required this.onClear});
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xxl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.filter_alt_off_outlined,
+                size: 48, color: AppColors.textTertiary),
+            const SizedBox(height: AppSpacing.lg),
+            Text('No echoes match your filters',
+                style: AppTypography.textTheme.titleMedium),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'Try adjusting or clearing your filters.',
+              style: AppTypography.textTheme.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            OutlinedButton(
+              onPressed: onClear,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.charcoal,
+                side: const BorderSide(color: AppColors.charcoal),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text(
+                'Clear filters',
+                style: GoogleFonts.josefinSans(fontWeight: FontWeight.w600),
+              ),
             ),
           ],
         ),
@@ -453,20 +732,22 @@ class _ErrorState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
-            Icons.cloud_off_outlined,
-            size: 48,
-            color: AppColors.textTertiary,
-          ),
+          const Icon(Icons.cloud_off_outlined,
+              size: 48, color: AppColors.textTertiary),
           const SizedBox(height: AppSpacing.lg),
-          Text(
-            'Could not load feed',
-            style: AppTypography.textTheme.titleMedium,
-          ),
+          Text('Could not load feed',
+              style: AppTypography.textTheme.titleMedium),
           const SizedBox(height: AppSpacing.md),
           ElevatedButton(
             onPressed: onRetry,
-            child: const Text('Try again'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.charcoal,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Text('Try again',
+                style: GoogleFonts.josefinSans(fontWeight: FontWeight.w600)),
           ),
         ],
       ),

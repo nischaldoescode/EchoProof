@@ -100,6 +100,7 @@ class EchoEntity extends Equatable {
     this.proofCount = 0,
     this.requiresVerification = true,
     this.version = 1,
+    this.replyCount = 0,
   });
 
   final String id;
@@ -124,6 +125,7 @@ class EchoEntity extends Equatable {
 
   final int supportCount;
   final int challengeCount;
+  final int replyCount;
 
   /// pre-formatted relative time string, e.g. "2h ago"
   final String timeAgo;
@@ -173,7 +175,7 @@ class EchoEntity extends Equatable {
     int? proofCount,
     bool? requiresVerification,
     int? version,
-
+    int? replyCount,
   }) {
     return EchoEntity(
       id: id ?? this.id,
@@ -190,6 +192,7 @@ class EchoEntity extends Equatable {
       controversyScore: controversyScore ?? this.controversyScore,
       supportCount: supportCount ?? this.supportCount,
       challengeCount: challengeCount ?? this.challengeCount,
+      replyCount: replyCount ?? this.replyCount,
       timeAgo: timeAgo ?? this.timeAgo,
       proofCount: proofCount ?? this.proofCount,
       requiresVerification: requiresVerification ?? this.requiresVerification,

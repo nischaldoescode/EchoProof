@@ -9,6 +9,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
+<<<<<<< HEAD
+=======
+import '../../../../core/services/push_notification_service.dart';
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 
 class PermissionsScreen extends StatefulWidget {
   const PermissionsScreen({super.key});
@@ -79,6 +83,10 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
     }
     _updateAllGranted();
     if (mounted) setState(() {});
+<<<<<<< HEAD
+=======
+    await PushNotificationService.instance.initialize();
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
   }
 
   Future<void> _requestSingle(Permission p) async {
@@ -148,7 +156,16 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: _allGranted
+<<<<<<< HEAD
                       ? () => context.go('/onboarding')
+=======
+                      ? () async {
+                          await PushNotificationService.instance.initialize();
+                          if (!context.mounted) return;
+
+                          context.go('/feed');
+                        }
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
                       : _requestAll,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.charcoal,
@@ -172,7 +189,11 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
               // skip
               Center(
                 child: TextButton(
+<<<<<<< HEAD
                   onPressed: () => context.go('/onboarding'),
+=======
+                  onPressed: () => context.go('/feed'),
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
                   child: Text(
                     'Skip for now',
                     style: GoogleFonts.josefinSans(

@@ -1,9 +1,11 @@
 -- user interaction tracking for feed personalization
 -- stores which categories, signals, and users each person engages with
 -- run order: 009
+create extension if not exists "pgcrypto";
+create extension if not exists "pg_trgm";
 
 create table user_feed_signals (
-  id           uuid primary key default uuid_generate_v4(),
+  id           uuid primary key default gen_random_uuid(),
   user_id      uuid not null references users_public(id) on delete cascade,
   signal_type  text not null check (signal_type in (
     'category_view',

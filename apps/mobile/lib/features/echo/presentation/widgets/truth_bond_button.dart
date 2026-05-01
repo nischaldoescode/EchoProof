@@ -109,9 +109,10 @@ class _TruthBondButtonState extends State<TruthBondButton>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text(
-                'Bond created — staking your reputation on this truth'),
+                'Bond created staking your reputation on this truth'),
             backgroundColor: AppColors.fernGreen,
             behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),

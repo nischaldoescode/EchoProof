@@ -2,9 +2,11 @@
 -- each response can contain text AND optional proof attachment
 -- weighted by author trust tier
 -- run order: 010
+create extension if not exists "pgcrypto";
+create extension if not exists "pg_trgm";
 
 create table signal_responses (
-  id           uuid primary key default uuid_generate_v4(),
+  id           uuid primary key default gen_random_uuid(),
   echo_id      uuid not null references echoes(id) on delete cascade,
   user_id      uuid not null references users_public(id) on delete cascade,
   content      text not null check (char_length(content) between 1 and 500),

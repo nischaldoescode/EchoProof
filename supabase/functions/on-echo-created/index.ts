@@ -16,29 +16,54 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
 };
 
 serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
+  if (req.method === "OPTIONS")
+    return new Response("ok", { headers: CORS_HEADERS });
 
   try {
+    const serviceClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
     const payload = await req.json();
-    const echo    = payload.record; // the new echo row
+    const echo = payload.record; // new echo row
 
     if (!echo?.id || !echo?.content) {
       return new Response("missing echo data", { status: 400 });
     }
 
-    
-    const serviceClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    // FIX — extract user_id from echo row
+    const userId = echo.user_id;
+    if (!userId) {
+      return new Response("missing user_id", { status: 400 });
+    }
 
-    // --------------------------------------------------------
-    // call openai to analyze the echo
-    // --------------------------------------------------------
+    // Rate-limit: max 3 posts per 15 minutes
+
+    const fifteenMinutesAgo = new Date(Date.now() - 900_000).toISOString();
+
+    const { count: recentEchoes } = await serviceClient
+      .from("echoes")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .gte("created_at", fifteenMinutesAgo);
+
+    if ((recentEchoes ?? 0) >= 3) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "posting too fast — wait 15 minutes",
+        }),
+        {
+          status: 429,
+          headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+        },
+      );
+    }
 
     const openaiKey = Deno.env.get("OPENAI_API_KEY");
 
@@ -65,19 +90,22 @@ post content: ${echo.content}
 respond with JSON only. no explanation.
     `.trim();
 
-    const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${openaiKey}`,
-        "Content-Type": "application/json",
+    const openaiRes = await fetch(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${openaiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini", // fast and cheap — good for hackathon
+          max_tokens: 200,
+          temperature: 0,
+          messages: [{ role: "user", content: prompt }],
+        }),
       },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",  // fast and cheap — good for hackathon
-        max_tokens: 200,
-        temperature: 0,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
+    );
 
     if (!openaiRes.ok) {
       console.error("openai error:", await openaiRes.text());
@@ -85,7 +113,7 @@ respond with JSON only. no explanation.
     }
 
     const openaiData = await openaiRes.json();
-    const rawText    = openaiData.choices?.[0]?.message?.content ?? "{}";
+    const rawText = openaiData.choices?.[0]?.message?.content ?? "{}";
 
     let analysis: Record<string, unknown> = {};
     try {
@@ -114,10 +142,13 @@ respond with JSON only. no explanation.
       .eq("id", echo.id);
 
     return new Response(
-      JSON.stringify({ processed: true, spam_score: spamScore, status: newStatus }),
-      { headers: { ...CORS_HEADERS, "Content-Type": "application/json" } }
+      JSON.stringify({
+        processed: true,
+        spam_score: spamScore,
+        status: newStatus,
+      }),
+      { headers: { ...CORS_HEADERS, "Content-Type": "application/json" } },
     );
-
   } catch (err) {
     console.error("on-echo-created unhandled error:", err);
     return new Response("internal error", { status: 500 });

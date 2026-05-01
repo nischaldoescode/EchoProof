@@ -9,11 +9,25 @@ export default function Footer() {
           <div>
             <div className="flex items-center gap-2 mb-3">
               <div className="w-7 h-7 rounded-lg overflow-hidden ring-1 ring-black/5">
+<<<<<<< HEAD
                 <img src="/logo.png" alt="Echoproof" className="w-full h-full object-cover" />
               </div>
               <span className="font-semibold text-sm tracking-tight">Echoproof</span>
             </div>
             <p className="text-xs text-neutral-400 max-w-[200px] leading-5">
+=======
+                <img
+                  src="/logo.png"
+                  alt="Echoproof"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <span className="font-semibold text-sm tracking-tight">
+                Echoproof
+              </span>
+            </div>
+            <p className="text-xs text-neutral-400 max-w-[50] leading-5">
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
               truth, verified by community.
             </p>
           </div>
@@ -21,9 +35,16 @@ export default function Footer() {
           {/* links */}
           <div className="flex flex-wrap gap-x-8 gap-y-3">
             {[
+<<<<<<< HEAD
               { label: "Privacy",     href: "/privacy" },
               { label: "Terms",       href: "/terms" },
               { label: "Contact",     href: "mailto:hello@echoproof.online" },
+=======
+              { label: "Privacy", href: "/privacy" },
+              { label: "Delete account", href: "/delete-account" },
+              { label: "Terms", href: "/terms" },
+              { label: "Contact", href: "mailto:hello@echoproof.online" },
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
             ].map((link) => (
               <a
                 key={link.label}
@@ -40,11 +61,19 @@ export default function Footer() {
           <p className="text-xs text-neutral-300">
             © {new Date().getFullYear()} Echoproof. All rights reserved.
           </p>
+<<<<<<< HEAD
           <p className="text-xs text-neutral-300">
             Made with intention.
           </p>
+=======
+          <p className="text-xs text-neutral-300">Made with intention.</p>
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
         </div>
       </div>
     </footer>
   );
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)

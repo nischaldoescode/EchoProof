@@ -8,6 +8,7 @@ import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../../../core/utils/logger.dart';
+import '../../../../shared/widgets/app_bottom_nav.dart';
 
 class TrendingSignal {
   const TrendingSignal({
@@ -112,145 +113,152 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.white,
-      appBar: AppBar(
-        title: Text('Discover', style: AppTypography.textTheme.titleLarge),
-      ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // country filter chips
-          SizedBox(
-            height: 48,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.lg,
-                vertical: AppSpacing.sm,
-              ),
-              itemCount: _countries.length,
-              itemBuilder: (context, i) {
-                final c = _countries[i];
-                final selected = _selectedCountry == c.code;
-
-                return GestureDetector(
-                  onTap: () => _selectCountry(c.code),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    margin: const EdgeInsets.only(right: AppSpacing.sm),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.md,
-                      vertical: AppSpacing.xs,
-                    ),
-                    decoration: BoxDecoration(
-                      color: selected ? AppColors.charcoal : AppColors.softSand,
-                      borderRadius:
-                          BorderRadius.circular(AppSpacing.radiusFull),
-                      border: Border.all(
-                        color: selected
-                            ? AppColors.charcoal
-                            : AppColors.borderSubtle,
-                      ),
-                    ),
-                    child: Text(
-                      c.label,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight:
-                            selected ? FontWeight.w600 : FontWeight.w400,
-                        color:
-                            selected ? AppColors.white : AppColors.textPrimary,
-                        fontFamily: AppTypography.fontFamily,
-                      ),
-                    ),
+    return SwipeNavigationWrapper(
+        currentLocation: '/feed',
+        child: Scaffold(
+          backgroundColor: AppColors.white,
+          appBar: AppBar(
+            title: Text('Discover', style: AppTypography.textTheme.titleLarge),
+          ),
+          bottomNavigationBar: const AppBottomNav(currentLocation: '/discover'),
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // country filter chips
+              SizedBox(
+                height: 48,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.lg,
+                    vertical: AppSpacing.sm,
                   ),
-                );
-              },
-            ),
-          ),
+                  itemCount: _countries.length,
+                  itemBuilder: (context, i) {
+                    final c = _countries[i];
+                    final selected = _selectedCountry == c.code;
 
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.xl,
-              AppSpacing.lg,
-              AppSpacing.xl,
-              AppSpacing.sm,
-            ),
-            child: Text(
-              _selectedCountry != null
-                  ? 'Trending signals in ${_countries.firstWhere((c) => c.code == _selectedCountry).label}'
-                  : 'Trending signals globally',
-              style: AppTypography.textTheme.titleSmall,
-            ),
-          ),
+                    return GestureDetector(
+                      onTap: () => _selectCountry(c.code),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        margin: const EdgeInsets.only(right: AppSpacing.sm),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.md,
+                          vertical: AppSpacing.xs,
+                        ),
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? AppColors.charcoal
+                              : AppColors.softSand,
+                          borderRadius:
+                              BorderRadius.circular(AppSpacing.radiusFull),
+                          border: Border.all(
+                            color: selected
+                                ? AppColors.charcoal
+                                : AppColors.borderSubtle,
+                          ),
+                        ),
+                        child: Text(
+                          c.label,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight:
+                                selected ? FontWeight.w600 : FontWeight.w400,
+                            color: selected
+                                ? AppColors.white
+                                : AppColors.textPrimary,
+                            fontFamily: AppTypography.fontFamily,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
 
-          Expanded(
-            child: _isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppColors.fernGreen,
-                    ),
-                  )
-                : _signals.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.tag,
-                              size: 40,
-                              color: AppColors.textTertiary,
-                            ),
-                            const SizedBox(height: AppSpacing.md),
-                            Text(
-                              'No signals trending yet',
-                              style:
-                                  AppTypography.textTheme.bodyMedium?.copyWith(
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ],
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.xl,
+                  AppSpacing.lg,
+                  AppSpacing.xl,
+                  AppSpacing.sm,
+                ),
+                child: Text(
+                  _selectedCountry != null
+                      ? 'Trending signals in ${_countries.firstWhere((c) => c.code == _selectedCountry).label}'
+                      : 'Trending signals globally',
+                  style: AppTypography.textTheme.titleSmall,
+                ),
+              ),
+
+              Expanded(
+                child: _isLoading
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.fernGreen,
                         ),
                       )
-                    : ListView.builder(
-                        padding: const EdgeInsets.only(bottom: 80),
-                        itemCount: _signals.length,
-                        itemBuilder: (context, index) {
-                          final delay = index * 0.04;
-                          final end = (delay + 0.3).clamp(0.0, 1.0);
-                          final anim = Tween<double>(begin: 0, end: 1).animate(
-                            CurvedAnimation(
-                              parent: _entranceController,
-                              curve:
-                                  Interval(delay, end, curve: Curves.easeOut),
+                    : _signals.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.tag,
+                                  size: 40,
+                                  color: AppColors.textTertiary,
+                                ),
+                                const SizedBox(height: AppSpacing.md),
+                                Text(
+                                  'No signals trending yet',
+                                  style: AppTypography.textTheme.bodyMedium
+                                      ?.copyWith(
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
                             ),
-                          );
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.only(bottom: 80),
+                            itemCount: _signals.length,
+                            itemBuilder: (context, index) {
+                              final delay = index * 0.04;
+                              final end = (delay + 0.3).clamp(0.0, 1.0);
+                              final anim =
+                                  Tween<double>(begin: 0, end: 1).animate(
+                                CurvedAnimation(
+                                  parent: _entranceController,
+                                  curve: Interval(delay, end,
+                                      curve: Curves.easeOut),
+                                ),
+                              );
 
-                          return AnimatedBuilder(
-                            animation: anim,
-                            builder: (context, child) => Opacity(
-                              opacity: anim.value,
-                              child: Transform.translate(
-                                offset: Offset(0, (1 - anim.value) * 16),
-                                child: child,
-                              ),
-                            ),
-                            child: _SignalRow(
-                              signal: _signals[index],
-                              rank: index + 1,
-                              onTap: () => _openSignalFeed(
-                                _signals[index].signal,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
+                              return AnimatedBuilder(
+                                animation: anim,
+                                builder: (context, child) => Opacity(
+                                  opacity: anim.value,
+                                  child: Transform.translate(
+                                    offset: Offset(0, (1 - anim.value) * 16),
+                                    child: child,
+                                  ),
+                                ),
+                                child: _SignalRow(
+                                  signal: _signals[index],
+                                  rank: index + 1,
+                                  onTap: () => _openSignalFeed(
+                                    _signals[index].signal,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
+        ));
   }
 
   void _openSignalFeed(String signal) {
@@ -259,6 +267,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
         content: Text('Showing echoes for $signal'),
         backgroundColor: AppColors.charcoal,
         behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
         ),

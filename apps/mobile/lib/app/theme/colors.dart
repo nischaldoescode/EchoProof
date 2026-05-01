@@ -15,6 +15,7 @@ abstract final class AppColors {
 
   /// rich charcoal — not pure black, warmer
   static const Color charcoal = Color(0xFF1A1A1A);
+  
 
   // ---- accent ----
 
@@ -62,6 +63,7 @@ abstract final class AppColors {
 
   /// text tertiary — placeholder, hints
   static const Color textTertiary = Color(0xFF9A9A9A);
+
 
   /// surface secondary — slightly off-white for layered surfaces
   static const Color surfaceSecondary = Color(0xFFF8F7F5);

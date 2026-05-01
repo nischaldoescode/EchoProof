@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- trust only system CAs in release mode -->
+    <!-- this blocks user-installed certificates like Burp Suite's CA -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+            <!-- do NOT include user certificates in production -->
+        </trust-anchors>
+    </base-config>
+
+    <!-- allow cleartext only for local supabase during debug -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">192.168.1.7</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
+    </domain-config>
+
+    <!-- production supabase — HTTPS only, pin certificate -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">supabase.co</domain>
+        <domain includeSubdomains="true">verification.didit.me</domain>
+    </domain-config>
+</network-security-config>

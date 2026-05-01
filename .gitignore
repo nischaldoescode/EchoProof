@@ -115,3 +115,9 @@ Desktop.ini
 *.mobileprovision
 google-services.json
 GoogleService-Info.plist
+*.txt
+adunits.txt
+seed.sql
+config.toml
+supabase/config.toml
+supabase/seed/seed.sql

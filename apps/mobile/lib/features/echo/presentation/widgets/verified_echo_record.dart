@@ -86,6 +86,7 @@ class VerifiedEchoRecord extends StatelessWidget {
                       content: const Text('Record ID copied'),
                       backgroundColor: AppColors.charcoal,
                       behavior: SnackBarBehavior.floating,
+                      margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),

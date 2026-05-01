@@ -7,7 +7,7 @@
 
 create extension if not exists "uuid-ossp";
 create extension if not exists "pg_trgm";  -- for fuzzy text search on echoes
-
+create extension if not exists "pgcrypto";
 -- ============================================================
 -- enums
 -- ============================================================
@@ -78,7 +78,7 @@ create table users_public (
 -- ============================================================
 
 create table echoes (
-  id                    uuid primary key default uuid_generate_v4(),
+  id                    uuid primary key default gen_random_uuid(),
   user_id               uuid not null references users_public(id) on delete cascade,
   title                 text not null check (char_length(title) between 1 and 120),
   content               text not null check (char_length(content) between 1 and 2000),
@@ -121,7 +121,7 @@ create index echoes_created_at_idx on echoes(created_at desc);
 -- ============================================================
 
 create table echo_interactions (
-  id          uuid primary key default uuid_generate_v4(),
+  id          uuid primary key default gen_random_uuid(),
   echo_id     uuid not null references echoes(id) on delete cascade,
   user_id     uuid not null references users_public(id) on delete cascade,
   type        interaction_type not null,
@@ -140,7 +140,7 @@ create index echo_interactions_echo_id_idx on echo_interactions(echo_id);
 -- ============================================================
 
 create table echo_proofs (
-  id           uuid primary key default uuid_generate_v4(),
+  id           uuid primary key default gen_random_uuid(),
   echo_id      uuid not null references echoes(id) on delete cascade,
   user_id      uuid not null references users_public(id) on delete cascade,
   proof_type   text not null check (proof_type in ('url', 'image', 'document')),
@@ -158,7 +158,7 @@ create index echo_proofs_echo_id_idx on echo_proofs(echo_id);
 -- ============================================================
 
 create table echo_reports (
-  id             uuid primary key default uuid_generate_v4(),
+  id             uuid primary key default gen_random_uuid(),
   echo_id        uuid not null references echoes(id) on delete cascade,
   reporter_id    uuid not null references users_public(id) on delete cascade,
   reason         report_reason not null,
@@ -184,7 +184,7 @@ create index echo_reports_resolved_idx on echo_reports(resolved) where resolved 
 -- ============================================================
 
 create table notifications (
-  id          uuid primary key default uuid_generate_v4(),
+  id          uuid primary key default gen_random_uuid(),
   user_id     uuid not null references users_public(id) on delete cascade,
   type        text not null,   -- e.g. 'echo_verified', 'report_resolved', 'trust_update'
   title       text not null,
@@ -203,7 +203,7 @@ create index notifications_unread_idx on notifications(user_id) where read = fal
 -- ============================================================
 
 create table admin_actions (
-  id           uuid primary key default uuid_generate_v4(),
+  id           uuid primary key default gen_random_uuid(),
   admin_id     uuid not null references auth.users(id),
   target_type  text not null check (target_type in ('echo', 'user')),
   target_id    uuid not null,

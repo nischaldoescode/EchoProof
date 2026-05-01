@@ -5,15 +5,49 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+<<<<<<< HEAD
+=======
+import 'package:package_info_plus/package_info_plus.dart';
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../auth/presentation/services/auth_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+<<<<<<< HEAD
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
   @override
+=======
+import '../../../../core/utils/logger.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+class SettingsScreen extends StatefulWidget {
+  const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  String _version = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() => _version = '${info.version} (${info.buildNumber})');
+    }
+  }
+
+  @override
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5FAF7),
@@ -21,7 +55,12 @@ class SettingsScreen extends StatelessWidget {
         title: Text(
           'Settings',
           style: GoogleFonts.josefinSans(
+<<<<<<< HEAD
             fontSize: 18, fontWeight: FontWeight.w600,
+=======
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
           ),
         ),
         backgroundColor: Colors.transparent,
@@ -32,6 +71,7 @@ class SettingsScreen extends StatelessWidget {
         children: [
           _Section(title: 'Account', tiles: [
             _Tile(
+<<<<<<< HEAD
               icon:    Icons.person_outline_rounded,
               label:   'Edit profile',
               onTap:   () => context.push('/profile'),
@@ -60,23 +100,55 @@ class SettingsScreen extends StatelessWidget {
           _Section(title: 'Notifications', tiles: [
             _SwitchTile(
               icon:  Icons.notifications_outlined,
+=======
+              icon: Icons.person_outline_rounded,
+              label: 'Edit profile',
+              onTap: () => context.push('/profile'),
+            ),
+            _Tile(
+              icon: Icons.verified_user_outlined,
+              label: 'Verify identity',
+              onTap: () => context.push('/verify-identity'),
+            ),
+          ]),
+          _Section(title: 'Subscription', tiles: [
+            _Tile(
+              icon: Icons.star_outline_rounded,
+              label: 'Echoproof Pro',
+              trailing: const _ProBadge(),
+              onTap: () => context.push('/subscribe'),
+            ),
+          ]),
+          _Section(title: 'Notifications', tiles: [
+            _SwitchTile(
+              icon: Icons.notifications_outlined,
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
               label: 'Echo verified',
               value: true,
               onChanged: (_) {},
             ),
             _SwitchTile(
+<<<<<<< HEAD
               icon:  Icons.people_outline,
+=======
+              icon: Icons.people_outline,
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
               label: 'New echo from someone I follow',
               value: true,
               onChanged: (_) {},
             ),
             _SwitchTile(
+<<<<<<< HEAD
               icon:  Icons.arrow_upward_rounded,
+=======
+              icon: Icons.arrow_upward_rounded,
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
               label: 'Someone supported my echo',
               value: false,
               onChanged: (_) {},
             ),
           ]),
+<<<<<<< HEAD
 
           _Section(title: 'Privacy', tiles: [
             _Tile(
@@ -130,13 +202,73 @@ class SettingsScreen extends StatelessWidget {
                 context.go('/login');
               },
               icon:  const Icon(Icons.logout_rounded, size: 18),
+=======
+          _Section(title: 'Privacy', tiles: [
+            _Tile(
+              icon: Icons.shield_outlined,
+              label: 'End-to-end encryption',
+              subtitle: 'All echoes encrypted in transit and at rest',
+              onTap: () {},
+            ),
+            _Tile(
+              icon: Icons.delete_outline_rounded,
+              label: 'Delete account',
+              color: AppColors.sunsetCoral,
+              onTap: () => _showDeleteAccount(context),
+            ),
+          ]),
+          _Section(title: 'About', tiles: [
+            _Tile(
+              icon: Icons.info_outline_rounded,
+              label: 'About Echoproof',
+              onTap: () => _launchUrl('https://echoproof.online/'),
+            ),
+            _Tile(
+              icon: Icons.description_outlined,
+              label: 'Terms of service',
+              onTap: () => _launchUrl('https://echoproof.online/terms'),
+            ),
+            _Tile(
+              icon: Icons.privacy_tip_outlined,
+              label: 'Privacy policy',
+              onTap: () => _launchUrl('https://echoproof.online/privacy'),
+            ),
+            _Tile(
+              icon: Icons.support_agent_rounded,
+              label: 'Contact support',
+              onTap: () => _showContactSheet(context),
+            ),
+            _Tile(
+              icon: Icons.code_rounded,
+              label: _version.isEmpty ? 'Version...' : 'Version $_version',
+              onTap: () {},
+            ),
+          ]),
+          const SizedBox(height: AppSpacing.lg),
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.xl,
+              vertical: AppSpacing.sm,
+            ),
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                await context.read<AuthService>().signOut();
+                if (context.mounted) context.go('/login');
+              },
+              icon: const Icon(Icons.logout_rounded, size: 18),
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
               label: Text(
                 'Sign out',
                 style: GoogleFonts.josefinSans(fontWeight: FontWeight.w600),
               ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.sunsetCoral,
+<<<<<<< HEAD
                 side: BorderSide(color: AppColors.sunsetCoral.withValues(alpha: 0.4)),
+=======
+                side: BorderSide(
+                    color: AppColors.sunsetCoral.withValues(alpha: 0.4)),
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
@@ -144,7 +276,10 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
           ),
+<<<<<<< HEAD
 
+=======
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
           const SizedBox(height: 80),
         ],
       ),
@@ -163,6 +298,7 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
+<<<<<<< HEAD
   void _showDeleteAccount(BuildContext context) {
     showDialog<void>(
       context: context,
@@ -194,11 +330,235 @@ class SettingsScreen extends StatelessWidget {
       ),
     );
   }
+=======
+  Future<void> _launchUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      AppLogger.warn('settings: could not launch $url');
+    }
+  }
+
+  void _showContactSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.borderMedium,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            Text('Contact support',
+                style: GoogleFonts.josefinSans(
+                    fontSize: 18, fontWeight: FontWeight.w700)),
+            const SizedBox(height: AppSpacing.md),
+            Text(
+              'For support, bug reports, or general questions:',
+              style: GoogleFonts.josefinSans(
+                  fontSize: 14, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            GestureDetector(
+              onTap: () => _launchUrl('mailto:support@echoproof.online'),
+              child: Container(
+                padding: const EdgeInsets.all(AppSpacing.md),
+                decoration: BoxDecoration(
+                  color: AppColors.fernGreenLight,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                      color: AppColors.fernGreen.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.email_outlined,
+                        size: 20, color: AppColors.fernGreen),
+                    const SizedBox(width: AppSpacing.md),
+                    Text('support@echoproof.online',
+                        style: GoogleFonts.josefinSans(
+                          fontSize: 14,
+                          color: AppColors.fernGreenDark,
+                          fontWeight: FontWeight.w600,
+                        )),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'This is our only support channel at this time.',
+              style: GoogleFonts.josefinSans(
+                  fontSize: 12, color: AppColors.textTertiary),
+            ),
+            const SizedBox(height: AppSpacing.xxl),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showDeleteAccount(BuildContext context) {
+    // empty controller — user must type email themselves
+    final emailCtrl = TextEditingController();
+    final currentEmail = Supabase.instance.client.auth.currentUser?.email ?? '';
+
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text('Delete account?',
+              style: GoogleFonts.josefinSans(fontWeight: FontWeight.w700)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'This permanently deletes your account, echoes, and trust history. This cannot be undone.',
+                style: GoogleFonts.josefinSans(fontSize: 14, height: 1.5),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Type your email address to confirm:',
+                style: GoogleFonts.josefinSans(
+                    fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: emailCtrl,
+                keyboardType: TextInputType.emailAddress,
+                autofocus: true,
+                style: GoogleFonts.josefinSans(fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: 'your email address',
+                  hintStyle:
+                      GoogleFonts.josefinSans(color: AppColors.textTertiary),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+                onChanged: (_) => setDialogState(() {}),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Cancel',
+                  style: GoogleFonts.josefinSans(color: AppColors.charcoal)),
+            ),
+            TextButton(
+              onPressed: emailCtrl.text.trim() == currentEmail
+                  ? () async {
+                      Navigator.pop(ctx);
+                      await _deleteAccount(context);
+                    }
+                  : null,
+              child: Text(
+                'Delete permanently',
+                style: GoogleFonts.josefinSans(
+                  color: emailCtrl.text.trim() == currentEmail
+                      ? AppColors.sunsetCoral
+                      : AppColors.textTertiary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteAccount(BuildContext context) async {
+    final auth = context.read<AuthService>();
+    final client = Supabase.instance.client;
+    final userId = client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    AppLogger.info('settings: deleting account for $userId');
+
+    try {
+      // delete dependent rows in safe order before removing the user rows
+      await client.from('signal_responses').delete().eq('user_id', userId);
+      await client.from('echo_interactions').delete().eq('user_id', userId);
+      await client.from('echo_replies').delete().eq('user_id', userId);
+      final echoIds = await _getUserEchoIds(client, userId);
+
+      if (echoIds.isNotEmpty) {
+        await client
+            .from('echo_proofs')
+            .delete()
+            .filter('echo_id', 'in', echoIds);
+        await client
+            .from('echo_signals')
+            .delete()
+            .filter('echo_id', 'in', echoIds);
+      }
+      await client.from('truth_bonds').delete().eq('user_id', userId);
+      await client.from('notifications').delete().eq('user_id', userId);
+      await client.from('echoes').delete().eq('user_id', userId);
+      await client.from('users_public').delete().eq('id', userId);
+      await client.from('users_private').delete().eq('id', userId);
+
+      AppLogger.info('settings: user data deleted, signing out');
+      await auth.signOut();
+
+      if (context.mounted) {
+        context.go('/login');
+      }
+    } catch (e) {
+      AppLogger.error('settings: delete account failed: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete account. Please try again.',
+                style: GoogleFonts.josefinSans(fontSize: 13)),
+            backgroundColor: AppColors.sunsetCoral,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<List<String>> _getUserEchoIds(
+      SupabaseClient client, String userId) async {
+    try {
+      final rows =
+          await client.from('echoes').select('id').eq('user_id', userId);
+      return (rows as List).map((r) => r['id'] as String).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 }
 
 class _Section extends StatelessWidget {
   const _Section({required this.title, required this.tiles});
+<<<<<<< HEAD
   final String       title;
+=======
+  final String title;
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
   final List<Widget> tiles;
 
   @override
@@ -208,14 +568,27 @@ class _Section extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(
+<<<<<<< HEAD
             AppSpacing.xl, AppSpacing.lg, AppSpacing.xl, AppSpacing.xs,
+=======
+            AppSpacing.xl,
+            AppSpacing.lg,
+            AppSpacing.xl,
+            AppSpacing.xs,
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
           ),
           child: Text(
             title.toUpperCase(),
             style: GoogleFonts.josefinSans(
+<<<<<<< HEAD
               fontSize:   11,
               fontWeight: FontWeight.w600,
               color:      AppColors.textTertiary,
+=======
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textTertiary,
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
               letterSpacing: 1.2,
             ),
           ),
@@ -223,7 +596,11 @@ class _Section extends StatelessWidget {
         Container(
           margin: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
           decoration: BoxDecoration(
+<<<<<<< HEAD
             color:        Colors.white,
+=======
+            color: Colors.white,
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: AppColors.borderSubtle),
           ),
@@ -244,10 +621,17 @@ class _Tile extends StatelessWidget {
     this.color,
   });
   final IconData icon;
+<<<<<<< HEAD
   final String   label;
   final String?  subtitle;
   final Widget?  trailing;
   final Color?   color;
+=======
+  final String label;
+  final String? subtitle;
+  final Widget? trailing;
+  final Color? color;
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
   final VoidCallback onTap;
 
   @override
@@ -258,7 +642,11 @@ class _Tile extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(
           horizontal: AppSpacing.lg,
+<<<<<<< HEAD
           vertical:   AppSpacing.md,
+=======
+          vertical: AppSpacing.md,
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
         ),
         child: Row(
           children: [
@@ -271,9 +659,15 @@ class _Tile extends StatelessWidget {
                   Text(
                     label,
                     style: GoogleFonts.josefinSans(
+<<<<<<< HEAD
                       fontSize:   14,
                       fontWeight: FontWeight.w500,
                       color:      color ?? AppColors.charcoal,
+=======
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: color ?? AppColors.charcoal,
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
                     ),
                   ),
                   if (subtitle != null)
@@ -281,17 +675,30 @@ class _Tile extends StatelessWidget {
                       subtitle!,
                       style: GoogleFonts.josefinSans(
                         fontSize: 12,
+<<<<<<< HEAD
                         color:    AppColors.textTertiary,
+=======
+                        color: AppColors.textTertiary,
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
                       ),
                     ),
                 ],
               ),
             ),
+<<<<<<< HEAD
             trailing ?? const Icon(
               Icons.chevron_right_rounded,
               size:  16,
               color: AppColors.textTertiary,
             ),
+=======
+            trailing ??
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  size: 16,
+                  color: AppColors.textTertiary,
+                ),
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
           ],
         ),
       ),
@@ -307,8 +714,13 @@ class _SwitchTile extends StatefulWidget {
     required this.onChanged,
   });
   final IconData icon;
+<<<<<<< HEAD
   final String   label;
   final bool     value;
+=======
+  final String label;
+  final bool value;
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
   final void Function(bool) onChanged;
 
   @override
@@ -329,28 +741,55 @@ class _SwitchTileState extends State<_SwitchTile> {
     return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.lg,
+<<<<<<< HEAD
         vertical:   AppSpacing.sm,
       ),
       child: Row(
         children: [
           Icon(widget.icon, size: 20, color: AppColors.charcoal),
+=======
+        vertical: AppSpacing.sm,
+      ),
+      child: Row(
+        children: [
+          Icon(widget.icon,
+              size: 20,
+              color: _value ? AppColors.fernGreen : AppColors.textTertiary),
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
           const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Text(
               widget.label,
               style: GoogleFonts.josefinSans(
+<<<<<<< HEAD
                 fontSize:   14,
                 fontWeight: FontWeight.w500,
+=======
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: _value ? AppColors.charcoal : AppColors.textSecondary,
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
               ),
             ),
           ),
           Switch.adaptive(
+<<<<<<< HEAD
             value:     _value,
+=======
+            value: _value,
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
             onChanged: (v) {
               setState(() => _value = v);
               widget.onChanged(v);
             },
+<<<<<<< HEAD
             activeColor: AppColors.fernGreen,
+=======
+            activeThumbColor: AppColors.fernGreen,
+            activeTrackColor: AppColors.fernGreen.withValues(alpha: 0.4),
+            inactiveThumbColor: AppColors.textTertiary,
+            inactiveTrackColor: AppColors.borderMedium,
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
           ),
         ],
       ),
@@ -374,9 +813,15 @@ class _ProBadge extends StatelessWidget {
       child: Text(
         'PRO',
         style: GoogleFonts.josefinSans(
+<<<<<<< HEAD
           fontSize:   10,
           fontWeight: FontWeight.w700,
           color:      Colors.white,
+=======
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: Colors.white,
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
           letterSpacing: 0.8,
         ),
       ),
@@ -393,16 +838,26 @@ class _ChangePasswordSheet extends StatefulWidget {
 
 class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
   final _controller = TextEditingController();
+<<<<<<< HEAD
   bool  _loading    = false;
+=======
+  bool _loading = false;
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.only(
         bottom: MediaQuery.viewInsetsOf(context).bottom,
+<<<<<<< HEAD
         left:   AppSpacing.xl,
         right:  AppSpacing.xl,
         top:    AppSpacing.xl,
+=======
+        left: AppSpacing.xl,
+        right: AppSpacing.xl,
+        top: AppSpacing.xl,
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -411,13 +866,21 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
           Text(
             'New password',
             style: GoogleFonts.josefinSans(
+<<<<<<< HEAD
               fontSize:   18,
+=======
+              fontSize: 18,
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: AppSpacing.lg),
           TextField(
+<<<<<<< HEAD
             controller:  _controller,
+=======
+            controller: _controller,
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
             obscureText: true,
             decoration: InputDecoration(
               hintText: 'Enter new password (min 8 chars)',
@@ -431,6 +894,7 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
+<<<<<<< HEAD
               onPressed: _loading ? null : () async {
                 if (_controller.text.length < 8) return;
                 setState(() => _loading = true);
@@ -440,6 +904,19 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
                 );
                 if (mounted) Navigator.pop(context);
               },
+=======
+              onPressed: _loading
+                  ? null
+                  : () async {
+                      if (_controller.text.length < 8) return;
+                      setState(() => _loading = true);
+                      // supabase update password
+                      await Supabase.instance.client.auth.updateUser(
+                        UserAttributes(password: _controller.text),
+                      );
+                      if (mounted) Navigator.pop(context);
+                    },
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.charcoal,
                 padding: const EdgeInsets.symmetric(vertical: 14),
@@ -458,4 +935,8 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
       ),
     );
   }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
