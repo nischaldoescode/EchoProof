@@ -75,7 +75,7 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
             support_count, challenge_count, created_at,
             verified_record_tx, verified_record_at, bond_count, response_count,
             users_public!inner(
-              username, avatar_url, trust_tier, is_identity_verified
+              username, avatar_url, trust_tier
             )
           ''').eq('id', widget.echoId).single();
 
@@ -150,7 +150,7 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
       content: row['content'] as String,
       username: user['username'] as String,
       userTrustTier: user['trust_tier'] as String? ?? 'unverified',
-      userIsVerified: user['is_identity_verified'] as bool? ?? false,
+      userIsVerified: false,
       userAvatarUrl: user['avatar_url'] as String?,
       category: EchoCategory.fromString(row['category'] as String),
       status: _parseStatus(row['status'] as String),

@@ -80,7 +80,7 @@ class _StepFirstEchoState extends State<StepFirstEcho> {
               TextField(
                 controller: _controller,
                 maxLines:   5,
-                maxLength:  2000,
+                maxLength:  308,
                 decoration: const InputDecoration(
                   hintText:           'What do you want the community to verify?',
                   alignLabelWithHint: true,

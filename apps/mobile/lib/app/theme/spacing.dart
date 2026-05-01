@@ -16,6 +16,7 @@ abstract final class AppSpacing {
   static const double radiusLg   = 16.0;
   static const double radiusFull = 999.0;
 
+
   // specific component sizes
   static const double echoCardRadius     = 12.0;
   static const double trustBadgeRadius   = 6.0;

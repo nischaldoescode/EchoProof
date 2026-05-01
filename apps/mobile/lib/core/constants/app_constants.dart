@@ -8,7 +8,7 @@ abstract final class AppConstants {
 
   // content limits
   static const int echoTitleMaxLength   = 120;
-  static const int echoContentMaxLength = 2000;
+  static const int echoContentMaxLength = 308;
   static const int signalMaxLength      = 32;
   static const int maxSignalsPerEcho    = 5;
   static const int proofMaxSizeBytes    = 1024 * 1024; // 1 mb

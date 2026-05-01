@@ -1,16 +1,49 @@
 // formatting utilities used across the app
 
 abstract final class Formatters {
-  // formats a datetime as a relative time string
-  static String timeAgo(DateTime dateTime) {
-    final diff = DateTime.now().difference(dateTime);
+  // twitter-style time ago
+  // < 60s    → "just now"
+  // < 60m    → "42m"
+  // < 24h    → "6h"
+  // < 7 days → "Mon" (day name)
+  // else     → "Apr 24"
+  static String timeAgo(DateTime date) {
+    final now = DateTime.now();
+    final diff = now.difference(date);
+
     if (diff.inSeconds < 60) return 'just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    if (diff.inDays < 7) return '${diff.inDays}d ago';
-    if (diff.inDays < 30) return '${(diff.inDays / 7).floor()}w ago';
-    return '${(diff.inDays / 30).floor()}mo ago';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
+    if (diff.inHours < 24) return '${diff.inHours}h';
+    if (diff.inDays < 7) return _dayName(date.weekday);
+
+    final month = _monthAbbr(date.month);
+    return '$month ${date.day}';
   }
+
+  static String _dayName(int weekday) => const [
+        'Mon',
+        'Tue',
+        'Wed',
+        'Thu',
+        'Fri',
+        'Sat',
+        'Sun',
+      ][weekday - 1];
+
+  static String _monthAbbr(int month) => const [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ][month - 1];
 
   // formats lamports as readable sol amount
   static String lamportsToSol(int lamports) {

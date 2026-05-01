@@ -5,7 +5,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/utils/logger.dart';
-
+import 'package:flutter/painting.dart' show Color;
 class NotificationItem {
   const NotificationItem({
     required this.id,

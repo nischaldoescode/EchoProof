@@ -14,6 +14,7 @@ import '../../../../core/services/echo_interaction_service.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../shared/widgets/echo_action_sheet.dart';
 import '../services/echo_feed_service.dart';
+import 'package:go_router/go_router.dart';
 
 class InteractionButtons extends StatelessWidget {
   const InteractionButtons({super.key, required this.echo});
@@ -42,22 +43,26 @@ class InteractionButtons extends StatelessWidget {
             onTap: () => _interact(context, 'challenge'),
           ),
           const Spacer(),
-          if (echo.proofCount > 0)
-            Row(
+          GestureDetector(
+            onTap: () => context.push(
+              '/echo/${echo.id}/replies?author=${echo.username}&content=${Uri.encodeComponent(echo.content)}',
+            ),
+            child: Row(
               children: [
                 const Icon(
-                  Icons.attach_file_outlined,
+                  Icons.chat_bubble_outline_rounded,
                   size: 14,
                   color: AppColors.textTertiary,
                 ),
                 const SizedBox(width: 3),
                 Text(
-                  '${echo.proofCount}',
+                  '${echo.replyCount}',
                   style: AppTypography.textTheme.labelMedium,
                 ),
                 const SizedBox(width: AppSpacing.sm),
               ],
             ),
+          ),
           IconButton(
             icon: const Icon(Icons.more_horiz, size: 18),
             color: AppColors.textTertiary,
@@ -115,6 +120,7 @@ class InteractionButtons extends StatelessWidget {
             content: Text(e.toString()),
             backgroundColor: AppColors.sunsetCoral,
             behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),

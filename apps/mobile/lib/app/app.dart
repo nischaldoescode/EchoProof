@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'theme/app_theme.dart';
+import '../shared/widgets/connectivity_wrapper.dart';
 
 class EchoProofApp extends StatelessWidget {
   const EchoProofApp({super.key, required this.router});
@@ -18,6 +19,9 @@ class EchoProofApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
       routerConfig: router,
+      builder: (context, child) => ConnectivityWrapper(
+        child: child ?? const SizedBox.shrink(),
+      ),
     );
   }
 }
@@ -62,6 +66,10 @@ class _ExitConfirmWrapperState extends State<ExitConfirmWrapper> {
                 ),
                 duration: const Duration(seconds: 2),
                 behavior: SnackBarBehavior.floating,
+<<<<<<< HEAD
+=======
+                margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
                 backgroundColor: const Color(0xFF2D2D2D),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),

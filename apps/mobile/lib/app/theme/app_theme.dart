@@ -105,6 +105,14 @@ ThemeData buildAppTheme() {
         ),
       ),
     ),
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      insetPadding: const EdgeInsets.only(
+        bottom: 88,
+        left: 16,
+        right: 16,
+      ),
+    ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: AppColors.charcoal,

@@ -18,6 +18,7 @@ void showSignalResponseSheet({
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
+     useSafeArea: true, 
     backgroundColor: AppColors.white,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(
@@ -99,6 +100,7 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
             content: Text(e.toString()),
             backgroundColor: AppColors.sunsetCoral,
             behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),

@@ -7,6 +7,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../domain/entities/echo_entity.dart';
 import '../../../../core/utils/logger.dart';
+import 'dart:io';
 
 const _kDraftKey = 'echo_draft';
 
@@ -34,6 +35,41 @@ class CreateEchoService extends ChangeNotifier {
       _content.trim().isNotEmpty &&
       _category != null &&
       !_isSubmitting;
+<<<<<<< HEAD
+=======
+
+  final List<String> _mediaUrls = [];
+  List<String> get mediaUrls => List.unmodifiable(_mediaUrls);
+
+  Future<void> addMedia(String localPath, bool isVideo) async {
+    // upload to supabase storage
+    try {
+      final client = Supabase.instance.client;
+      final userId = client.auth.currentUser?.id;
+      if (userId == null) return;
+
+      final ext = localPath.split('.').last;
+      final name = '${DateTime.now().millisecondsSinceEpoch}.$ext';
+      final path = 'echoes/$userId/$name';
+      final file = File(localPath);
+
+      await client.storage.from('echo-media').upload(path, file);
+
+      final url = client.storage.from('echo-media').getPublicUrl(path);
+      _mediaUrls.add(url);
+      notifyListeners();
+
+      AppLogger.info('echo: media uploaded $url');
+    } catch (e) {
+      AppLogger.error('echo: media upload failed $e');
+    }
+  }
+
+  void removeMedia(int index) {
+    _mediaUrls.removeAt(index);
+    notifyListeners();
+  }
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 
   CreateEchoService() {
     _restoreDraft();

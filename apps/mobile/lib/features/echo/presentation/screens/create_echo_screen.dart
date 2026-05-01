@@ -14,6 +14,10 @@ import '../../domain/entities/echo_entity.dart';
 import '../services/create_echo_service.dart';
 import '../../../../core/services/ad_service.dart';
 import '../../../../features/subscription/presentation/services/subscription_service.dart';
+<<<<<<< HEAD
+=======
+import 'package:image_picker/image_picker.dart';
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 
 class CreateEchoScreen extends StatefulWidget {
   const CreateEchoScreen({super.key});
@@ -70,6 +74,27 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
     super.dispose();
   }
 
+  Future<void> _pickMedia(bool isVideo) async {
+    final picker = ImagePicker();
+    XFile? file;
+
+    if (isVideo) {
+      file = await picker.pickVideo(
+        source: ImageSource.gallery,
+      );
+    } else {
+      file = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+      );
+    }
+
+    if (file == null) return;
+    if (!mounted) return;
+
+    await context.read<CreateEchoService>().addMedia(file.path, isVideo);
+  }
+
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     await context.read<CreateEchoService>().submit();
@@ -103,6 +128,10 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                     ),
                     backgroundColor: const Color(0xFF1E3A2A),
                     behavior: SnackBarBehavior.floating,
+<<<<<<< HEAD
+=======
+                    margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
+>>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -213,25 +242,10 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                     ],
                   ),
                   const SizedBox(height: AppSpacing.xs),
-                  TextFormField(
+                  _HashtagTextField(
                     controller: _contentController,
-                    maxLength: 2000,
-                    buildCounter: (_,
-                            {required currentLength,
-                            required isFocused,
-                            maxLength}) =>
-                        null,
-                    maxLines: 6,
-                    minLines: 4,
                     onChanged: context.read<CreateEchoService>().setContent,
-                    decoration: const InputDecoration(
-                      hintText: 'Explain your opinion, experience, or claim...',
-                      alignLabelWithHint: true,
-                    ),
-                    style: AppTypography.textTheme.bodyMedium,
-                    validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'content cannot be empty'
-                        : null,
+                    maxLength: 308,
                   ),
                   const SizedBox(height: AppSpacing.xl),
                   Text('Category', style: AppTypography.textTheme.titleSmall),
@@ -264,6 +278,12 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                         ),
                       ),
                     ),
+                  _MediaPickerRow(
+                    mediaUrls: service.mediaUrls,
+                    onPickImage: () => _pickMedia(false),
+                    onPickVideo: () => _pickMedia(true),
+                    onRemove: service.removeMedia,
+                  ),
                   const SizedBox(height: 100),
                 ],
               ),
@@ -271,6 +291,48 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
           ),
         ),
       ),
+    );
+  }
+}
+
+class _HashtagTextField extends StatelessWidget {
+  const _HashtagTextField({
+    required this.controller,
+    required this.onChanged,
+    required this.maxLength,
+  });
+
+  final TextEditingController controller;
+  final void Function(String) onChanged;
+  final int maxLength;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: controller,
+      maxLength: maxLength,
+      maxLines: 6,
+      minLines: 4,
+      buildCounter:
+          (_, {required currentLength, required isFocused, maxLength}) => null,
+      onChanged: onChanged,
+      style: const TextStyle(
+        fontSize: 15,
+        color: Color(0xFF1A1A1A),
+        height: 1.5,
+      ),
+      decoration: InputDecoration(
+        hintText:
+            'Explain your opinion, experience, or claim...\n\nUse #hashtags to categorize your echo.',
+        hintStyle: GoogleFonts.josefinSans(
+          fontSize: 14,
+          color: AppColors.textTertiary,
+          height: 1.5,
+        ),
+        alignLabelWithHint: true,
+      ),
+      validator: (v) =>
+          (v == null || v.trim().isEmpty) ? 'content cannot be empty' : null,
     );
   }
 }
@@ -388,6 +450,65 @@ class _CategoryPicker extends StatelessWidget {
           ),
         );
       }).toList(),
+    );
+  }
+}
+
+class _MediaPickerRow extends StatelessWidget {
+  const _MediaPickerRow({
+    required this.mediaUrls,
+    required this.onPickImage,
+    required this.onPickVideo,
+    required this.onRemove,
+  });
+
+  final List<String> mediaUrls;
+  final VoidCallback onPickImage;
+  final VoidCallback onPickVideo;
+  final void Function(int) onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.image),
+              onPressed: onPickImage,
+            ),
+            IconButton(
+              icon: const Icon(Icons.videocam),
+              onPressed: onPickVideo,
+            ),
+          ],
+        ),
+        Wrap(
+          spacing: 8,
+          children: List.generate(mediaUrls.length, (index) {
+            return Stack(
+              alignment: Alignment.topRight,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    mediaUrls[index],
+                    width: 80,
+                    height: 80,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => onRemove(index),
+                  child: const Icon(Icons.close, size: 18),
+                ),
+              ],
+            );
+          }),
+        ),
+      ],
     );
   }
 }
