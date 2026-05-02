@@ -116,45 +116,8 @@ time is the highest signal of credibility on the platform.
 In the UI this appears as "Bond this truth" on verified echoes and
 "Your bonds" on the profile screen. The word Solana never appears to users.
 
-## Running locally
+## NOTE
+> I myself Don't advise to run this app locally it will be a piss of kinda headache for a developer. So just enjoy what i am building.
 
-```bash
-# install supabase cli: brew install supabase/tap/supabase
-# install flutter: flutter.dev
-# install node 20+
-
-git clone <repo>
-cd EchoProof
-
-chmod +x scripts/setup.sh
-./scripts/setup.sh
-
-# flutter app
-cd apps/mobile
-flutter run \
-  --dart-define=SUPABASE_URL=http://127.0.0.1:54321 \
-  --dart-define=SUPABASE_ANON_KEY=<local-anon-key> \
-  --dart-define=SOLANA_RPC_URL=https://api.devnet.solana.com
-
-# admin panel
-cd apps/admin
-npm run dev
-# open http://localhost:3000
-```
-
-## Environment variables
-supabase (set automatically by supabase cli locally)
-SUPABASE_URL
-SUPABASE_ANON_KEY
-SUPABASE_SERVICE_ROLE_KEY
-solana
-SOLANA_RPC_URL=https://api.devnet.solana.com
-ai (optional — either or neither)
-HUGGINGFACE_API_TOKEN
-OPENAI_API_KEY
-identity verification
-PERSONA_TEMPLATE_ID
-PERSONA_WEBHOOK_SECRET
-admin panel
-NEXT_PUBLIC_SUPABASE_URL
-NEXT_PUBLIC_SUPABASE_ANON_KEY
+Regards,
+I code therefore, I am.

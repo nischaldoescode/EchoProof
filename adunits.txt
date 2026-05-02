@@ -1,6 +1,0 @@
-
-Rewarded: ca-app-pub-8724974575673217~1448463596
-Rewarded: ca-app-pub-8724974575673217/8341175005
-
-RewardedInterstitial: ca-app-pub-8724974575673217~1448463596
-RewardedInterstitial: ca-app-pub-8724974575673217/9069074954
