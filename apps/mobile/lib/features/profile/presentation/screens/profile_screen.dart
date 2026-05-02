@@ -12,14 +12,11 @@ import '../../../../shared/widgets/shimmer_loader.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/logger.dart';
 import '../widgets/reputation_card.dart';
-<<<<<<< HEAD
-=======
 import '../../../settings/presentation/widgets/solana_info_card.dart';
 import 'package:flutter/foundation.dart';
 import '../../../../core/security/secure_screen.dart';
 import '../../../../shared/widgets/app_bottom_nav.dart';
 import '../../../../app/app.dart';
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, this.username});
@@ -456,135 +453,6 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   @override
   Widget build(BuildContext context) {
-<<<<<<< HEAD
-    return Scaffold(
-      backgroundColor: AppColors.white,
-      appBar: AppBar(
-        title: Text('Profile', style: AppTypography.textTheme.titleLarge),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout_outlined, size: 20),
-            onPressed: () {
-              context.read<AuthService>().signOut();
-              context.go('/login');
-            },
-          ),
-        ],
-      ),
-      body: _isLoading
-          ? const Padding(
-              padding: EdgeInsets.all(AppSpacing.xl),
-              child: EchoCardShimmer(),
-            )
-          : _profile == null
-              ? Center(
-                  child: Text(
-                    'could not load profile',
-                    style: AppTypography.textTheme.bodyMedium,
-                  ),
-                )
-              : RefreshIndicator(
-                  color: AppColors.fernGreen,
-                  onRefresh: _loadProfile,
-                  child: ListView(
-                    padding: const EdgeInsets.all(AppSpacing.xl),
-                    children: [
-                      ReputationCard(
-                        username: _profile!['username'] as String? ?? '',
-                        trustTier:
-                            _profile!['trust_tier'] as String? ?? 'unverified',
-                        trustScore:
-                            (_profile!['trust_score'] as num?)?.toInt() ?? 0,
-                        echoCount:
-                            (_profile!['echo_count'] as num?)?.toInt() ?? 0,
-                        proofCount:
-                            (_profile!['proof_count'] as num?)?.toInt() ?? 0,
-                        isIdentityVerified: _isIdentityVerified,
-                        settledBonds: _settledBonds,
-                        contestedBonds: _contestedBonds,
-                        activeBonds: _activeBonds,
-                        avatarUrl: _profile!['avatar_url'] as String?,
-                        walletAddress: _profile!['wallet_address'] as String?,
-                      ),
-
-                      const SizedBox(height: AppSpacing.lg),
-
-                      // identity verification prompt
-                      if (!_isIdentityVerified)
-                        GestureDetector(
-                          onTap: () => context.push('/verify-identity'),
-                          child: Container(
-                            padding: const EdgeInsets.all(AppSpacing.md),
-                            decoration: BoxDecoration(
-                              color: AppColors.fernGreenLight,
-                              borderRadius: BorderRadius.circular(
-                                AppSpacing.radiusMd,
-                              ),
-                              border: Border.all(
-                                color: AppColors.fernGreen.withValues(alpha: 0.3),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.shield_outlined,
-                                  size: 18,
-                                  color: AppColors.fernGreen,
-                                ),
-                                const SizedBox(width: AppSpacing.sm),
-                                Expanded(
-                                  child: Text(
-                                    'Verify your identity to increase your trust weight',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: AppColors.fernGreenDark,
-                                      fontFamily: AppTypography.fontFamily,
-                                    ),
-                                  ),
-                                ),
-                                const Icon(
-                                  Icons.chevron_right,
-                                  size: 16,
-                                  color: AppColors.fernGreen,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-
-                      if (!_isIdentityVerified)
-                        const SizedBox(height: AppSpacing.lg),
-
-                      Text(
-                        'Echoes',
-                        style: AppTypography.textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: AppSpacing.sm),
-
-                      if (_echoes.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: AppSpacing.xl,
-                          ),
-                          child: Text(
-                            'No echoes yet',
-                            style: AppTypography.textTheme.bodySmall,
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-
-                      ..._echoes.map((echo) => Padding(
-                            padding:
-                                const EdgeInsets.only(bottom: AppSpacing.sm),
-                            child: EchoCard(
-                              echo: echo,
-                              onTap: () =>
-                                  context.push('/feed/echo/${echo.id}'),
-                            ),
-                          )),
-                    ],
-                  ),
-=======
     return SwipeNavigationWrapper(
         currentLocation: '/profile',
         child: ExitConfirmWrapper(
@@ -606,7 +474,6 @@ class _ProfileScreenState extends State<ProfileScreen>
                   onPressed: () => context.push('/settings'),
                   color: AppColors.charcoal,
                   tooltip: 'Settings',
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
                 ),
               ],
               const SizedBox(width: 4),

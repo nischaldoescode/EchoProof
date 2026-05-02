@@ -35,8 +35,6 @@ class CreateEchoService extends ChangeNotifier {
       _content.trim().isNotEmpty &&
       _category != null &&
       !_isSubmitting;
-<<<<<<< HEAD
-=======
 
   final List<String> _mediaUrls = [];
   List<String> get mediaUrls => List.unmodifiable(_mediaUrls);
@@ -69,7 +67,6 @@ class CreateEchoService extends ChangeNotifier {
     _mediaUrls.removeAt(index);
     notifyListeners();
   }
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 
   CreateEchoService() {
     _restoreDraft();

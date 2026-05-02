@@ -19,13 +19,6 @@ import '../features/settings/presentation/screens/settings_screen.dart';
 import '../features/subscription/presentation/screens/subscribe_screen.dart';
 import '../features/auth/presentation/services/auth_service.dart';
 import '../features/onboarding/presentation/services/onboarding_service.dart';
-<<<<<<< HEAD
-import '../features/auth/presentation/screens/otp_screen.dart';
-import '../features/auth/presentation/screens/permissions_screen.dart';
-import '../features/auth/presentation/screens/age_gender_screen.dart';
-import '../features/subscription/presentation/services/subscription_service.dart';
-import '../features/subscription/presentation/screens/subscribe_screen.dart';
-=======
 import '../features/subscription/presentation/services/subscription_service.dart';
 import '../features/search/presentation/screens/search_screen.dart';
 import '../features/echo/presentation/screens/echo_replies_screen.dart';
@@ -64,7 +57,6 @@ class _RouterRefreshStream extends ChangeNotifier {
     }
   }
 }
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 
 GoRouter createRouter({
   required AuthService authService,
@@ -129,9 +121,6 @@ GoRouter createRouter({
     routes: [
       GoRoute(
         path: '/splash',
-<<<<<<< HEAD
-        builder: (context, state) => SplashScreen(),
-=======
         pageBuilder: (_, __) => _slidePage(const SplashScreen()),
       ),
       GoRoute(
@@ -142,7 +131,6 @@ GoRouter createRouter({
         path: '/verify-email',
         pageBuilder: (_, s) =>
             _slidePage(OtpScreen(email: s.extra as String? ?? '')),
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
       ),
       GoRoute(
         path: '/onboarding',

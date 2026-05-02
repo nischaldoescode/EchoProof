@@ -14,10 +14,7 @@ import '../../domain/entities/echo_entity.dart';
 import '../services/create_echo_service.dart';
 import '../../../../core/services/ad_service.dart';
 import '../../../../features/subscription/presentation/services/subscription_service.dart';
-<<<<<<< HEAD
-=======
 import 'package:image_picker/image_picker.dart';
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 
 class CreateEchoScreen extends StatefulWidget {
   const CreateEchoScreen({super.key});
@@ -128,10 +125,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                     ),
                     backgroundColor: const Color(0xFF1E3A2A),
                     behavior: SnackBarBehavior.floating,
-<<<<<<< HEAD
-=======
                     margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),

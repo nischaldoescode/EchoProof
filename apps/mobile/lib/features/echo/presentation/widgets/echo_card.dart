@@ -100,15 +100,11 @@ class EchoCard extends StatelessWidget {
       EchoStatus.disputed => AppColors.sunsetCoral.withValues(alpha: 0.4),
       EchoStatus.controversial =>
         AppColors.statusControversial.withValues(alpha: 0.4),
-<<<<<<< HEAD
-      EchoStatus.underReview => AppColors.statusUnderReview.withValues(alpha: 0.3),
-=======
       EchoStatus.underReview =>
         AppColors.statusUnderReview.withValues(alpha: 0.3),
       EchoStatus.pendingVerification =>
         const Color(0xFF9B59B6).withValues(alpha: 0.3),
       EchoStatus.active => const Color(0xFF3498DB).withValues(alpha: 0.3),
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
       EchoStatus.hidden => AppColors.borderSubtle,
       EchoStatus.rejected => AppColors.borderSubtle,
     };

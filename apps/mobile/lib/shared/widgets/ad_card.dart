@@ -222,10 +222,7 @@ class _AdCardState extends State<AdCard>
             ),
             backgroundColor: const Color(0xFF1E3A2A),
             behavior: SnackBarBehavior.floating,
-<<<<<<< HEAD
-=======
             margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
             ),
@@ -247,10 +244,7 @@ class _AdCardState extends State<AdCard>
             style: GoogleFonts.josefinSans(),
           ),
           behavior: SnackBarBehavior.floating,
-<<<<<<< HEAD
-=======
           margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),

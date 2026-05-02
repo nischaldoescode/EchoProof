@@ -18,17 +18,11 @@ import 'features/onboarding/presentation/services/onboarding_service.dart';
 import 'features/echo/presentation/services/echo_feed_service.dart';
 import 'features/echo/presentation/services/create_echo_service.dart';
 import 'features/notifications/presentation/services/notification_service.dart';
-<<<<<<< HEAD
-import 'core/utils/logger.dart';
-import 'features/subscription/presentation/services/subscription_service.dart';
-import '../../core/services/ad_service.dart';
-=======
 import 'features/subscription/presentation/services/subscription_service.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:flutter_portal/flutter_portal.dart';
 import 'core/services/connectivity_service.dart';
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -78,15 +72,10 @@ Future<void> main() async {
   final echoFeedService = EchoFeedService();
   final createEchoService = CreateEchoService();
   final notificationService = NotificationService();
-<<<<<<< HEAD
-  final adService = AdService();
-  final subscriptionService = SubscriptionService();
-=======
   final subscriptionService = SubscriptionService();
   final adService = AdService();
 
   await authService.checkUsername();
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 
   final router = createRouter(
     authService: authService,
@@ -113,26 +102,6 @@ Future<void> main() async {
     }
   });
   runApp(
-<<<<<<< HEAD
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider<AuthService>.value(value: authService),
-        ChangeNotifierProvider<OnboardingService>.value(
-            value: onboardingService),
-        ChangeNotifierProvider<EchoFeedService>.value(value: echoFeedService),
-        ChangeNotifierProvider<CreateEchoService>.value(
-            value: createEchoService),
-        ChangeNotifierProvider<NotificationService>.value(
-            value: notificationService),
-        ChangeNotifierProvider<SubscriptionService>.value(
-            value: subscriptionService),
-        ChangeNotifierProvider<AdService>.value(value: adService),
-      ],
-      child: EchoProofApp(router: router),
-    ),
-  );
-}
-=======
     Portal(
       child: MultiProvider(
         providers: [
@@ -202,4 +171,3 @@ class _SecurityWarningApp extends StatelessWidget {
     );
   }
 }
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)

@@ -66,10 +66,7 @@ class _ExitConfirmWrapperState extends State<ExitConfirmWrapper> {
                 ),
                 duration: const Duration(seconds: 2),
                 behavior: SnackBarBehavior.floating,
-<<<<<<< HEAD
-=======
                 margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
                 backgroundColor: const Color(0xFF2D2D2D),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
