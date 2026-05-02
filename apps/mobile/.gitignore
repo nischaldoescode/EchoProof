@@ -46,3 +46,6 @@ app.*.map.json
 ad_service.dart
 *.txt
 app_constants.dart
+firebase_options.dart
+firebase.json
+*.json

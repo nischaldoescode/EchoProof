@@ -12,14 +12,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../services/onboarding_service.dart';
-<<<<<<< HEAD
-import '../widgets/onboarding_progress.dart';
-import '../../../../core/utils/username_validator.dart';
-import 'package:go_router/go_router.dart';
-=======
 import '../../../auth/presentation/services/auth_service.dart';
 import '../../../../core/utils/logger.dart';
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 
 class StepUsername extends StatefulWidget {
   const StepUsername({super.key});
@@ -29,38 +23,6 @@ class StepUsername extends StatefulWidget {
 }
 
 class _StepUsernameState extends State<StepUsername> {
-<<<<<<< HEAD
-  final _controller = TextEditingController();
-  String? _errorText;
-  bool _isChecking = false;
-
-  static const _adjectives = [
-    'quiet',
-    'silent',
-    'swift',
-    'calm',
-    'bold',
-    'clear',
-    'sharp',
-    'bright',
-    'deep',
-    'true',
-  ];
-  static const _nouns = [
-    'signal',
-    'wave',
-    'echo',
-    'voice',
-    'proof',
-    'mark',
-    'trace',
-    'lens',
-    'beam',
-    'node',
-  ];
-
-  List<String> _suggestions = [];
-=======
   final _usernameCtrl    = TextEditingController();
   final _displayNameCtrl = TextEditingController();
   final _formKey         = GlobalKey<FormState>();
@@ -69,7 +31,6 @@ class _StepUsernameState extends State<StepUsername> {
   bool _isSaving    = false;
   bool _usernameOk  = false;
   String? _usernameError;
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 
   @override
   void initState() {
@@ -90,33 +51,6 @@ class _StepUsernameState extends State<StepUsername> {
     super.dispose();
   }
 
-<<<<<<< HEAD
-  void _generateSuggestions() {
-    final rng = Random();
-    setState(() {
-      _suggestions = List.generate(3, (_) {
-        final adj = _adjectives[rng.nextInt(_adjectives.length)];
-        final noun = _nouns[rng.nextInt(_nouns.length)];
-        final num = rng.nextInt(900) + 100;
-        return '${adj}_${noun}_$num';
-      });
-    });
-  }
-
-  Future<void> _checkAndContinue() async {
-    final username = _controller.text.trim().toLowerCase();
-
-    final validationError = UsernameValidator.validate(username);
-    if (validationError != null) {
-      setState(() => _errorText = validationError);
-      return;
-    }
-
-    setState(() {
-      _isChecking = true;
-      _errorText = null;
-    });
-=======
   Future<void> _checkUsername(String value) async {
     final v = value.trim().toLowerCase();
     if (v.length < 3) {
@@ -135,7 +69,6 @@ class _StepUsernameState extends State<StepUsername> {
     }
 
     setState(() { _isChecking = true; _usernameError = null; });
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 
     try {
       final client = Supabase.instance.client;
@@ -148,30 +81,6 @@ class _StepUsernameState extends State<StepUsername> {
           .neq('id', myId ?? '')
           .maybeSingle();
 
-<<<<<<< HEAD
-      if (result != null) {
-        if (!mounted) return;
-        setState(() {
-          _isChecking = false;
-          _errorText = 'username already taken, try another';
-        });
-        return;
-      }
-
-      if (!mounted) return;
-      context.read<OnboardingService>().setUsername(username);
-      context.read<OnboardingService>().nextStep();
-
-      // go to age/gender step instead of generic nextStep
-      if (mounted) {
-        context.read<OnboardingService>().setUsername(username);
-        context.push('/age-gender');
-      }
-    } catch (_) {
-      setState(() {
-        _isChecking = false;
-        _errorText = 'could not check username, try again';
-=======
       if (!mounted) return;
 
       if (row != null) {
@@ -193,7 +102,6 @@ class _StepUsernameState extends State<StepUsername> {
         _usernameOk    = false;
         _usernameError = null;
         _isChecking    = false;
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
       });
     }
   }
@@ -249,22 +157,6 @@ class _StepUsernameState extends State<StepUsername> {
 
   @override
   Widget build(BuildContext context) {
-<<<<<<< HEAD
-    return Scaffold(
-      backgroundColor: AppColors.white,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: AppSpacing.xl),
-              const OnboardingProgress(currentStep: 3, totalSteps: 5),
-              const SizedBox(height: AppSpacing.xxl),
-              Text(
-                'Choose your alias',
-                style: AppTypography.textTheme.headlineMedium,
-=======
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
@@ -283,7 +175,6 @@ class _StepUsernameState extends State<StepUsername> {
                 onPressed: () => Navigator.pop(ctx, false),
                 child: Text('Stay',
                     style: GoogleFonts.josefinSans(color: AppColors.fernGreen)),
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
               ),
               TextButton(
                 onPressed: () => Navigator.pop(ctx, true),
@@ -292,82 +183,6 @@ class _StepUsernameState extends State<StepUsername> {
                 child: Text('Leave',
                     style: GoogleFonts.josefinSans(fontWeight: FontWeight.w600)),
               ),
-<<<<<<< HEAD
-              const SizedBox(height: AppSpacing.xxl),
-              TextField(
-                controller: _controller,
-                onChanged: (_) => setState(() => _errorText = null),
-                autocorrect: false,
-                decoration: InputDecoration(
-                  hintText: 'your_alias',
-                  prefixText: '@',
-                  errorText: _errorText,
-                  suffixIcon: _isChecking
-                      ? const Padding(
-                          padding: EdgeInsets.all(12),
-                          child: SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: AppColors.fernGreen,
-                            ),
-                          ),
-                        )
-                      : null,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              Text(
-                'Suggestions',
-                style: AppTypography.textTheme.labelLarge,
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Wrap(
-                spacing: AppSpacing.sm,
-                children: [
-                  ..._suggestions.map((s) => GestureDetector(
-                        onTap: () {
-                          _controller.text = s;
-                          setState(() => _errorText = null);
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: AppSpacing.sm,
-                            vertical: AppSpacing.xs,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppColors.softSand,
-                            borderRadius: BorderRadius.circular(
-                              AppSpacing.radiusFull,
-                            ),
-                            border: Border.all(color: AppColors.borderSubtle),
-                          ),
-                          child: Text(
-                            '@$s',
-                            style: AppTypography.textTheme.labelLarge,
-                          ),
-                        ),
-                      )),
-                  GestureDetector(
-                    onTap: _generateSuggestions,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.sm,
-                        vertical: AppSpacing.xs,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.softSand,
-                        borderRadius: BorderRadius.circular(
-                          AppSpacing.radiusFull,
-                        ),
-                        border: Border.all(color: AppColors.borderSubtle),
-                      ),
-                      child: const Icon(
-                        Icons.refresh,
-                        size: 16,
-                        color: AppColors.textTertiary,
-=======
             ],
           ),
         );
@@ -401,7 +216,6 @@ class _StepUsernameState extends State<StepUsername> {
                             ? AppColors.charcoal
                             : AppColors.borderMedium,
                         borderRadius: BorderRadius.circular(4),
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
                       ),
                     )),
                   ),
@@ -613,20 +427,7 @@ class _StepUsernameState extends State<StepUsername> {
                   const SizedBox(height: AppSpacing.xl),
                 ],
               ),
-<<<<<<< HEAD
-              const Spacer(),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _isChecking ? null : _checkAndContinue,
-                  child: const Text('Continue'),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.xl),
-            ],
-=======
             ),
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
           ),
         ),
       ),
