@@ -14,12 +14,6 @@ const _kUsernameSet = 'onboarding_username_set';
 const _kDone = 'onboarding_done';
 
 class OnboardingService extends ChangeNotifier {
-<<<<<<< HEAD
-  int _currentStep = 1;
-  int get currentStep => _currentStep;
-
-=======
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
   final List<String> _selectedCategories = [];
   List<String> get selectedCategories => List.unmodifiable(_selectedCategories);
 
@@ -29,16 +23,11 @@ class OnboardingService extends ChangeNotifier {
   bool _isSubmitting = false;
   bool get isSubmitting => _isSubmitting;
 
-<<<<<<< HEAD
-  // reads from hive — synchronous, box must already be open
-  // called by router, splash screen, and onboarding root
-=======
   // ALL step reads go through Hive — no private int field
   int get currentStep {
     return Hive.box('app_settings').get(_kStep, defaultValue: 1) as int;
   }
 
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
   bool isComplete() {
     return Hive.box('app_settings').get(_kDone, defaultValue: false) as bool;
   }
@@ -123,11 +112,7 @@ class OnboardingService extends ChangeNotifier {
         final avatarService = AvatarService(client);
         await avatarService.generateAndStore(
           userId: userId,
-<<<<<<< HEAD
-          username: _username,
-=======
           username: username.isNotEmpty ? username : userId.substring(0, 8),
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
         );
 
         // mark onboarding complete in db so the auth check works on next login
@@ -144,11 +129,7 @@ class OnboardingService extends ChangeNotifier {
         }, onConflict: 'id');
       }
     } catch (e) {
-<<<<<<< HEAD
-      AppLogger.warn('onboarding: avatar generation failed — continuing');
-=======
       AppLogger.warn('onboarding: avatar generation failed, continuing: $e');
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
     }
 
     complete();

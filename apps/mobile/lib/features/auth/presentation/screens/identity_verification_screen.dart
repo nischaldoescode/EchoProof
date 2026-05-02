@@ -19,11 +19,6 @@ class IdentityVerificationScreen extends StatelessWidget {
     defaultValue: '',
   );
 
-<<<<<<< HEAD
-  // didit API base — sessions created server-side via edge function
-  static const _sessionEdgeFunction = '/functions/v1/create-didit-session';
-=======
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 
   @override
   Widget build(BuildContext context) {
@@ -218,10 +213,7 @@ class IdentityVerificationScreen extends StatelessWidget {
       const SnackBar(
         content: Text('Opening verification...'),
         behavior: SnackBarBehavior.floating,
-<<<<<<< HEAD
-=======
         margin: EdgeInsets.only(bottom: 80, left: 16, right: 16),
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
       ),
     );
 
@@ -248,11 +240,8 @@ class IdentityVerificationScreen extends StatelessWidget {
           SnackBar(
             content: Text('Verification failed: $e'),
             backgroundColor: AppColors.sunsetCoral,
-<<<<<<< HEAD
-=======
             margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
 
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
           ),
         );
       }

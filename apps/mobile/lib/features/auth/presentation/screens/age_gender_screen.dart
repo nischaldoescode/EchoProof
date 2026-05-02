@@ -1,11 +1,3 @@
-<<<<<<< HEAD
-// age and gender collection screen
-// shown after OTP verification, before permissions
-// age used for content moderation — under 13 blocked
-// gender used for personalization — optional
-
-=======
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -69,12 +61,6 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
     super.dispose();
   }
 
-<<<<<<< HEAD
-  Future<void> _continue() async {
-    if (_age == null) return;
-
-    // under 13 — block access
-=======
   Future<bool> _onWillPop() async {
     final shouldLeave = await showDialog<bool>(
       context: context,
@@ -119,7 +105,6 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
   Future<void> _continue() async {
     if (_age == null) return;
 
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
     if (_age! < 13) {
       _showUnderageDialog();
       return;
@@ -151,16 +136,10 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
         ),
         actions: [
           TextButton(
-<<<<<<< HEAD
-            onPressed: () {
-              Navigator.pop(context);
-              context.go('/login');
-=======
             onPressed: () async {
               Navigator.pop(context);
               await context.read<AuthService>().deleteIncompleteAccount();
               if (mounted) context.go('/login');
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
             },
             child: Text(
               'Understood',
@@ -174,186 +153,6 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
 
   @override
   Widget build(BuildContext context) {
-<<<<<<< HEAD
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5FAF7),
-      body: SafeArea(
-        child: FadeTransition(
-          opacity: _fade,
-          child: SlideTransition(
-            position: _slide,
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.xl),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: AppSpacing.xl),
-
-                  // step indicator
-                  Row(
-                    children: List.generate(3, (i) {
-                      return AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        margin: const EdgeInsets.only(right: 6),
-                        width: i == 0 ? 24 : 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: i == 0
-                              ? AppColors.charcoal
-                              : AppColors.borderMedium,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      );
-                    }),
-                  ),
-
-                  const SizedBox(height: AppSpacing.xxl),
-
-                  // icon
-                  TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 0, end: 1),
-                    duration: const Duration(milliseconds: 500),
-                    curve: Curves.easeOutBack,
-                    builder: (_, v, __) => Transform.scale(
-                      scale: v,
-                      child: Container(
-                        width: 64,
-                        height: 64,
-                        decoration: BoxDecoration(
-                          color: AppColors.fernGreenLight,
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: const Icon(
-                          Icons.person_outline_rounded,
-                          size: 32,
-                          color: AppColors.fernGreen,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: AppSpacing.xl),
-
-                  Text(
-                    'Quick profile setup',
-                    style: GoogleFonts.josefinSans(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.charcoal,
-                      letterSpacing: -0.3,
-                    ),
-                  ),
-
-                  const SizedBox(height: AppSpacing.sm),
-
-                  Text(
-                    'This helps us keep Echoproof safe and relevant. None of this is public.',
-                    style: GoogleFonts.josefinSans(
-                      fontSize: 14,
-                      color: AppColors.textSecondary,
-                      height: 1.5,
-                    ),
-                  ),
-
-                  const SizedBox(height: AppSpacing.xxl),
-
-                  // age input
-                  Text(
-                    'Your age',
-                    style: GoogleFonts.josefinSans(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.charcoal,
-                    ),
-                  ),
-
-                  const SizedBox(height: AppSpacing.sm),
-
-                  _AgeInput(
-                    onChanged: (v) => setState(() => _age = v),
-                  ),
-
-                  if (_age != null && _age! < 13)
-                    Padding(
-                      padding: const EdgeInsets.only(top: AppSpacing.sm),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.warning_amber_rounded,
-                            size: 14,
-                            color: AppColors.sunsetCoral,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Must be at least 13 to use Echoproof',
-                            style: GoogleFonts.josefinSans(
-                              fontSize: 12,
-                              color: AppColors.sunsetCoral,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                  const SizedBox(height: AppSpacing.xl),
-
-                  // gender selection
-                  Text(
-                    'Gender',
-                    style: GoogleFonts.josefinSans(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.charcoal,
-                    ),
-                  ),
-
-                  const SizedBox(height: AppSpacing.sm),
-
-                  GridView.count(
-                    crossAxisCount: 2,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisSpacing: AppSpacing.sm,
-                    mainAxisSpacing: AppSpacing.sm,
-                    childAspectRatio: 2.8,
-                    children: _genders.map((g) {
-                      final selected = _gender == g.value;
-                      return GestureDetector(
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          setState(() => _gender = g.value);
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          decoration: BoxDecoration(
-                            color: selected ? AppColors.charcoal : Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: selected
-                                  ? AppColors.charcoal
-                                  : AppColors.borderSubtle,
-                              width: selected ? 2 : 1,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                g.icon,
-                                size: 16,
-                                color: selected
-                                    ? Colors.white
-                                    : AppColors.textSecondary,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                g.label,
-                                style: GoogleFonts.josefinSans(
-                                  fontSize: 13,
-                                  fontWeight: selected
-                                      ? FontWeight.w600
-                                      : FontWeight.w400,
-=======
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
@@ -523,61 +322,10 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
                                 Icon(
                                   g.icon,
                                   size: 16,
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
                                   color: selected
                                       ? Colors.white
                                       : AppColors.textSecondary,
                                 ),
-<<<<<<< HEAD
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-
-                  const Spacer(),
-
-                  // continue button
-                  AnimatedOpacity(
-                    opacity: _age != null ? 1.0 : 0.4,
-                    duration: const Duration(milliseconds: 200),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed:
-                            (_age != null && !_isSubmitting) ? _continue : null,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.charcoal,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        child: _isSubmitting
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : Text(
-                                'Continue',
-                                style: GoogleFonts.josefinSans(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: AppSpacing.xl),
-                ],
-=======
                                 const SizedBox(width: 6),
                                 Text(
                                   g.label,
@@ -639,7 +387,6 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
                     const SizedBox(height: AppSpacing.xl),
                   ],
                 ),
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
               ),
             ),
           ),
@@ -710,13 +457,9 @@ class _AgeInputState extends State<_AgeInput> {
             prefixIcon: Icon(
               Icons.cake_outlined,
               size: 18,
-<<<<<<< HEAD
-              color: _focused ? AppColors.fernGreen : AppColors.textTertiary,
-=======
               color: _focused
                   ? AppColors.fernGreen
                   : AppColors.textTertiary,
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
             ),
             border: InputBorder.none,
             contentPadding: const EdgeInsets.symmetric(
@@ -733,8 +476,4 @@ class _AgeInputState extends State<_AgeInput> {
       ),
     );
   }
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)

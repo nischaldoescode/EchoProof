@@ -7,18 +7,12 @@ import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../domain/entities/echo_entity.dart';
-<<<<<<< HEAD
-=======
 import '../../domain/entities/feed_filter.dart';
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 import '../services/echo_feed_service.dart';
 import '../widgets/echo_card.dart';
 import '../widgets/feed_filter_sheet.dart';
 import '../../../../shared/widgets/shimmer_loader.dart';
-<<<<<<< HEAD
-=======
 import 'package:echoproof/shared/widgets/app_bottom_nav.dart';
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 import '../../../../app/app.dart';
 import '../../../../shared/widgets/ad_card.dart';
 
@@ -89,17 +83,6 @@ class _FeedScreenState extends State<FeedScreen> {
     final size = MediaQuery.sizeOf(context);
     final isTablet = size.width > 700;
 
-<<<<<<< HEAD
-    return ExitConfirmWrapper(
-      child: Scaffold(
-        backgroundColor: AppColors.white,
-        appBar: _FeedAppBar(),
-        floatingActionButton: _CreateEchoFab(),
-        bottomNavigationBar: _BottomNav(currentIndex: 0),
-        body: _buildBody(feed, isTablet),
-      ),
-    );
-=======
     return SwipeNavigationWrapper(
         currentLocation: '/feed',
         child: ExitConfirmWrapper(
@@ -114,7 +97,6 @@ class _FeedScreenState extends State<FeedScreen> {
             body: _buildBody(feed, isTablet),
           ),
         ));
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
   }
 
   Widget _buildBody(EchoFeedService feed, bool isTablet) {
@@ -135,48 +117,6 @@ class _FeedScreenState extends State<FeedScreen> {
           onClear: () => setState(() => _filter = const FeedFilter()));
     }
 
-<<<<<<< HEAD
-    if (isTablet) {
-      return _TabletGrid(
-        echoes: feed.echoes,
-        isLoadingMore: feed.isLoadingMore,
-        scrollController: _scrollController,
-        hasMore: feed.hasMore,
-      );
-    }
-
-    return RefreshIndicator(
-      color: AppColors.fernGreen,
-      onRefresh: () => context.read<EchoFeedService>().refresh(),
-      child: ListView.builder(
-        controller: _scrollController,
-        padding: const EdgeInsets.only(top: AppSpacing.sm, bottom: 120),
-        itemCount: _computeItemCount(feed),
-        itemBuilder: (context, index) {
-          // show ad card every 7th slot (index 6, 13, 20...)
-          if (index > 0 && index % 7 == 6) {
-            return const Padding(
-              padding: EdgeInsets.only(bottom: AppSpacing.sm),
-              child: AdCard(),
-            );
-          }
-
-          final adsBefore = index ~/ 7;
-          final echoIndex = index - adsBefore;
-
-          // loader at end
-          if (echoIndex >= feed.echoes.length) {
-            return const Padding(
-              padding: EdgeInsets.all(AppSpacing.xl),
-              child: Center(
-                child: SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: AppColors.fernGreen,
-                  ),
-=======
     return Column(
       children: [
         if (_filter.isActive)
@@ -277,21 +217,9 @@ class _ActiveFilterBar extends StatelessWidget {
                   fontSize: 12,
                   color: AppColors.charcoal,
                   fontWeight: FontWeight.w500,
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
-<<<<<<< HEAD
-            );
-          }
-
-          return _AnimatedEchoCard(
-            key: ValueKey(feed.echoes[echoIndex].id),
-            echo: feed.echoes[echoIndex],
-            index: echoIndex,
-          );
-        },
-=======
             ),
             GestureDetector(
               onTap: onClear,
@@ -300,7 +228,6 @@ class _ActiveFilterBar extends StatelessWidget {
             ),
           ],
         ),
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
       ),
     );
   }
@@ -317,16 +244,9 @@ class _AnimatedCard extends StatefulWidget {
 
 class _AnimatedCardState extends State<_AnimatedCard>
     with SingleTickerProviderStateMixin {
-<<<<<<< HEAD
-  late final AnimationController _controller;
-  late final Animation<double> _opacity;
-  late final Animation<double> _translateY;
-  late final Animation<double> _rotX;
-=======
   late final AnimationController _c;
   late final Animation<double> _opacity;
   late final Animation<double> _y;
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 
   @override
   void initState() {
@@ -362,22 +282,6 @@ class _AnimatedCardState extends State<_AnimatedCard>
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-<<<<<<< HEAD
-      animation: _controller,
-      builder: (context, child) {
-        return Opacity(
-          opacity: _opacity.value,
-          child: Transform(
-            transform: Matrix4.identity()
-              ..setEntry(3, 2, 0.001)
-              ..rotateX(_rotX.value)
-              ..translateByDouble(0.0, _translateY.value, 0.0, 1.0),
-            alignment: Alignment.topCenter,
-            child: child,
-          ),
-        );
-      },
-=======
       animation: _c,
       builder: (_, child) => Opacity(
         opacity: _opacity.value,
@@ -386,7 +290,6 @@ class _AnimatedCardState extends State<_AnimatedCard>
           child: child,
         ),
       ),
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
       child: EchoCard(
         echo: widget.echo,
         onTap: () => context.push('/feed/echo/${widget.echo.id}'),
@@ -401,63 +304,10 @@ class _FeedAppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.onFilterTap,
   });
 
-<<<<<<< HEAD
-  final List<EchoEntity> echoes;
-  final bool isLoadingMore;
-  final ScrollController scrollController;
-  final bool hasMore;
-
-  @override
-  Widget build(BuildContext context) {
-    return GridView.builder(
-      controller: scrollController,
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: AppSpacing.md,
-        mainAxisSpacing: AppSpacing.md,
-        childAspectRatio: 0.85,
-      ),
-      itemCount: echoes.length + (hasMore ? 1 : 0),
-      itemBuilder: (context, index) {
-        // ads every 7 items
-        if (index > 0 && index % 7 == 6) {
-          return const Padding(
-            padding: EdgeInsets.all(AppSpacing.sm),
-            child: AdCard(),
-          );
-        }
-
-        final adsBefore = index ~/ 7;
-        final echoIndex = index - adsBefore;
-
-        if (echoIndex >= echoes.length) {
-          return const Center(
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: AppColors.fernGreen,
-            ),
-          );
-        }
-
-        return _AnimatedEchoCard(
-          key: ValueKey(echoes[echoIndex].id),
-          echo: echoes[echoIndex],
-          index: echoIndex,
-        );
-      },
-    );
-  }
-}
-
-class _FeedAppBar extends StatelessWidget implements PreferredSizeWidget {
-  @override
-=======
   final bool filterActive;
   final VoidCallback onFilterTap;
 
   @override
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
   Size get preferredSize => const Size.fromHeight(56);
 
   @override
@@ -524,25 +374,7 @@ class _CreateFab extends StatefulWidget {
   const _CreateFab();
 
   @override
-<<<<<<< HEAD
-  Widget build(BuildContext context) {
-    return FloatingActionButton.extended(
-      onPressed: () => context.push('/create'),
-      backgroundColor: AppColors.charcoal,
-      foregroundColor: AppColors.white,
-      elevation: 2,
-      icon: const Icon(Icons.add, size: 20),
-      label: Text(
-        'Create Echo',
-        style: AppTypography.textTheme.labelLarge?.copyWith(
-          color: AppColors.white,
-        ),
-      ),
-    );
-  }
-=======
   State<_CreateFab> createState() => _CreateFabState();
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 }
 
 class _CreateFabState extends State<_CreateFab>
@@ -578,25 +410,6 @@ class _CreateFabState extends State<_CreateFab>
           await _c.reverse();
           if (context.mounted) context.push('/create');
         },
-<<<<<<< HEAD
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home),
-            label: 'Feed',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.explore_outlined),
-            activeIcon: Icon(Icons.explore),
-            label: 'Discover',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            activeIcon: Icon(Icons.person),
-            label: 'Profile',
-          ),
-        ],
-=======
         onTapCancel: () => _c.reverse(),
         child: Container(
           width: 56,
@@ -614,7 +427,6 @@ class _CreateFabState extends State<_CreateFab>
           ),
           child: const Icon(Icons.edit_rounded, color: Colors.white, size: 22),
         ),
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
       ),
     );
   }
