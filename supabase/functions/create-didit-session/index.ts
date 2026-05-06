@@ -7,12 +7,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-<<<<<<< HEAD
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-=======
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
 };
 
 serve(async (req: Request): Promise<Response> => {
@@ -25,23 +21,6 @@ serve(async (req: Request): Promise<Response> => {
     if (!diditApiKey) {
       return new Response(
         JSON.stringify({ error: "DIDIT_API_KEY not configured" }),
-<<<<<<< HEAD
-        { status: 500, headers: { ...CORS, "Content-Type": "application/json" } },
-      );
-    }
-
-    // create session via didit api
-    const diditRes = await fetch("https://verification.didit.me/v3/session/", {
-      method: "POST",
-      headers: {
-        "x-api-key":    diditApiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        workflow_id:  workflow_id,
-        vendor_data:  user_id,  // links session to our user
-        callback:     redirect_uri,
-=======
         {
           status: 500,
           headers: { ...CORS, "Content-Type": "application/json" },
@@ -59,7 +38,6 @@ serve(async (req: Request): Promise<Response> => {
         workflow_id: workflow_id,
         vendor_data: user_id,
         callback: redirect_uri,
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
       }),
     });
 
@@ -68,22 +46,14 @@ serve(async (req: Request): Promise<Response> => {
       console.error("didit session creation failed:", err);
       return new Response(
         JSON.stringify({ error: "verification session creation failed" }),
-<<<<<<< HEAD
-        { status: 500, headers: { ...CORS, "Content-Type": "application/json" } },
-=======
         {
           status: 500,
           headers: { ...CORS, "Content-Type": "application/json" },
         },
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
       );
     }
 
     const session = await diditRes.json();
-<<<<<<< HEAD
-
-    // store session id in supabase for webhook reconciliation
-=======
     console.log("didit session response:", JSON.stringify(session));
 
     const sessionUrl =
@@ -103,24 +73,11 @@ serve(async (req: Request): Promise<Response> => {
       );
     }
 
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-<<<<<<< HEAD
-    await serviceClient.from("verification_sessions").insert({
-      user_id,
-      didit_session_id: session.session_id,
-      status:           "pending",
-    });
-
-    return new Response(
-      JSON.stringify({
-        session_id:  session.session_id,
-        session_url: session.session_url,
-=======
     await serviceClient
       .from("verification_sessions")
       .insert({
@@ -137,24 +94,14 @@ serve(async (req: Request): Promise<Response> => {
       JSON.stringify({
         session_id: session.session_id,
         session_url: sessionUrl,
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)
       }),
       { status: 200, headers: { ...CORS, "Content-Type": "application/json" } },
     );
   } catch (err) {
     console.error("create-didit-session error:", err);
-<<<<<<< HEAD
-    return new Response(
-      JSON.stringify({ error: "internal server error" }),
-      { status: 500, headers: { ...CORS, "Content-Type": "application/json" } },
-    );
-  }
-});
-=======
     return new Response(JSON.stringify({ error: "internal server error" }), {
       status: 500,
       headers: { ...CORS, "Content-Type": "application/json" },
     });
   }
 });
->>>>>>> 9ac05ed (removed secrets + cleanup and added new features)

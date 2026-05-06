@@ -81,7 +81,7 @@ begin
       -- category affinity bonus (30% weight)
       + coalesce(
           (select affinity_score from user_category_affinity
-           where user_id = p_user_id and category = e.category::text
+           where user_id = p_user_id and category = e.category
            limit 1),
           0
         ) * 0.30
@@ -97,9 +97,11 @@ begin
       + (e.controversy_score * 0.05)
 
       -- user's selected categories get a static boost
-      + case when e.category::text = any(
-          (select categories::text[] from users_public where id = p_user_id)
-        ) then 15 else 0 end
++ case when e.category = any(
+    select unnest(categories)
+    from users_public
+    where id = p_user_id
+  ) then 15 else 0 end
 
       -- penalty for already-interacted echoes
       - case when exists (

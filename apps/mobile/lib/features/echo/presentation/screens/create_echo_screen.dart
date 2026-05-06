@@ -2,6 +2,7 @@
 // full form: title, content, category, verification toggle
 // uses CreateEchoService via provider — no riverpod
 
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -15,6 +16,9 @@ import '../services/create_echo_service.dart';
 import '../../../../core/services/ad_service.dart';
 import '../../../../features/subscription/presentation/services/subscription_service.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../../core/utils/logger.dart';
+import 'package:flutter_mentions/flutter_mentions.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class CreateEchoScreen extends StatefulWidget {
   const CreateEchoScreen({super.key});
@@ -26,8 +30,9 @@ class CreateEchoScreen extends StatefulWidget {
 class _CreateEchoScreenState extends State<CreateEchoScreen>
     with SingleTickerProviderStateMixin {
   final _titleController = TextEditingController();
-  final _contentController = TextEditingController();
+  final _contentKey = GlobalKey<FlutterMentionsState>();
   final _formKey = GlobalKey<FormState>();
+  List<Map<String, dynamic>> _mentionableUsers = [];
 
   late final AnimationController _entranceController;
   late final Animation<double> _slideY;
@@ -59,7 +64,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final service = context.read<CreateEchoService>();
       _titleController.text = service.title;
-      _contentController.text = service.content;
+      _loadMentionableUsers();
     });
   }
 
@@ -67,8 +72,32 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
   void dispose() {
     _entranceController.dispose();
     _titleController.dispose();
-    _contentController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadMentionableUsers() async {
+    try {
+      final client = Supabase.instance.client;
+      final rows = await client
+          .from('users_public')
+          .select('id, username, avatar_url, trust_tier')
+          .eq('is_suspended', false)
+          .limit(60);
+      if (!mounted) return;
+      setState(() {
+        _mentionableUsers = (rows as List).map((r) {
+          final m = r as Map<String, dynamic>;
+          return {
+            'id': m['id'] as String,
+            'display': m['username'] as String,
+            'avatar_url': m['avatar_url'] as String? ?? '',
+            'trust_tier': m['trust_tier'] as String? ?? 'unverified',
+          };
+        }).toList();
+      });
+    } catch (e) {
+      AppLogger.error('create echo: load mentionable users failed $e');
+    }
   }
 
   Future<void> _pickMedia(bool isVideo) async {
@@ -82,18 +111,57 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
     } else {
       file = await picker.pickImage(
         source: ImageSource.gallery,
-        imageQuality: 85,
+        imageQuality: 72,
+        maxWidth: 1280,
+        maxHeight: 1280,
       );
     }
 
     if (file == null) return;
     if (!mounted) return;
 
-    await context.read<CreateEchoService>().addMedia(file.path, isVideo);
+    // Reject files over 10MB to prevent upload timeouts.
+    final fileSize = await File(file.path).length();
+    if (fileSize > 10 * 1024 * 1024) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'File is too large. Maximum size is 10MB.',
+              style: GoogleFonts.josefinSans(fontSize: 13),
+            ),
+            backgroundColor: AppColors.sunsetCoral,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    final service = context.read<CreateEchoService>();
+
+    if (service.mediaUrls.length >= 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Maximum 2 attachments allowed',
+            style: GoogleFonts.josefinSans(fontSize: 13),
+          ),
+          backgroundColor: AppColors.sunsetCoral,
+        ),
+      );
+      return;
+    }
   }
 
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    final content = _contentKey.currentState?.controller?.text ?? '';
+    context.read<CreateEchoService>().setContent(content);
     await context.read<CreateEchoService>().submit();
   }
 
@@ -125,7 +193,8 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                     ),
                     backgroundColor: const Color(0xFF1E3A2A),
                     behavior: SnackBarBehavior.floating,
-                    margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
+                    margin:
+                        const EdgeInsets.only(bottom: 88, left: 16, right: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -231,13 +300,14 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                           style: AppTypography.textTheme.titleSmall),
                       _CharCounter(
                         current: service.content.length,
-                        max: 2000,
+                        max: 308,
                       ),
                     ],
                   ),
                   const SizedBox(height: AppSpacing.xs),
-                  _HashtagTextField(
-                    controller: _contentController,
+                  _ContentMentionField(
+                    mentionKey: _contentKey,
+                    mentionableUsers: _mentionableUsers,
                     onChanged: context.read<CreateEchoService>().setContent,
                     maxLength: 308,
                   ),
@@ -289,44 +359,149 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
   }
 }
 
-class _HashtagTextField extends StatelessWidget {
-  const _HashtagTextField({
-    required this.controller,
+class _ContentMentionField extends StatelessWidget {
+  const _ContentMentionField({
+    required this.mentionKey,
+    required this.mentionableUsers,
     required this.onChanged,
     required this.maxLength,
   });
 
-  final TextEditingController controller;
+  final GlobalKey<FlutterMentionsState> mentionKey;
+  final List<Map<String, dynamic>> mentionableUsers;
   final void Function(String) onChanged;
   final int maxLength;
 
   @override
   Widget build(BuildContext context) {
-    return TextFormField(
-      controller: controller,
-      maxLength: maxLength,
-      maxLines: 6,
-      minLines: 4,
-      buildCounter:
-          (_, {required currentLength, required isFocused, maxLength}) => null,
-      onChanged: onChanged,
-      style: const TextStyle(
-        fontSize: 15,
-        color: Color(0xFF1A1A1A),
-        height: 1.5,
-      ),
-      decoration: InputDecoration(
-        hintText:
-            'Explain your opinion, experience, or claim...\n\nUse #hashtags to categorize your echo.',
-        hintStyle: GoogleFonts.josefinSans(
-          fontSize: 14,
-          color: AppColors.textTertiary,
-          height: 1.5,
-        ),
-        alignLabelWithHint: true,
-      ),
-      validator: (v) =>
-          (v == null || v.trim().isEmpty) ? 'content cannot be empty' : null,
+    return FormField<String>(
+      validator: (_) {
+        final v = mentionKey.currentState?.controller?.text ?? '';
+        return v.trim().isEmpty ? 'content cannot be empty' : null;
+      },
+      builder: (field) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.softSand,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: field.hasError
+                      ? AppColors.sunsetCoral
+                      : AppColors.borderSubtle,
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: FlutterMentions(
+                key: mentionKey,
+                maxLines: 8,
+                minLines: 4,
+                suggestionPosition: SuggestionPosition.Top,
+                onChanged: (v) {
+                  onChanged(v);
+                  field.didChange(v);
+                },
+                style: const TextStyle(
+                  fontSize: 15,
+                  color: Color(0xFF1A1A1A),
+                  height: 1.5,
+                ),
+                decoration: InputDecoration(
+                  hintText:
+                      'Explain your opinion or claim.\n\nUse @username to mention, ~signal to tag.',
+                  hintStyle: GoogleFonts.josefinSans(
+                    fontSize: 14,
+                    color: AppColors.textTertiary,
+                    height: 1.5,
+                  ),
+                  border: InputBorder.none,
+                  isDense: true,
+                ),
+                suggestionListDecoration: BoxDecoration(
+                  color: AppColors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.borderSubtle),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.08),
+                      blurRadius: 12,
+                      offset: const Offset(0, -4),
+                    ),
+                  ],
+                ),
+                mentions: [
+                  Mention(
+                    trigger: '@',
+                    style: GoogleFonts.josefinSans(
+                      color: AppColors.fernGreen,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    data: mentionableUsers,
+                    suggestionBuilder: (data) {
+                      final avatarUrl = data['avatar_url'] as String?;
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 16,
+                              backgroundColor: AppColors.softSand,
+                              backgroundImage:
+                                  (avatarUrl != null && avatarUrl.isNotEmpty)
+                                      ? NetworkImage(avatarUrl)
+                                      : null,
+                              child: (avatarUrl == null || avatarUrl.isEmpty)
+                                  ? const Icon(Icons.person_outline,
+                                      size: 16, color: AppColors.textTertiary)
+                                  : null,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '@${data['display']}',
+                              style: GoogleFonts.josefinSans(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.charcoal,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                  Mention(
+                    trigger: '~',
+                    style: GoogleFonts.josefinSans(
+                      color: AppColors.fernGreen,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    data: const [],
+                    matchAll: true,
+                    disableMarkup: true,
+                  ),
+                ],
+              ),
+            ),
+            if (field.hasError)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, left: 4),
+                child: Text(
+                  field.errorText ?? '',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.sunsetCoral,
+                    fontFamily: AppTypography.fontFamily,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
@@ -461,47 +636,181 @@ class _MediaPickerRow extends StatelessWidget {
   final VoidCallback onPickVideo;
   final void Function(int) onRemove;
 
+  bool _isVideo(String url) {
+    return url.endsWith('.mp4') || url.endsWith('.mov') || url.endsWith('.avi');
+  }
+
+  String _getName(String url) {
+    return url.split('/').last;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isMax = mediaUrls.length >= 2;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 12),
+
+        // 🎯 PICKER ROW
         Row(
           children: [
             IconButton(
-              icon: const Icon(Icons.image),
-              onPressed: onPickImage,
+              icon: Icon(
+                Icons.attach_file_rounded,
+                size: 20,
+                color: isMax ? AppColors.textTertiary : AppColors.charcoal,
+              ),
+              onPressed: isMax ? null : onPickImage,
             ),
             IconButton(
-              icon: const Icon(Icons.videocam),
-              onPressed: onPickVideo,
+              icon: Icon(
+                Icons.videocam_rounded,
+                size: 20,
+                color: isMax ? AppColors.textTertiary : AppColors.charcoal,
+              ),
+              onPressed: isMax ? null : onPickVideo,
             ),
           ],
         ),
-        Wrap(
-          spacing: 8,
-          children: List.generate(mediaUrls.length, (index) {
-            return Stack(
-              alignment: Alignment.topRight,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    mediaUrls[index],
-                    width: 80,
-                    height: 80,
-                    fit: BoxFit.cover,
-                  ),
+
+        // 📊 COUNTER
+        if (mediaUrls.isNotEmpty) ...[
+          Row(
+            children: [
+              Text(
+                '${mediaUrls.length}/2 attachment${mediaUrls.length > 1 ? 's' : ''}',
+                style: GoogleFonts.josefinSans(
+                  fontSize: 11,
+                  color:
+                      isMax ? AppColors.sunsetCoral : AppColors.textSecondary,
                 ),
-                GestureDetector(
-                  onTap: () => onRemove(index),
-                  child: const Icon(Icons.close, size: 18),
-                ),
+              ),
+              if (isMax) ...[
+                const SizedBox(width: 4),
+                const Icon(Icons.block_rounded,
+                    size: 11, color: AppColors.sunsetCoral),
               ],
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+        ],
+
+        // 📦 ATTACHMENT CARDS
+        if (mediaUrls.isNotEmpty) ...[
+          ...List.generate(mediaUrls.length, (i) {
+            final url = mediaUrls[i];
+            final isVideo = _isVideo(url);
+            final name = _getName(url);
+            final ext = name.split('.').last.toUpperCase();
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: AppColors.softSand,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.borderSubtle),
+                ),
+                child: Row(
+                  children: [
+                    // 🎬 Thumbnail / Icon
+                    ClipRRect(
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(11),
+                        bottomLeft: Radius.circular(11),
+                      ),
+                      child: isVideo
+                          ? Container(
+                              width: 64,
+                              height: 64,
+                              color: AppColors.charcoal,
+                              child: const Icon(
+                                Icons.play_circle_filled_rounded,
+                                color: Colors.white,
+                                size: 28,
+                              ),
+                            )
+                          : Image.network(
+                              url,
+                              width: 64,
+                              height: 64,
+                              fit: BoxFit.cover,
+                            ),
+                    ),
+
+                    const SizedBox(width: 12),
+
+                    // 📝 FILE INFO
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name.length > 30
+                                ? '${name.substring(0, 27)}...'
+                                : name,
+                            style: GoogleFonts.josefinSans(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.charcoal,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: isVideo
+                                  ? AppColors.charcoal.withValues(alpha: 0.1)
+                                  : AppColors.fernGreen.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              ext,
+                              style: GoogleFonts.josefinSans(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: isVideo
+                                    ? AppColors.charcoal
+                                    : AppColors.fernGreenDark,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // ❌ REMOVE
+                    GestureDetector(
+                      onTap: () => onRemove(i),
+                      child: Container(
+                        width: 36,
+                        height: 64,
+                        decoration: BoxDecoration(
+                          color: AppColors.sunsetCoral.withValues(alpha: 0.08),
+                          borderRadius: const BorderRadius.only(
+                            topRight: Radius.circular(11),
+                            bottomRight: Radius.circular(11),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.close_rounded,
+                          size: 18,
+                          color: AppColors.sunsetCoral,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             );
           }),
-        ),
+          const SizedBox(height: AppSpacing.xs),
+        ],
       ],
     );
   }

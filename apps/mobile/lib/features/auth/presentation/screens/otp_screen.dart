@@ -88,23 +88,25 @@ class _OtpScreenState extends State<OtpScreen>
     if (!mounted) return;
 
     if (success) {
-      // hasUsername checks DB — if true this is a returning user
-      // GoRouter redirect will handle the actual routing now
-      // just go to splash and let redirect logic take over cleanly
       if (auth.hasUsername) {
         context.go('/feed');
       } else {
-        // new user — clear any stale onboarding Hive state first
         context.read<OnboardingService>().reset();
         context.go('/onboarding');
       }
     } else {
+      // Trigger error state before clearing the field to avoid a
+      // mid-animation rebuild caused by simultaneous setState + triggerError.
+      _shakeCtrl.forward(from: 0);
+      await Future.delayed(const Duration(milliseconds: 80));
+      if (!mounted) return;
+      _ctrl.triggerError();
+      await Future.delayed(const Duration(milliseconds: 320));
+      if (!mounted) return;
       setState(() {
         _isVerifying = false;
         _hasError = true;
       });
-      _ctrl.triggerError();
-      _shakeCtrl.forward(from: 0);
     }
   }
 
@@ -113,179 +115,195 @@ class _OtpScreenState extends State<OtpScreen>
     return Scaffold(
       backgroundColor: const Color(0xFFF5FAF7),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xl),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: AppSpacing.lg),
-              IconButton(
-                icon: const Icon(Icons.arrow_back_rounded),
-                onPressed: () => context.pop(),
-                color: AppColors.charcoal,
-                padding: EdgeInsets.zero,
-              ),
-              const SizedBox(height: AppSpacing.xxl),
-
-              // icon
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  color: AppColors.fernGreenLight,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const Icon(
-                  Icons.mark_email_unread_outlined,
-                  size: 26,
-                  color: AppColors.fernGreen,
-                ),
-              ),
-
-              const SizedBox(height: AppSpacing.xl),
-
-              Text(
-                'Check your email',
-                style: GoogleFonts.josefinSans(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.charcoal,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Text(
-                'We sent a 6-digit code to\n${widget.email}',
-                style: GoogleFonts.josefinSans(
-                  fontSize: 14,
-                  color: AppColors.textSecondary,
-                  height: 1.5,
-                ),
-              ),
-
-              const SizedBox(height: AppSpacing.xxl),
-
-              // shake wrapper
-              AnimatedBuilder(
-                animation: _shakeAnim,
-                builder: (_, child) {
-                  final shake = math.sin(_shakeAnim.value * math.pi * 4) * 8;
-                  return Transform.translate(
-                    offset: Offset(shake, 0),
-                    child: child,
-                  );
-                },
-                child: MaterialPinField(
-                  length: 6,
-                  pinController: _ctrl,
-                  keyboardType: TextInputType.number,
-                  enableAutofill: true,
-                  autofillHints: const [AutofillHints.oneTimeCode],
-                  theme: MaterialPinTheme(
-                    shape: MaterialPinShape.outlined,
-                    cellSize: const Size(44, 54),
-                    spacing: 8,
-                    borderRadius: BorderRadius.circular(13),
-                    borderColor: AppColors.borderSubtle,
-                    focusedBorderColor: AppColors.fernGreen,
-                    errorColor: AppColors.sunsetCoral,
-                    fillColor: const Color(0xFFF0F4F2),
-                    focusedFillColor: Colors.white,
-                    filledFillColor: Colors.white,
-                    textStyle: GoogleFonts.josefinSans(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
+        child: SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: MediaQuery.of(context).size.height -
+                  MediaQuery.of(context).padding.top -
+                  MediaQuery.of(context).padding.bottom,
+            ),
+            child: IntrinsicHeight(
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.xl),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: AppSpacing.lg),
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      onPressed: () => context.pop(),
                       color: AppColors.charcoal,
+                      padding: EdgeInsets.zero,
                     ),
-                    entryAnimation: MaterialPinAnimation.scale,
-                    enableErrorShake: true,
-                  ),
-                  onChanged: (v) {
-                    if (_hasError) setState(() => _hasError = false);
-                    if (v.length == 6) _verify();
-                  },
-                  onCompleted: (_) => _verify(),
-                ),
-              ),
+                    const SizedBox(height: AppSpacing.xxl),
 
-              // error message
-              AnimatedSize(
-                duration: const Duration(milliseconds: 200),
-                child: _hasError
-                    ? Padding(
-                        padding: const EdgeInsets.only(top: AppSpacing.sm),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.error_outline,
-                                size: 14, color: AppColors.sunsetCoral),
-                            const SizedBox(width: 4),
-                            Text(
-                              context.read<AuthService>().error ??
-                                  'Incorrect code. Please try again.',
-                              style: GoogleFonts.josefinSans(
-                                fontSize: 12,
-                                color: AppColors.sunsetCoral,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    : const SizedBox.shrink(),
-              ),
-
-              const SizedBox(height: AppSpacing.xl),
-
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _isVerifying ? null : _verify,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.charcoal,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                    // icon
+                    Container(
+                      width: 60,
+                      height: 60,
+                      decoration: BoxDecoration(
+                        color: AppColors.fernGreenLight,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Icon(
+                        Icons.mark_email_unread_outlined,
+                        size: 26,
+                        color: AppColors.fernGreen,
+                      ),
                     ),
-                  ),
-                  child: _isVerifying
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : Text('Verify',
-                          style: GoogleFonts.josefinSans(
-                            fontSize: 15,
+
+                    const SizedBox(height: AppSpacing.xl),
+
+                    Text(
+                      'Check your email',
+                      style: GoogleFonts.josefinSans(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.charcoal,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    Text(
+                      'We sent a 6-digit code to\n${widget.email}',
+                      style: GoogleFonts.josefinSans(
+                        fontSize: 14,
+                        color: AppColors.textSecondary,
+                        height: 1.5,
+                      ),
+                    ),
+
+                    const SizedBox(height: AppSpacing.xxl),
+
+                    // shake wrapper
+                    AnimatedBuilder(
+                      animation: _shakeAnim,
+                      builder: (_, child) {
+                        final shake =
+                            math.sin(_shakeAnim.value * math.pi * 4) * 8;
+                        return Transform.translate(
+                          offset: Offset(shake, 0),
+                          child: child,
+                        );
+                      },
+                      child: MaterialPinField(
+                        length: 6,
+                        pinController: _ctrl,
+                        keyboardType: TextInputType.number,
+                        enableAutofill: true,
+                        autofillHints: const [AutofillHints.oneTimeCode],
+                        theme: MaterialPinTheme(
+                          shape: MaterialPinShape.outlined,
+                          cellSize: const Size(44, 54),
+                          spacing: 8,
+                          borderRadius: BorderRadius.circular(13),
+                          borderColor: AppColors.borderSubtle,
+                          focusedBorderColor: AppColors.fernGreen,
+                          errorColor: AppColors.sunsetCoral,
+                          fillColor: const Color(0xFFF0F4F2),
+                          focusedFillColor: Colors.white,
+                          filledFillColor: Colors.white,
+                          textStyle: GoogleFonts.josefinSans(
+                            fontSize: 20,
                             fontWeight: FontWeight.w600,
-                          )),
-                ),
-              ),
-
-              const SizedBox(height: AppSpacing.lg),
-
-              Center(
-                child: TextButton(
-                  onPressed: _canResend
-                      ? () {
-                          context.read<AuthService>().resendOtp(
-                                email: widget.email,
-                              );
-                          _startTimer();
-                        }
-                      : null,
-                  child: Text(
-                    _canResend ? 'Resend code' : 'Resend in ${_resendSecs}s',
-                    style: GoogleFonts.josefinSans(
-                      fontSize: 13,
-                      color: _canResend
-                          ? AppColors.fernGreen
-                          : AppColors.textTertiary,
+                            color: AppColors.charcoal,
+                          ),
+                          entryAnimation: MaterialPinAnimation.scale,
+                          enableErrorShake: true,
+                        ),
+                        onChanged: (v) {
+                          if (_hasError) setState(() => _hasError = false);
+                          if (v.length == 6) _verify();
+                        },
+                        onCompleted: (_) => _verify(),
+                      ),
                     ),
-                  ),
+
+                    // error message
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 200),
+                      child: _hasError
+                          ? Padding(
+                              padding:
+                                  const EdgeInsets.only(top: AppSpacing.sm),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.error_outline,
+                                      size: 14, color: AppColors.sunsetCoral),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    context.read<AuthService>().error ??
+                                        'Incorrect code. Please try again.',
+                                    style: GoogleFonts.josefinSans(
+                                      fontSize: 12,
+                                      color: AppColors.sunsetCoral,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+
+                    const SizedBox(height: AppSpacing.xl),
+
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _isVerifying ? null : _verify,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.charcoal,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: _isVerifying
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Text('Verify',
+                                style: GoogleFonts.josefinSans(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                )),
+                      ),
+                    ),
+
+                    const SizedBox(height: AppSpacing.lg),
+
+                    Center(
+                      child: TextButton(
+                        onPressed: _canResend
+                            ? () {
+                                context.read<AuthService>().resendOtp(
+                                      email: widget.email,
+                                    );
+                                _startTimer();
+                              }
+                            : null,
+                        child: Text(
+                          _canResend
+                              ? 'Resend code'
+                              : 'Resend in ${_resendSecs}s',
+                          style: GoogleFonts.josefinSans(
+                            fontSize: 13,
+                            color: _canResend
+                                ? AppColors.fernGreen
+                                : AppColors.textTertiary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ),

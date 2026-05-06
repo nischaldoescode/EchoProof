@@ -23,13 +23,13 @@ class StepUsername extends StatefulWidget {
 }
 
 class _StepUsernameState extends State<StepUsername> {
-  final _usernameCtrl    = TextEditingController();
+  final _usernameCtrl = TextEditingController();
   final _displayNameCtrl = TextEditingController();
-  final _formKey         = GlobalKey<FormState>();
+  final _formKey = GlobalKey<FormState>();
 
-  bool _isChecking  = false;
-  bool _isSaving    = false;
-  bool _usernameOk  = false;
+  bool _isChecking = false;
+  bool _isSaving = false;
+  bool _usernameOk = false;
   String? _usernameError;
 
   @override
@@ -55,24 +55,27 @@ class _StepUsernameState extends State<StepUsername> {
     final v = value.trim().toLowerCase();
     if (v.length < 3) {
       setState(() {
-        _usernameOk    = false;
+        _usernameOk = false;
         _usernameError = 'At least 3 characters';
       });
       return;
     }
     if (!RegExp(r'^[a-z0-9_]+$').hasMatch(v)) {
       setState(() {
-        _usernameOk    = false;
+        _usernameOk = false;
         _usernameError = 'Only letters, numbers, and underscores';
       });
       return;
     }
 
-    setState(() { _isChecking = true; _usernameError = null; });
+    setState(() {
+      _isChecking = true;
+      _usernameError = null;
+    });
 
     try {
       final client = Supabase.instance.client;
-      final myId   = client.auth.currentUser?.id;
+      final myId = client.auth.currentUser?.id;
 
       final row = await client
           .from('users_public')
@@ -85,23 +88,23 @@ class _StepUsernameState extends State<StepUsername> {
 
       if (row != null) {
         setState(() {
-          _usernameOk    = false;
+          _usernameOk = false;
           _usernameError = 'Username taken';
-          _isChecking    = false;
+          _isChecking = false;
         });
       } else {
         setState(() {
-          _usernameOk    = true;
+          _usernameOk = true;
           _usernameError = null;
-          _isChecking    = false;
+          _isChecking = false;
         });
       }
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _usernameOk    = false;
+        _usernameOk = false;
         _usernameError = null;
-        _isChecking    = false;
+        _isChecking = false;
       });
     }
   }
@@ -113,16 +116,23 @@ class _StepUsernameState extends State<StepUsername> {
     setState(() => _isSaving = true);
 
     try {
-      final client      = Supabase.instance.client;
-      final userId      = client.auth.currentUser?.id;
-      final username    = _usernameCtrl.text.trim().toLowerCase();
+      final client = Supabase.instance.client;
+      final userId = client.auth.currentUser?.id;
+      final username = _usernameCtrl.text.trim().toLowerCase();
       final displayName = _displayNameCtrl.text.trim();
+
+      final onboarding = context.read<OnboardingService>();
+
+      onboarding.setUsername(username);
+      onboarding.setDisplayName(displayName);
 
       if (userId == null) throw Exception('not authenticated');
 
       await client.from('users_public').update({
-        'username':     username,
-        'display_name': displayName.isNotEmpty ? displayName : username,
+        'username': onboarding.username,
+        'display_name': onboarding.displayName.isNotEmpty
+            ? onboarding.displayName
+            : onboarding.username,
       }).eq('id', userId);
 
       AppLogger.info('onboarding: username set to $username');
@@ -181,7 +191,8 @@ class _StepUsernameState extends State<StepUsername> {
                 style: TextButton.styleFrom(
                     foregroundColor: AppColors.sunsetCoral),
                 child: Text('Leave',
-                    style: GoogleFonts.josefinSans(fontWeight: FontWeight.w600)),
+                    style:
+                        GoogleFonts.josefinSans(fontWeight: FontWeight.w600)),
               ),
             ],
           ),
@@ -206,18 +217,20 @@ class _StepUsernameState extends State<StepUsername> {
 
                   // step indicator
                   Row(
-                    children: List.generate(5, (i) => AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      margin: const EdgeInsets.only(right: 6),
-                      width: i == 2 ? 24 : 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: i <= 2
-                            ? AppColors.charcoal
-                            : AppColors.borderMedium,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    )),
+                    children: List.generate(
+                        5,
+                        (i) => AnimatedContainer(
+                              duration: const Duration(milliseconds: 300),
+                              margin: const EdgeInsets.only(right: 6),
+                              width: i == 2 ? 24 : 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: i <= 2
+                                    ? AppColors.charcoal
+                                    : AppColors.borderMedium,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            )),
                   ),
 
                   const SizedBox(height: AppSpacing.xxl),
@@ -243,7 +256,8 @@ class _StepUsernameState extends State<StepUsername> {
                   const SizedBox(height: AppSpacing.xxl),
 
                   // display name field
-                  Text('Display name',
+                  Text(
+                    'Display name',
                     style: GoogleFonts.josefinSans(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
@@ -254,8 +268,11 @@ class _StepUsernameState extends State<StepUsername> {
                   TextFormField(
                     controller: _displayNameCtrl,
                     maxLength: 50,
-                    buildCounter: (_, {required currentLength,
-                        required isFocused, maxLength}) => null,
+                    buildCounter: (_,
+                            {required currentLength,
+                            required isFocused,
+                            maxLength}) =>
+                        null,
                     textCapitalization: TextCapitalization.words,
                     style: GoogleFonts.josefinSans(
                       fontSize: 15,
@@ -272,8 +289,8 @@ class _StepUsernameState extends State<StepUsername> {
                       fillColor: Colors.white,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(
-                            color: AppColors.borderSubtle),
+                        borderSide:
+                            const BorderSide(color: AppColors.borderSubtle),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
@@ -291,7 +308,8 @@ class _StepUsernameState extends State<StepUsername> {
                   const SizedBox(height: AppSpacing.lg),
 
                   // username field
-                  Text('Username',
+                  Text(
+                    'Username',
                     style: GoogleFonts.josefinSans(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
@@ -302,8 +320,11 @@ class _StepUsernameState extends State<StepUsername> {
                   TextFormField(
                     controller: _usernameCtrl,
                     maxLength: 20,
-                    buildCounter: (_, {required currentLength,
-                        required isFocused, maxLength}) => null,
+                    buildCounter: (_,
+                            {required currentLength,
+                            required isFocused,
+                            maxLength}) =>
+                        null,
                     autocorrect: false,
                     inputFormatters: [
                       FilteringTextInputFormatter.allow(
@@ -315,7 +336,7 @@ class _StepUsernameState extends State<StepUsername> {
                         _checkUsername(v);
                       } else {
                         setState(() {
-                          _usernameOk    = false;
+                          _usernameOk = false;
                           _usernameError = null;
                         });
                       }
@@ -341,7 +362,8 @@ class _StepUsernameState extends State<StepUsername> {
                           ? const Padding(
                               padding: EdgeInsets.all(12),
                               child: SizedBox(
-                                width: 16, height: 16,
+                                width: 16,
+                                height: 16,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
                                   color: AppColors.fernGreen,
@@ -357,8 +379,8 @@ class _StepUsernameState extends State<StepUsername> {
                       fillColor: Colors.white,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(
-                            color: AppColors.borderSubtle),
+                        borderSide:
+                            const BorderSide(color: AppColors.borderSubtle),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
@@ -371,8 +393,8 @@ class _StepUsernameState extends State<StepUsername> {
                       ),
                       errorBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(
-                            color: AppColors.sunsetCoral),
+                        borderSide:
+                            const BorderSide(color: AppColors.sunsetCoral),
                       ),
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 14),
@@ -381,7 +403,8 @@ class _StepUsernameState extends State<StepUsername> {
                       if (v == null || v.trim().isEmpty)
                         return 'Enter a username';
                       if (v.length < 3) return 'At least 3 characters';
-                      if (!_usernameOk) return _usernameError ?? 'Check username';
+                      if (!_usernameOk)
+                        return _usernameError ?? 'Check username';
                       return null;
                     },
                   ),
@@ -415,13 +438,14 @@ class _StepUsernameState extends State<StepUsername> {
                       ),
                       child: _isSaving
                           ? const SizedBox(
-                              width: 20, height: 20,
+                              width: 20,
+                              height: 20,
                               child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white),
+                                  strokeWidth: 2, color: Colors.white),
                             )
                           : Text('Continue',
                               style: GoogleFonts.josefinSans(
-                                fontSize: 15, fontWeight: FontWeight.w600)),
+                                  fontSize: 15, fontWeight: FontWeight.w600)),
                     ),
                   ),
                   const SizedBox(height: AppSpacing.xl),

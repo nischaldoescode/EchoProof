@@ -4,7 +4,7 @@ values (
   'media',
   'media',
   true,
-  52428800, -- 50MB
+  42428800, -- 50MB
   array['image/png', 'image/jpeg', 'image/webp', 'video/mp4', 'video/quicktime']
 )
 on conflict (id) do nothing;

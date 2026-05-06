@@ -22,7 +22,7 @@ export default function PrivacyPage() {
           className="text-sm text-neutral-400 mb-12"
           style={{ fontFamily: "'Josefin Sans', sans-serif" }}
         >
-          Last updated: {new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
+          Last updated: May 5, 2025
         </p>
 
         {sections.map((s) => (
@@ -49,10 +49,10 @@ export default function PrivacyPage() {
           >
             Questions about this policy?{" "}
             <a
-              href="mailto:privacy@echoproof.online"
+              href="mailto:support@echoproof.online"
               className="text-[#4caf6e] hover:underline font-medium"
             >
-              privacy@echoproof.online
+              support@echoproof.online
             </a>
           </p>
         </div>

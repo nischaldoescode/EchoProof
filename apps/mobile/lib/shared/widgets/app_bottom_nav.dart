@@ -114,11 +114,9 @@ class AppBottomNav extends StatelessWidget {
       ),
     );
   }
-
-  
 }
 
-class SwipeNavigationWrapper extends StatelessWidget {
+class SwipeNavigationWrapper extends StatefulWidget {
   const SwipeNavigationWrapper({
     super.key,
     required this.currentLocation,
@@ -128,29 +126,117 @@ class SwipeNavigationWrapper extends StatelessWidget {
   final String currentLocation;
   final Widget child;
 
+  @override
+  State<SwipeNavigationWrapper> createState() => _SwipeNavigationWrapperState();
+}
+
+class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
+    with SingleTickerProviderStateMixin {
   static const _routes = ['/feed', '/discover', '/profile'];
+
+  late final AnimationController _swipeCtrl;
+  late Animation<double> _perspectiveAnim;
+  late Animation<double> _translateAnim;
+  late Animation<double> _opacityAnim;
+
+  double _dragStartX = 0;
+  bool _isDragging = false;
+  int _swipeDirection = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _swipeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
+    );
+    _perspectiveAnim = Tween<double>(begin: 0, end: 0).animate(_swipeCtrl);
+    _translateAnim = Tween<double>(begin: 0, end: 0).animate(_swipeCtrl);
+    _opacityAnim = Tween<double>(begin: 1, end: 1).animate(_swipeCtrl);
+  }
+
+  @override
+  void dispose() {
+    _swipeCtrl.dispose();
+    super.dispose();
+  }
+
+  void _setupAnimations(int direction) {
+    // direction: -1 = swipe left (go forward), 1 = swipe right (go back)
+    _perspectiveAnim = Tween<double>(
+      begin: 0,
+      end: direction * 0.003,
+    ).animate(CurvedAnimation(parent: _swipeCtrl, curve: Curves.easeInCubic));
+
+    _translateAnim = Tween<double>(
+      begin: 0,
+      end: direction * -60.0,
+    ).animate(CurvedAnimation(parent: _swipeCtrl, curve: Curves.easeInCubic));
+
+    _opacityAnim = Tween<double>(
+      begin: 1,
+      end: 0.0,
+    ).animate(CurvedAnimation(
+      parent: _swipeCtrl,
+      curve: const Interval(0.5, 1.0, curve: Curves.easeIn),
+    ));
+  }
+
+  Future<void> _navigateTo(String route, int direction) async {
+    _swipeDirection = direction;
+    _setupAnimations(direction);
+    await _swipeCtrl.forward();
+    if (mounted) {
+      context.go(route);
+      await Future.delayed(const Duration(milliseconds: 16));
+      _swipeCtrl.reset();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final idx = _routes.indexOf(widget.currentLocation);
+
     return GestureDetector(
+      onHorizontalDragStart: (details) {
+        _dragStartX = details.globalPosition.dx;
+        _isDragging = true;
+      },
       onHorizontalDragEnd: (details) {
-        final idx = _routes.indexOf(currentLocation);
-        if (idx == -1) return; // not a root tab — no swipe
-        
+        if (!_isDragging || idx == -1) return;
+        _isDragging = false;
+
         if (details.primaryVelocity == null) return;
-        
-        if (details.primaryVelocity! < -300 && idx < _routes.length - 1) {
-          // swipe left → next tab
-          context.go(_routes[idx + 1]);
-        } else if (details.primaryVelocity! > 300 && idx > 0) {
-          // swipe right → previous tab
-          context.go(_routes[idx - 1]);
+
+        if (details.primaryVelocity! < -400 && idx < _routes.length - 1) {
+          _navigateTo(_routes[idx + 1], -1);
+        } else if (details.primaryVelocity! > 400 && idx > 0) {
+          _navigateTo(_routes[idx - 1], 1);
         }
       },
-      child: child,
+      child: AnimatedBuilder(
+        animation: _swipeCtrl,
+        builder: (context, child) {
+          return Opacity(
+            opacity: _opacityAnim.value,
+            child: Transform(
+              alignment: _swipeDirection < 0
+                  ? Alignment.centerRight
+                  : Alignment.centerLeft,
+              transform: Matrix4.identity()
+                ..setEntry(3, 2, 0.001)
+                ..rotateY(_perspectiveAnim.value)
+                ..translateByDouble(_translateAnim.value, 0, 0, 1),
+              child: child,
+            ),
+          );
+        },
+        child: widget.child,
+      ),
     );
   }
 }
+
 class _NavItem {
   const _NavItem({
     required this.icon,

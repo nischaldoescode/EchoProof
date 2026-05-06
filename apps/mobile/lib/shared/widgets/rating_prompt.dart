@@ -13,30 +13,46 @@ import '../../../app/theme/typography.dart';
 
 class RatingPrompt {
   static const _kFirstLaunch = 'rating_first_launch_ms';
-  static const _kShown = 'rating_prompt_shown';
-  static const _kMinutes = 60; // minutes of total active time before prompting
 
-  /// Call this after the main feed is visible.
-  /// It will show the dialog at most once, only after ~60 min of first install.
+// Prompt thresholds in minutes of cumulative active time.
+  // 60 = first prompt after 1 hour.
+  // 180 = second prompt after 3 hours total.
+  // 10080 = weekly thereafter (7 days * 60 * 24).
+  static const _kThresholds = [60, 180, 10080];
+  static const _kDismissCount = 'rating_dismiss_count';
+  static const _kLastDismissMs = 'rating_last_dismiss_ms';
+  static const _kRated = 'rating_completed';
+
   static Future<void> maybeShow(BuildContext context) async {
     final box = Hive.box('app_settings');
-    final alreadyShown = box.get(_kShown, defaultValue: false) as bool;
-    if (alreadyShown) return;
+
+    // Never show again if user already rated.
+    final rated = box.get(_kRated, defaultValue: false) as bool;
+    if (rated) return;
 
     final firstLaunchMs = box.get(_kFirstLaunch) as int?;
     final now = DateTime.now().millisecondsSinceEpoch;
 
     if (firstLaunchMs == null) {
-      // first ever launch — record timestamp, don't show yet
       await box.put(_kFirstLaunch, now);
       return;
     }
 
     final elapsedMinutes = (now - firstLaunchMs) / 60000;
-    if (elapsedMinutes < _kMinutes) return;
+    final dismissCount = box.get(_kDismissCount, defaultValue: 0) as int;
+    final lastDismissMs = box.get(_kLastDismissMs) as int?;
 
-    // enough time has passed — show once
-    await box.put(_kShown, true);
+    // Determine which threshold to use based on dismiss count.
+    final thresholdIndex = dismissCount.clamp(0, _kThresholds.length - 1);
+    final thresholdMinutes = _kThresholds[thresholdIndex];
+
+    if (elapsedMinutes < thresholdMinutes) return;
+
+    // If dismissed before, ensure minimum gap of 2 hours since last dismiss.
+    if (lastDismissMs != null) {
+      final minutesSinceDismiss = (now - lastDismissMs) / 60000;
+      if (minutesSinceDismiss < 120) return;
+    }
 
     if (!context.mounted) return;
     await showGeneralDialog(
@@ -63,6 +79,9 @@ class _RatingDialog extends StatefulWidget {
 class _RatingDialogState extends State<_RatingDialog>
     with SingleTickerProviderStateMixin {
   late AnimationController _starAnim;
+  static const _kDismissCount = 'rating_dismiss_count';
+  static const _kLastDismissMs = 'rating_last_dismiss_ms';
+  static const _kRated = 'rating_completed';
   int _hovered = 0;
   int _selected = 0;
 
@@ -83,14 +102,14 @@ class _RatingDialogState extends State<_RatingDialog>
 
   Future<void> _submit() async {
     Navigator.of(context).pop();
+    final box = Hive.box('app_settings');
+    await box.put(_kRated, true);
     if (_selected >= 4) {
-      // happy user — trigger real store review
       final review = InAppReview.instance;
       if (await review.isAvailable()) {
         await review.requestReview();
       }
     }
-    // for unhappy users (1-3 stars) you could open a feedback form here
   }
 
   @override
@@ -147,9 +166,13 @@ class _RatingDialogState extends State<_RatingDialog>
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 4),
                           child: Icon(
-                            filled ? Icons.star_rounded : Icons.star_outline_rounded,
+                            filled
+                                ? Icons.star_rounded
+                                : Icons.star_outline_rounded,
                             size: 36,
-                            color: filled ? const Color(0xFFFFC107) : AppColors.textSecondary,
+                            color: filled
+                                ? const Color(0xFFFFC107)
+                                : AppColors.textSecondary,
                           ),
                         ),
                       ),
@@ -167,7 +190,16 @@ class _RatingDialogState extends State<_RatingDialog>
               ),
               const SizedBox(height: 8),
               TextButton(
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: () async {
+                  final box = Hive.box('app_settings');
+                  final count = box.get(_kDismissCount, defaultValue: 0) as int;
+                  await box.put(_kDismissCount, count + 1);
+                  await box.put(
+                    _kLastDismissMs,
+                    DateTime.now().millisecondsSinceEpoch,
+                  );
+                  Navigator.of(context).pop();
+                },
                 child: Text(
                   'Maybe later',
                   style: TextStyle(color: AppColors.textSecondary),

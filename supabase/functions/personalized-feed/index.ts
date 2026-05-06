@@ -64,21 +64,6 @@ async function redisSet(
   }
 }
 
-async function redisDel(pattern: string): Promise<void> {
-  const url = Deno.env.get("UPSTASH_REDIS_REST_URL");
-  const token = Deno.env.get("UPSTASH_REDIS_REST_TOKEN");
-
-  if (!url || !token) return;
-
-  try {
-    // delete all keys matching pattern — used to invalidate user's feed cache
-    // when they interact, their feed cache is cleared so next fetch is fresh
-    await fetch(`${url}/del/${encodeURIComponent(pattern)}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  } catch {}
-}
-
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: CORS_HEADERS });

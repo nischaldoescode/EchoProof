@@ -51,10 +51,22 @@ CustomTransitionPage<void> _slidePage(Widget child) {
 }
 
 class _RouterRefreshStream extends ChangeNotifier {
+  bool _pending = false;
+
   _RouterRefreshStream(List<Listenable> notifiers) {
     for (final n in notifiers) {
-      n.addListener(notifyListeners);
+      n.addListener(_onChanged);
     }
+  }
+
+  void _onChanged() {
+    if (_pending) return;
+    _pending = true;
+    // Debounce: collapse multiple rapid notifyListeners into one redirect.
+    Future.microtask(() {
+      _pending = false;
+      notifyListeners();
+    });
   }
 }
 
@@ -71,18 +83,42 @@ GoRouter createRouter({
       final location = state.matchedLocation;
 
       AppLogger.info(
-          'router: redirect check start — isLoggedIn=$isLoggedIn location=$location');
+          'router: redirect check — isLoggedIn=$isLoggedIn location=$location');
 
       if (location == '/splash') return null;
 
       if (!isLoggedIn) {
         if (location == '/login' || location == '/verify-email') return null;
-        AppLogger.info('router: not logged in, going to /login');
         return '/login';
       }
 
-      //  ALWAYS REFRESH FROM DB
-      await authService.checkUsername();
+      const onboardingRoutes = [
+        '/onboarding',
+        '/age-gender',
+        '/permissions',
+        '/verify-email',
+      ];
+
+      final isOnboardingRoute =
+          onboardingRoutes.any((r) => location.startsWith(r));
+
+      // If Hive says onboarding is complete, trust it while on onboarding
+      // routes — this prevents a loop when the DB write succeeded partially
+      // or the trigger is delayed. The feed will do a real check independently.
+      if (isOnboardingRoute && onboardingService.isComplete()) {
+        AppLogger.info('router: onboarding done per Hive, going to feed');
+        return '/feed';
+      }
+
+      // Only hit the DB when we genuinely need fresh state:
+      // first check after login, or when coming from an auth screen.
+      final needsDbCheck = !authService.hasUsernameChecked ||
+          location == '/login' ||
+          location == '/splash';
+
+      if (needsDbCheck) {
+        await authService.checkUsername();
+      }
 
       final hasUsername = authService.hasUsername;
       final isOnboardingDone = onboardingService.isComplete();
@@ -90,29 +126,17 @@ GoRouter createRouter({
       AppLogger.info(
           'router: after check — hasUsername=$hasUsername isOnboardingDone=$isOnboardingDone');
 
-      // logged in but no username — new user
       if (!hasUsername) {
-        const onboardingRoutes = [
-          '/onboarding',
-          '/age-gender',
-          '/permissions',
-          '/verify-email',
-        ];
-        if (onboardingRoutes.any((r) => location.startsWith(r))) return null;
-
-        AppLogger.info('router: no username → onboarding');
+        if (isOnboardingRoute) return null;
+        AppLogger.info('router: no username, redirecting to onboarding');
         return '/onboarding';
       }
 
-      // fix incomplete Hive state
       if (hasUsername && !isOnboardingDone) {
-        AppLogger.info('router: fixing onboarding state in Hive');
         onboardingService.complete();
       }
 
-      // redirect away from auth screens
       if (hasUsername && (location == '/login' || location == '/splash')) {
-        AppLogger.info('router: go to /feed');
         return '/feed';
       }
 
@@ -224,7 +248,7 @@ GoRouter createRouter({
         path: '/permissions',
         builder: (context, state) => const PermissionsScreen(),
       ),
-GoRoute(path: '/subscribe', builder: (_, __) => const SubscribeScreen()), 
+      GoRoute(path: '/subscribe', builder: (_, __) => const SubscribeScreen()),
     ],
   );
 }
