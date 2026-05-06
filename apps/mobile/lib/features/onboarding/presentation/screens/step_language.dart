@@ -1,6 +1,6 @@
-// onboarding step: language selector
-// shown before step 1 (identity intro) — step 0
-// persists selected locale to Hive + updates app locale via provider
+// onboarding step 0 — language selector
+// shown first in onboarding, before identity intro
+// persists selected locale code to Hive via OnboardingService.setLanguage()
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -8,7 +8,7 @@ import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../services/onboarding_service.dart';
-import '../widgets/onboarding_progress.dart';
+import 'package:flutter/services.dart';
 
 class StepLanguage extends StatefulWidget {
   const StepLanguage({super.key});
@@ -38,14 +38,17 @@ class _StepLanguageState extends State<StepLanguage>
     ('中文', '🇨🇳', 'zh'),
   ];
 
-  String _selected = 'en';
+  late String _selected;
 
   @override
   void initState() {
     super.initState();
+    // pre-select whatever was saved previously (defaults to 'en')
+    _selected = context.read<OnboardingService>().language;
+
     _anim = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 480),
     );
     _fade = CurvedAnimation(parent: _anim, curve: Curves.easeOut);
     _slide = Tween<Offset>(
@@ -75,15 +78,14 @@ class _StepLanguageState extends State<StepLanguage>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: AppSpacing.xl),
-                  // No progress bar on language step — it's step 0
+                  const SizedBox(height: AppSpacing.xxl),
                   Text(
                     'Choose your language',
                     style: AppTypography.textTheme.headlineMedium,
                   ),
                   const SizedBox(height: AppSpacing.xs),
                   Text(
-                    'You can change this any time in settings.',
+                    'You can change this any time in Settings.',
                     style: AppTypography.textTheme.bodyMedium?.copyWith(
                       color: AppColors.textSecondary,
                     ),
@@ -95,7 +97,7 @@ class _StepLanguageState extends State<StepLanguage>
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 2,
-                        childAspectRatio: 3,
+                        childAspectRatio: 3.2,
                         crossAxisSpacing: 10,
                         mainAxisSpacing: 10,
                       ),
@@ -103,20 +105,24 @@ class _StepLanguageState extends State<StepLanguage>
                         final lang = _languages[i];
                         final isSelected = _selected == lang.$3;
                         return GestureDetector(
-                          onTap: () => setState(() => _selected = lang.$3),
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            setState(() => _selected = lang.$3);
+                          },
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 180),
                             curve: Curves.easeInOut,
                             decoration: BoxDecoration(
+                              // use softSand (already in AppColors) for unselected
                               color: isSelected
                                   ? AppColors.fernGreenLight
-                                  : AppColors.surfaceVariant,
+                                  : AppColors.softSand,
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
                                 color: isSelected
                                     ? AppColors.fernGreen
-                                    : Colors.transparent,
-                                width: 1.5,
+                                    : AppColors.borderSubtle,
+                                width: isSelected ? 1.5 : 1,
                               ),
                             ),
                             padding: const EdgeInsets.symmetric(
@@ -143,6 +149,12 @@ class _StepLanguageState extends State<StepLanguage>
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
+                                if (isSelected)
+                                  const Icon(
+                                    Icons.check_circle_rounded,
+                                    size: 16,
+                                    color: AppColors.fernGreen,
+                                  ),
                               ],
                             ),
                           ),
@@ -151,24 +163,83 @@ class _StepLanguageState extends State<StepLanguage>
                     ),
                   ),
                   const SizedBox(height: AppSpacing.lg),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        // persist language
-                        context
-                            .read<OnboardingService>()
-                            .setLanguage(_selected);
-                        context.read<OnboardingService>().nextStep();
-                      },
-                      child: const Text('Continue'),
-                    ),
+                  _LanguageContinueButton(
+                    selected: _selected,
+                    onPressed: () {
+                      HapticFeedback.mediumImpact();
+                      final svc = context.read<OnboardingService>();
+                      svc.setLanguage(_selected);
+                      // Brief delay so the locale rebuild animates before
+                      // advancing the step — gives the user visual feedback
+                      // that the language actually changed.
+                      Future.delayed(const Duration(milliseconds: 350), () {
+                        if (mounted) svc.nextStep();
+                      });
+                    },
                   ),
                   const SizedBox(height: AppSpacing.xl),
                 ],
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LanguageContinueButton extends StatefulWidget {
+  const _LanguageContinueButton({
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final String selected;
+  final VoidCallback onPressed;
+
+  @override
+  State<_LanguageContinueButton> createState() =>
+      _LanguageContinueButtonState();
+}
+
+class _LanguageContinueButtonState extends State<_LanguageContinueButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 120),
+    );
+    _scale = Tween<double>(begin: 1.0, end: 0.95).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeIn),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(
+      scale: _scale,
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: widget.selected.isNotEmpty
+              ? () async {
+                  await _ctrl.forward();
+                  await _ctrl.reverse();
+                  widget.onPressed();
+                }
+              : null,
+          child: const Text('Continue'),
         ),
       ),
     );

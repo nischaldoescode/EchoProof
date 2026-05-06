@@ -16,6 +16,7 @@ Future<FeedFilter?> showFeedFilterSheet(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
+    useRootNavigator: true,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
@@ -97,7 +98,7 @@ class _FeedFilterSheetState extends State<_FeedFilterSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomPad = MediaQuery.viewInsetsOf(context).bottom;
+    final bottomPad = MediaQuery.of(context).padding.bottom;
 
     return Container(
       decoration: const BoxDecoration(

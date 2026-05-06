@@ -13,7 +13,7 @@ class AvatarService {
   final SupabaseClient _client;
 
   static const _style = 'shapes';
-  static const _size  = 128;
+  static const _size = 128;
 
   // generates and stores avatar for a user.
   // safe to call multiple times — checks if avatar already exists first.
@@ -21,14 +21,15 @@ class AvatarService {
     required String userId,
     required String username,
   }) async {
-    // check if user already has an avatar
+    // Use maybeSingle so that a missing row returns null instead of throwing
+    // PGRST116. New users may not have a row yet if the DB trigger is slow.
     final existing = await _client
         .from('users_public')
         .select('avatar_url')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
-    final existingUrl = existing['avatar_url'] as String?;
+    final existingUrl = existing?['avatar_url'] as String?;
     if (existingUrl != null && existingUrl.isNotEmpty) {
       AppLogger.debug('avatar: already exists, skipping generation');
       return existingUrl;
@@ -50,10 +51,9 @@ class AvatarService {
     // upload to supabase storage bucket 'avatars'
     final storagePath = '$userId.png';
 
-    await _client.storage
-        .from('avatars')
-        .uploadBinary(
-          storagePath,
+// upload to storage
+    await _client.storage.from('avatars').uploadBinary(
+          '$userId.png',
           bytes,
           fileOptions: const FileOptions(
             contentType: 'image/png',
@@ -61,18 +61,37 @@ class AvatarService {
           ),
         );
 
-    // get public cdn url
-    final publicUrl = _client.storage
-        .from('avatars')
-        .getPublicUrl(storagePath);
+    // get public URL
+    final url = _client.storage.from('avatars').getPublicUrl('$userId.png');
 
-    // save url to users_public
-    await _client
+    // Try UPDATE first, then INSERT if no row exists yet.
+    // This mirrors the same pattern as completeOnboarding to handle
+    // new users where the DB trigger row may not exist.
+    final updated = await _client
         .from('users_public')
-        .update({'avatar_url': publicUrl})
-        .eq('id', userId);
+        .update({'avatar_url': url})
+        .eq('id', userId)
+        .select('id');
 
-    AppLogger.info('avatar: generated and stored for $username');
-    return publicUrl;
+    if ((updated as List).isEmpty) {
+      // Row doesn't exist yet — insert a minimal row with avatar_url.
+      // completeOnboarding will fill in the rest shortly after.
+      final tempUsername = 'user${userId.replaceAll('-', '').substring(0, 8)}';
+      await _client.from('users_public').insert({
+        'id': userId,
+        'username': tempUsername,
+        'avatar_url': url,
+        'trust_tier': 'unverified',
+        'trust_score': 0,
+        'echo_count': 0,
+        'proof_count': 0,
+        'is_public': true,
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      });
+    }
+
+    AppLogger.info(
+        'avatar: generated and stored for ${userId.substring(0, 8)}');
+    return url;
   }
 }

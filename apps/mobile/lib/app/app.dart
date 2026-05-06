@@ -5,22 +5,56 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import 'theme/app_theme.dart';
 import '../shared/widgets/connectivity_wrapper.dart';
+import '../features/onboarding/presentation/services/onboarding_service.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 class EchoProofApp extends StatelessWidget {
   const EchoProofApp({super.key, required this.router});
   final GoRouter router;
 
+  static const _localeMap = {
+    'en': Locale('en'),
+    'hi': Locale('hi'),
+    'ta': Locale('ta'),
+    'te': Locale('te'),
+    'kn': Locale('kn'),
+    'mr': Locale('mr'),
+    'bn': Locale('bn'),
+    'es': Locale('es'),
+    'fr': Locale('fr'),
+    'de': Locale('de'),
+    'ar': Locale('ar'),
+    'zh': Locale('zh'),
+  };
+
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      title: 'Echoproof',
-      debugShowCheckedModeBanner: false,
-      theme: buildAppTheme(),
-      routerConfig: router,
-      builder: (context, child) => ConnectivityWrapper(
-        child: child ?? const SizedBox.shrink(),
+    final langCode = context.watch<OnboardingService>().language;
+    final locale = _localeMap[langCode] ?? const Locale('en');
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      child: KeyedSubtree(
+        key: ValueKey(langCode),
+        child: MaterialApp.router(
+          title: 'Echoproof',
+          debugShowCheckedModeBanner: false,
+          theme: buildAppTheme(),
+          locale: locale,
+          supportedLocales: _localeMap.values.toList(),
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          routerConfig: router,
+          builder: (context, child) => ConnectivityWrapper(
+            child: child ?? const SizedBox.shrink(),
+          ),
+        ),
       ),
     );
   }

@@ -70,6 +70,447 @@ class _ProfileScreenState extends State<ProfileScreen>
     super.dispose();
   }
 
+  bool _isSavingProfile = false;
+
+  Future<void> _showEditProfileSheet() async {
+    final client = Supabase.instance.client;
+    final currentUsername = _profile?['username'] as String? ?? '';
+    final currentDisplay = _profile?['display_name'] as String? ?? '';
+
+    final usernameCtrl = TextEditingController(text: currentUsername);
+    final displayCtrl = TextEditingController(text: currentDisplay);
+    bool usernameAvailable = true;
+    bool isCheckingUsername = false;
+    String? usernameError;
+
+    Future<bool> checkUsernameAvailability(String value) async {
+      if (value == currentUsername) return true;
+      if (value.length < 3) return false;
+      try {
+        final myId = client.auth.currentUser?.id;
+        final row = await client
+            .from('users_public')
+            .select('id')
+            .eq('username', value)
+            .neq('id', myId ?? '')
+            .maybeSingle();
+        return row == null;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheet) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.viewInsetsOf(ctx).bottom,
+                left: AppSpacing.xl,
+                right: AppSpacing.xl,
+                top: AppSpacing.xl,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppColors.borderMedium,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  Text(
+                    'Edit profile',
+                    style: AppTypography.textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    'Username changes require email verification.',
+                    style: AppTypography.textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  Text(
+                    'Display name',
+                    style: GoogleFonts.josefinSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  TextField(
+                    controller: displayCtrl,
+                    maxLength: 50,
+                    buildCounter: (_,
+                            {required currentLength,
+                            required isFocused,
+                            maxLength}) =>
+                        null,
+                    style: AppTypography.textTheme.bodyMedium,
+                    decoration: InputDecoration(
+                      hintText: 'Your display name',
+                      filled: true,
+                      fillColor: AppColors.softSand,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                            color: AppColors.fernGreen, width: 1.5),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  Text(
+                    'Username',
+                    style: GoogleFonts.josefinSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  TextField(
+                    controller: usernameCtrl,
+                    maxLength: 20,
+                    buildCounter: (_,
+                            {required currentLength,
+                            required isFocused,
+                            maxLength}) =>
+                        null,
+                    autocorrect: false,
+                    style: AppTypography.textTheme.bodyMedium,
+                    decoration: InputDecoration(
+                      prefixText: '@',
+                      hintText: 'username',
+                      errorText: usernameError,
+                      suffixIcon: isCheckingUsername
+                          ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppColors.fernGreen,
+                                ),
+                              ),
+                            )
+                          : usernameAvailable && usernameCtrl.text.length >= 3
+                              ? const Icon(Icons.check_circle_rounded,
+                                  size: 18, color: AppColors.fernGreen)
+                              : null,
+                      filled: true,
+                      fillColor: AppColors.softSand,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                            color: AppColors.fernGreen, width: 1.5),
+                      ),
+                      errorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide:
+                            const BorderSide(color: AppColors.sunsetCoral),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                    ),
+                    onChanged: (v) async {
+                      setSheet(() {
+                        isCheckingUsername = true;
+                        usernameError = null;
+                      });
+                      await Future.delayed(const Duration(milliseconds: 500));
+                      if (!ctx.mounted) return;
+                      if (v.length < 3) {
+                        setSheet(() {
+                          isCheckingUsername = false;
+                          usernameAvailable = false;
+                          usernameError = 'At least 3 characters';
+                        });
+                        return;
+                      }
+                      final available =
+                          await checkUsernameAvailability(v.toLowerCase());
+                      setSheet(() {
+                        isCheckingUsername = false;
+                        usernameAvailable = available;
+                        usernameError =
+                            available ? null : 'Username already taken';
+                      });
+                    },
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: (usernameAvailable && !isCheckingUsername)
+                          ? () async {
+                              Navigator.pop(ctx);
+                              await _saveProfileChanges(
+                                newUsername:
+                                    usernameCtrl.text.trim().toLowerCase(),
+                                newDisplayName: displayCtrl.text.trim(),
+                                currentUsername: currentUsername,
+                              );
+                            }
+                          : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.charcoal,
+                        disabledBackgroundColor: AppColors.borderMedium,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: Text(
+                        'Save changes',
+                        style: GoogleFonts.josefinSans(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _saveProfileChanges({
+    required String newUsername,
+    required String newDisplayName,
+    required String currentUsername,
+  }) async {
+    // Username changed — require OTP re-verification before saving.
+    final usernameChanged = newUsername != currentUsername;
+
+    if (usernameChanged) {
+      final email = Supabase.instance.client.auth.currentUser?.email;
+      if (email == null) return;
+
+      setState(() => _isSavingProfile = true);
+
+      try {
+        await Supabase.instance.client.auth.signInWithOtp(
+          email: email,
+          shouldCreateUser: false,
+        );
+      } catch (e) {
+        AppLogger.error('profile: OTP send failed $e');
+        setState(() => _isSavingProfile = false);
+        return;
+      }
+
+      if (!mounted) return;
+
+      // Show OTP dialog inline.
+      final otpVerified = await _showOtpVerificationDialog(email);
+      if (!mounted) return;
+
+      if (!otpVerified) {
+        setState(() => _isSavingProfile = false);
+        return;
+      }
+    }
+
+    setState(() => _isSavingProfile = true);
+
+    try {
+      final client = Supabase.instance.client;
+      final userId = client.auth.currentUser?.id;
+      if (userId == null) return;
+
+      await client.from('users_public').update({
+        'username': newUsername,
+        'display_name':
+            newDisplayName.isNotEmpty ? newDisplayName : newUsername,
+      }).eq('id', userId);
+
+      setState(() {
+        _profile = {
+          ..._profile!,
+          'username': newUsername,
+          'display_name': newDisplayName,
+        };
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Profile updated.',
+              style: GoogleFonts.josefinSans(fontSize: 13),
+            ),
+            backgroundColor: AppColors.fernGreen,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      AppLogger.error('profile: save changes failed $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Failed to save changes. Please try again.',
+              style: GoogleFonts.josefinSans(fontSize: 13),
+            ),
+            backgroundColor: AppColors.sunsetCoral,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    }
+
+    setState(() => _isSavingProfile = false);
+  }
+
+  Future<bool> _showOtpVerificationDialog(String email) async {
+    final otpCtrl = TextEditingController();
+    bool isVerifying = false;
+    bool? result;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialog) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              title: Text(
+                'Verify your email',
+                style: GoogleFonts.josefinSans(fontWeight: FontWeight.w700),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'A verification code was sent to $email. Enter it to confirm the username change.',
+                    style: GoogleFonts.josefinSans(fontSize: 13, height: 1.5),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: otpCtrl,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    buildCounter: (_,
+                            {required currentLength,
+                            required isFocused,
+                            maxLength}) =>
+                        null,
+                    autofocus: true,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.josefinSans(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 8,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: '000000',
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(
+                            color: AppColors.fernGreen, width: 2),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    result = false;
+                    Navigator.pop(ctx);
+                  },
+                  child: Text('Cancel',
+                      style: GoogleFonts.josefinSans(
+                          color: AppColors.textSecondary)),
+                ),
+                TextButton(
+                  onPressed: isVerifying
+                      ? null
+                      : () async {
+                          if (otpCtrl.text.length != 6) return;
+                          setDialog(() => isVerifying = true);
+                          try {
+                            await Supabase.instance.client.auth.verifyOTP(
+                              email: email,
+                              token: otpCtrl.text,
+                              type: OtpType.email,
+                            );
+                            result = true;
+                          } catch (_) {
+                            result = false;
+                          }
+                          if (ctx.mounted) Navigator.pop(ctx);
+                        },
+                  child: isVerifying
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.fernGreen,
+                          ),
+                        )
+                      : Text(
+                          'Verify',
+                          style: GoogleFonts.josefinSans(
+                            color: AppColors.fernGreen,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    return result == true;
+  }
+
   Future<void> _loadProfile() async {
     setState(() => _isLoading = true);
     final client = Supabase.instance.client;
@@ -80,26 +521,36 @@ class _ProfileScreenState extends State<ProfileScreen>
 
       if (widget.username != null) {
         _isOwnProfile = false;
-        final row = await client
+        final result = await client
             .from('users_public')
             .select(
               'id, username, avatar_url, trust_tier, trust_score, '
               'echo_count, proof_count, is_public, bio',
             )
-            .eq('username', widget.username!)
-            .single();
-        profile = row as Map<String, dynamic>;
+            .maybeSingle();
+        if (result == null) {
+          setState(() => _isLoading = false);
+          return;
+        }
+        final row = result;
+        profile = row;
       } else {
         _isOwnProfile = true;
-        final row = await client
+        final result = await client
             .from('users_public')
             .select(
               'id, username, avatar_url, trust_tier, trust_score, '
               'echo_count, proof_count, is_public, bio',
             )
             .eq('id', myId!)
-            .single();
-        profile = row as Map<String, dynamic>;
+            .maybeSingle();
+        if (result == null) {
+          setState(() => _isLoading = false);
+          return;
+        }
+        final row = result;
+        profile = row;
+        // as Map<String, dynamic>
       }
 
       final targetId = profile['id'] as String;
@@ -470,6 +921,12 @@ class _ProfileScreenState extends State<ProfileScreen>
             actions: [
               if (_isOwnProfile) ...[
                 IconButton(
+                  icon: const Icon(Icons.edit_outlined, size: 20),
+                  onPressed: () => _showEditProfileSheet(),
+                  color: AppColors.charcoal,
+                  tooltip: 'Edit profile',
+                ),
+                IconButton(
                   icon: const Icon(Icons.settings_outlined, size: 22),
                   onPressed: () => context.push('/settings'),
                   color: AppColors.charcoal,
@@ -480,11 +937,31 @@ class _ProfileScreenState extends State<ProfileScreen>
             ],
           ),
           bottomNavigationBar: const AppBottomNav(currentLocation: '/profile'),
-          body: _isOwnProfile
-              ? _buildBody()
-              : kReleaseMode
-                  ? SecureScreen(child: _buildBody())
-                  : _buildBody(),
+          body: Stack(
+            children: [
+              _isOwnProfile
+                  ? _buildBody()
+                  : kReleaseMode
+                      ? SecureScreen(child: _buildBody())
+                      : _buildBody(),
+              if (_isSavingProfile)
+                Positioned.fill(
+                  child: AnimatedOpacity(
+                    opacity: _isSavingProfile ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Container(
+                      color: Colors.black.withValues(alpha: 0.25),
+                      child: const Center(
+                        child: CircularProgressIndicator(
+                          color: AppColors.fernGreen,
+                          strokeWidth: 2.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         )));
   }
 }

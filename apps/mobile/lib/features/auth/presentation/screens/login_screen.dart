@@ -15,7 +15,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   final _formKey = GlobalKey<FormState>();
   final _emailCtrl = TextEditingController();
 
@@ -34,6 +34,7 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     _bgCtrl = AnimationController(
       vsync: this,
@@ -82,6 +83,7 @@ class _LoginScreenState extends State<LoginScreen>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _bgCtrl.dispose();
     _cardCtrl.dispose();
     _particleCtrl.dispose();
@@ -89,10 +91,21 @@ class _LoginScreenState extends State<LoginScreen>
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      _bgCtrl.stop();
+      _particleCtrl.stop();
+    } else if (state == AppLifecycleState.resumed) {
+      _bgCtrl.repeat(reverse: true);
+      _particleCtrl.repeat();
+    }
+  }
+
   Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
-    final email = _emailController.text.trim();
     final auth = context.read<AuthService>();
     final email = _emailCtrl.text.trim();
 

@@ -12,6 +12,8 @@ import '../../../auth/presentation/services/auth_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/utils/logger.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../onboarding/presentation/services/onboarding_service.dart';
+import '../../../../core/services/ad_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -27,6 +29,279 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _loadVersion();
+  }
+
+  static const _languages = [
+    ('English', 'en'),
+    ('हिन्दी', 'hi'),
+    ('தமிழ்', 'ta'),
+    ('తెలుగు', 'te'),
+    ('ಕನ್ನಡ', 'kn'),
+    ('मराठी', 'mr'),
+    ('বাংলা', 'bn'),
+    ('Español', 'es'),
+    ('Français', 'fr'),
+    ('Deutsch', 'de'),
+    ('العربية', 'ar'),
+    ('中文', 'zh'),
+  ];
+
+  String _currentLanguageLabel(BuildContext context) {
+    final code = context.read<OnboardingService>().language;
+    return _languages
+        .firstWhere(
+          (l) => l.$2 == code,
+          orElse: () => ('English', 'en'),
+        )
+        .$1;
+  }
+
+  void _showLanguageSheet(BuildContext context) {
+    final onboarding = context.read<OnboardingService>();
+    String selected = onboarding.language;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheet) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    margin: const EdgeInsets.only(top: 12),
+                    decoration: BoxDecoration(
+                      color: AppColors.borderMedium,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+                  child: Text(
+                    'Choose language',
+                    style: GoogleFonts.josefinSans(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: _languages.map((lang) {
+                      final isSelected = selected == lang.$2;
+                      return AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        color: isSelected
+                            ? AppColors.fernGreenLight
+                            : Colors.white,
+                        child: ListTile(
+                          title: Text(
+                            lang.$1,
+                            style: GoogleFonts.josefinSans(
+                              fontWeight: isSelected
+                                  ? FontWeight.w600
+                                  : FontWeight.w400,
+                              color: isSelected
+                                  ? AppColors.fernGreenDark
+                                  : AppColors.charcoal,
+                            ),
+                          ),
+                          trailing: isSelected
+                              ? const Icon(
+                                  Icons.check_circle_rounded,
+                                  color: AppColors.fernGreen,
+                                )
+                              : null,
+                          onTap: () {
+                            setSheet(() => selected = lang.$2);
+                          },
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    24,
+                    16,
+                    24,
+                    24 + MediaQuery.of(ctx).padding.bottom,
+                  ),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        onboarding.setLanguage(selected);
+                        Navigator.pop(ctx);
+                        // Notify user the change applies on next restart
+                        // because flutter_localizations requires app rebuild
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Language updated. Restart the app to apply.',
+                              style: GoogleFonts.josefinSans(fontSize: 13),
+                            ),
+                            behavior: SnackBarBehavior.floating,
+                            margin: const EdgeInsets.only(
+                              bottom: 88,
+                              left: 16,
+                              right: 16,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            backgroundColor: AppColors.charcoal,
+                          ),
+                        );
+                        setState(() {});
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.charcoal,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: Text(
+                        'Apply',
+                        style: GoogleFonts.josefinSans(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showAdInfoModal(BuildContext context) {
+    final adService = context.read<AdService>();
+    final isAdFree = adService.isAdFreeActive;
+    final minsLeft = adService.adFreeMinutesRemaining;
+
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'dismiss',
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 380),
+      transitionBuilder: (ctx, anim, secondAnim, child) {
+        final curve = CurvedAnimation(parent: anim, curve: Curves.easeOutBack);
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.85, end: 1.0).animate(curve),
+          child: FadeTransition(
+            opacity: Tween<double>(begin: 0, end: 1).animate(
+              CurvedAnimation(parent: anim, curve: Curves.easeOut),
+            ),
+            child: child,
+          ),
+        );
+      },
+      pageBuilder: (ctx, _, __) {
+        return Center(
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 32),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              padding: const EdgeInsets.all(AppSpacing.xl),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    child: Icon(
+                      isAdFree ? Icons.block_rounded : Icons.ads_click_rounded,
+                      key: ValueKey(isAdFree),
+                      size: 48,
+                      color: isAdFree
+                          ? AppColors.fernGreen
+                          : AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  Text(
+                    isAdFree ? 'Ads are paused' : 'About ads on Echoproof',
+                    style: GoogleFonts.josefinSans(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.charcoal,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  Text(
+                    isAdFree
+                        ? 'You earned $minsLeft more minutes of ad-free browsing by watching a video. Ads will resume after your session ends.'
+                        : 'Echoproof is free to use. Ads help keep the platform running. You can remove ads by going Pro, or earn 1 hour ad-free by watching a short video from the feed.',
+                    style: GoogleFonts.josefinSans(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                      height: 1.6,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        context.push('/subscribe');
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.charcoal,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: Text(
+                        'Go Pro — remove ads',
+                        style: GoogleFonts.josefinSans(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: Text(
+                      'Close',
+                      style: GoogleFonts.josefinSans(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _loadVersion() async {
@@ -54,6 +329,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       body: ListView(
         children: [
+          _Section(title: 'Language', tiles: [
+            _Tile(
+              icon: Icons.language_rounded,
+              label: 'App language',
+              subtitle: _currentLanguageLabel(context),
+              onTap: () => _showLanguageSheet(context),
+            ),
+          ]),
           _Section(title: 'Account', tiles: [
             _Tile(
               icon: Icons.person_outline_rounded,
@@ -107,6 +390,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               color: AppColors.sunsetCoral,
               onTap: () => _showDeleteAccount(context),
             ),
+          ]),
+          _Section(title: 'Ads', tiles: [
+            _AdStatusTile(onTap: () => _showAdInfoModal(context)),
           ]),
           _Section(title: 'About', tiles: [
             _Tile(
@@ -592,6 +878,82 @@ class _ProBadge extends StatelessWidget {
           fontWeight: FontWeight.w700,
           color: Colors.white,
           letterSpacing: 0.8,
+        ),
+      ),
+    );
+  }
+}
+
+class _AdStatusTile extends StatelessWidget {
+  const _AdStatusTile({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final adService = context.watch<AdService>();
+    final isAdFree = adService.isAdFreeActive;
+    final minsLeft = adService.adFreeMinutesRemaining;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.md,
+        ),
+        child: Row(
+          children: [
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: Icon(
+                isAdFree ? Icons.block_rounded : Icons.ads_click_rounded,
+                key: ValueKey(isAdFree),
+                size: 20,
+                color: isAdFree ? AppColors.fernGreen : AppColors.charcoal,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    child: Text(
+                      isAdFree ? 'Ads paused' : 'Ad information',
+                      key: ValueKey(isAdFree),
+                      style: GoogleFonts.josefinSans(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: isAdFree
+                            ? AppColors.fernGreenDark
+                            : AppColors.charcoal,
+                      ),
+                    ),
+                  ),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    child: Text(
+                      isAdFree
+                          ? '$minsLeft minutes remaining'
+                          : 'Tap to learn about ads and go Pro',
+                      key: ValueKey('$isAdFree-$minsLeft'),
+                      style: GoogleFonts.josefinSans(
+                        fontSize: 12,
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.chevron_right_rounded,
+              size: 16,
+              color: AppColors.textTertiary,
+            ),
+          ],
         ),
       ),
     );

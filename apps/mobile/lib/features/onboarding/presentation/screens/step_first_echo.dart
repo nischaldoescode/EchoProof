@@ -1,8 +1,10 @@
-// onboarding step 5 — optional first echo creation
+// onboarding step 6 — optional first echo creation
 // skip is allowed — completes onboarding either way
-// uses OnboardingService and CreateEchoService via provider
+// char limit: 308 (Twitter free = 280, +10% = 308)
+// live counter with colour shift near/at limit
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
@@ -11,6 +13,9 @@ import '../services/onboarding_service.dart';
 import '../widgets/onboarding_progress.dart';
 import '../../../echo/domain/entities/echo_entity.dart';
 import '../../../echo/presentation/services/create_echo_service.dart';
+import '../../../../core/utils/logger.dart';
+import 'package:google_fonts/google_fonts.dart';
+import '../../../auth/presentation/services/auth_service.dart';
 
 class StepFirstEcho extends StatefulWidget {
   const StepFirstEcho({super.key});
@@ -20,8 +25,11 @@ class StepFirstEcho extends StatefulWidget {
 }
 
 class _StepFirstEchoState extends State<StepFirstEcho> {
+  static const int _maxChars = 308; // 10% above Twitter free (280)
+
   final _controller = TextEditingController();
   EchoCategory? _selectedCategory;
+  bool _skipLoading = false;
 
   @override
   void dispose() {
@@ -30,152 +38,276 @@ class _StepFirstEchoState extends State<StepFirstEcho> {
   }
 
   Future<void> _skip() async {
-    await context.read<OnboardingService>().completeOnboarding();
+    setState(() => _skipLoading = true);
+    try {
+      await context.read<OnboardingService>().completeOnboarding(
+            authService: context.read<AuthService>(),
+          );
+    } catch (e) {
+      AppLogger.error('first echo: skip failed $e');
+    } finally {
+      if (mounted) setState(() => _skipLoading = false);
+    }
   }
 
   Future<void> _submit() async {
-    if (_controller.text.trim().isEmpty || _selectedCategory == null) return;
+    final text = _controller.text.trim();
+    if (text.isEmpty || _selectedCategory == null) return;
+    if (text.length > _maxChars) return;
 
     final createService = context.read<CreateEchoService>();
-    createService.setTitle(_controller.text.trim());
-    createService.setContent(_controller.text.trim());
+    createService
+        .setTitle(text.length > 80 ? '${text.substring(0, 80)}…' : text);
+    createService.setContent(text);
     createService.setCategory(_selectedCategory!);
-    await createService.submit();
+
+    try {
+      await createService.submit();
+    } catch (e) {
+      AppLogger.error('first echo: echo submit failed $e');
+    }
 
     if (mounted) {
-      await context.read<OnboardingService>().completeOnboarding();
+      try {
+        await context.read<OnboardingService>().completeOnboarding(
+              authService: context.read<AuthService>(),
+            );
+      } catch (e) {
+        AppLogger.error('first echo: complete onboarding failed $e');
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final createService = context.watch<CreateEchoService>();
+    final onboardingService = context.watch<OnboardingService>();
 
-    return Scaffold(
-      backgroundColor: AppColors.white,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: AppSpacing.xl),
-              const OnboardingProgress(currentStep: 5, totalSteps: 5),
-              const SizedBox(height: AppSpacing.xxl),
-
-              Text(
-                'Share your first Echo',
-                style: AppTypography.textTheme.headlineMedium,
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Text(
-                'Optional — you can always create one later from the feed.',
-                style: AppTypography.textTheme.bodyMedium?.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-
-              const SizedBox(height: AppSpacing.xxl),
-
-              TextField(
-                controller: _controller,
-                maxLines:   5,
-                maxLength:  308,
-                decoration: const InputDecoration(
-                  hintText:           'What do you want the community to verify?',
-                  alignLabelWithHint: true,
-                ),
-                style: AppTypography.textTheme.bodyMedium,
-              ),
-
-              const SizedBox(height: AppSpacing.lg),
-
-              SizedBox(
-                height: 38,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: EchoCategory.values.map((cat) {
-                    final selected = _selectedCategory == cat;
-                    return GestureDetector(
-                      onTap: () =>
-                          setState(() => _selectedCategory = cat),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        margin: const EdgeInsets.only(right: AppSpacing.sm),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.md,
-                          vertical:   AppSpacing.xs,
-                        ),
-                        decoration: BoxDecoration(
-                          color: selected
-                              ? AppColors.charcoal
-                              : AppColors.softSand,
-                          borderRadius: BorderRadius.circular(
-                            AppSpacing.radiusFull,
-                          ),
-                          border: Border.all(
-                            color: selected
-                                ? AppColors.charcoal
-                                : AppColors.borderSubtle,
-                          ),
-                        ),
-                        child: Text(
-                          cat.displayName,
-                          style: TextStyle(
-                            fontSize:   13,
-                            fontWeight: selected
-                                ? FontWeight.w600
-                                : FontWeight.w400,
-                            color: selected
-                                ? AppColors.white
-                                : AppColors.textPrimary,
-                            fontFamily: AppTypography.fontFamily,
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-
-              const Spacer(),
-
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: createService.isSubmitting ? null : _submit,
-                  child: createService.isSubmitting
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppColors.white,
-                          ),
-                        )
-                      : const Text('Publish and enter'),
-                ),
-              ),
-
-              const SizedBox(height: AppSpacing.md),
-
-              Center(
-                child: TextButton(
-                  onPressed: _skip,
-                  child: Text(
-                    'Skip for now',
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: AppColors.white,
+          body: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: AppSpacing.xl),
+                  const OnboardingProgress(currentStep: 6, totalSteps: 6),
+                  const SizedBox(height: AppSpacing.xxl),
+                  Text(
+                    'Share your first Echo',
+                    style: AppTypography.textTheme.headlineMedium,
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  Text(
+                    'Optional — you can always create one later from the feed.',
                     style: AppTypography.textTheme.bodyMedium?.copyWith(
                       color: AppColors.textSecondary,
                     ),
                   ),
-                ),
-              ),
+                  const SizedBox(height: AppSpacing.xxl),
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _controller,
+                    builder: (context, value, _) {
+                      final len = value.text.length;
+                      final remaining = _maxChars - len;
+                      final isOver = remaining < 0;
+                      final isNear = remaining <= 30 && !isOver;
 
-              const SizedBox(height: AppSpacing.xl),
-            ],
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          TextField(
+                            controller: _controller,
+                            maxLines: 5,
+                            maxLength: _maxChars,
+                            maxLengthEnforcement: MaxLengthEnforcement.enforced,
+                            buildCounter: (_,
+                                    {required currentLength,
+                                    required isFocused,
+                                    maxLength}) =>
+                                const SizedBox.shrink(),
+                            decoration: const InputDecoration(
+                              hintText:
+                                  'What do you want the community to verify?',
+                              alignLabelWithHint: true,
+                            ),
+                            style: AppTypography.textTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              if (isNear || isOver)
+                                SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    value: (len / _maxChars).clamp(0.0, 1.0),
+                                    strokeWidth: 2.5,
+                                    backgroundColor: AppColors.borderSubtle,
+                                    color: isOver
+                                        ? AppColors.sunsetCoral
+                                        : const Color(0xFFE8A000),
+                                  ),
+                                ),
+                              if (isNear || isOver) const SizedBox(width: 6),
+                              Text(
+                                isOver ? '$remaining' : '$len / $_maxChars',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: (isOver || isNear)
+                                      ? FontWeight.w600
+                                      : FontWeight.w400,
+                                  color: isOver
+                                      ? AppColors.sunsetCoral
+                                      : isNear
+                                          ? const Color(0xFFE8A000)
+                                          : AppColors.textTertiary,
+                                  fontFamily: AppTypography.fontFamily,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  SizedBox(
+                    height: 38,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: EchoCategory.values.map((cat) {
+                        final selected = _selectedCategory == cat;
+                        return GestureDetector(
+                          onTap: () => setState(() => _selectedCategory = cat),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            margin: const EdgeInsets.only(right: AppSpacing.sm),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.md,
+                              vertical: AppSpacing.xs,
+                            ),
+                            decoration: BoxDecoration(
+                              color: selected
+                                  ? AppColors.charcoal
+                                  : AppColors.softSand,
+                              borderRadius: BorderRadius.circular(
+                                AppSpacing.radiusFull,
+                              ),
+                              border: Border.all(
+                                color: selected
+                                    ? AppColors.charcoal
+                                    : AppColors.borderSubtle,
+                              ),
+                            ),
+                            child: Text(
+                              cat.displayName,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: selected
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
+                                color: selected
+                                    ? AppColors.white
+                                    : AppColors.textPrimary,
+                                fontFamily: AppTypography.fontFamily,
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  const Spacer(),
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _controller,
+                    builder: (context, value, _) {
+                      final canPost = value.text.trim().isNotEmpty &&
+                          _selectedCategory != null &&
+                          value.text.length <= _maxChars &&
+                          !createService.isSubmitting;
+
+                      return SizedBox(
+                        width: double.infinity,
+                        child: AnimatedOpacity(
+                          opacity: canPost ? 1.0 : 0.45,
+                          duration: const Duration(milliseconds: 200),
+                          child: ElevatedButton(
+                            onPressed: canPost ? _submit : null,
+                            child: createService.isSubmitting
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: AppColors.white,
+                                    ),
+                                  )
+                                : const Text('Publish and enter'),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  Center(
+                    child: TextButton(
+                      onPressed: _skipLoading ? null : _skip,
+                      child: _skipLoading
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppColors.textSecondary,
+                              ),
+                            )
+                          : Text(
+                              'Skip for now',
+                              style: AppTypography.textTheme.bodyMedium
+                                  ?.copyWith(color: AppColors.textSecondary),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+                ],
+              ),
+            ),
           ),
         ),
-      ),
+        if (_skipLoading || onboardingService.isSubmitting)
+          AnimatedOpacity(
+            opacity:
+                (_skipLoading || onboardingService.isSubmitting) ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 200),
+            child: Container(
+              color: Colors.white.withValues(alpha: 0.85),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(
+                      color: AppColors.fernGreen,
+                      strokeWidth: 2.5,
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                    Text(
+                      'Setting up your account...',
+                      style: GoogleFonts.josefinSans(
+                        fontSize: 14,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

@@ -15,6 +15,7 @@ import '../../../../shared/widgets/shimmer_loader.dart';
 import 'package:echoproof/shared/widgets/app_bottom_nav.dart';
 import '../../../../app/app.dart';
 import '../../../../shared/widgets/ad_card.dart';
+import '../../../../shared/widgets/rating_prompt.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
@@ -44,6 +45,10 @@ class _FeedScreenState extends State<FeedScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final feed = context.read<EchoFeedService>();
       if (feed.echoes.isEmpty) feed.loadFeed();
+      // Show rating prompt after sufficient use — uses progressive schedule.
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) RatingPrompt.maybeShow(context);
+      });
     });
   }
 
@@ -119,12 +124,17 @@ class _FeedScreenState extends State<FeedScreen> {
 
     return Column(
       children: [
-        if (_filter.isActive)
-          _ActiveFilterBar(
-            filter: _filter,
-            onClear: () => setState(() => _filter = const FeedFilter()),
-            onTap: _openFilter,
-          ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeInOut,
+          child: _filter.isActive
+              ? _ActiveFilterBar(
+                  filter: _filter,
+                  onClear: () => setState(() => _filter = const FeedFilter()),
+                  onTap: _openFilter,
+                )
+              : const SizedBox.shrink(),
+        ),
         Expanded(
           child: RefreshIndicator(
             color: AppColors.fernGreen,

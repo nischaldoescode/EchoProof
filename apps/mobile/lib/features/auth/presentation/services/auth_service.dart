@@ -11,6 +11,7 @@ class AuthService extends ChangeNotifier {
   );
 
   bool _isLoading = false;
+  bool _hasUsernameChecked = false;
   String? _error;
   bool _hasUsername = false;
   String? _googleDisplayName;
@@ -20,10 +21,24 @@ class AuthService extends ChangeNotifier {
   User? get currentUser => _client.auth.currentUser;
   bool get isLoggedIn => currentUser != null;
   bool get hasUsername => _hasUsername;
+
+  /// True after at least one successful DB check has completed.
+  /// The router uses this to avoid redundant network calls on every
+  /// navigation event.
+  bool get hasUsernameChecked => _hasUsernameChecked;
   String? get googleDisplayName => _googleDisplayName;
 
   void clearError() {
     _error = null;
+    notifyListeners();
+  }
+
+  // Called after onboarding completion to immediately mark the user as having
+  // a username without a round-trip to the DB. Prevents redirect loops when
+  // the DB write succeeds but the router re-evaluates before the next check.
+  void markOnboardingComplete() {
+    _hasUsername = true;
+    _hasUsernameChecked = true;
     notifyListeners();
   }
 
@@ -32,6 +47,7 @@ class AuthService extends ChangeNotifier {
       final userId = _client.auth.currentUser?.id;
       if (userId == null) {
         _hasUsername = false;
+        _hasUsernameChecked = true;
         notifyListeners();
         return;
       }
@@ -42,8 +58,10 @@ class AuthService extends ChangeNotifier {
           .maybeSingle();
       final done = row != null ? row['onboarding_complete'] as bool? : null;
       _hasUsername = done == true;
+      _hasUsernameChecked = true;
     } catch (e) {
       _hasUsername = false;
+      _hasUsernameChecked = true;
     }
     notifyListeners();
   }
@@ -182,13 +200,11 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> deleteIncompleteAccount() async {
-    // sign out — doesn't delete the auth record
-    // the users_public row still exists but onboarding_done is false
-    // so router will redirect back to onboarding
     try {
       await _google.signOut();
       await _client.auth.signOut();
       _hasUsername = false;
+      _hasUsernameChecked = false;
       _googleDisplayName = null;
       notifyListeners();
     } catch (e) {
@@ -201,6 +217,7 @@ class AuthService extends ChangeNotifier {
       await _google.signOut();
       await _client.auth.signOut();
       _hasUsername = false;
+      _hasUsernameChecked = false;
       _googleDisplayName = null;
       AppLogger.info('auth: signed out');
       notifyListeners();
