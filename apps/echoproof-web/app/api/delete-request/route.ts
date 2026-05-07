@@ -1,36 +1,124 @@
-// delete account request API
-// sends email to support@echoproof.online
-// deduplicates using supabase — prevents spam from same email
-// rate limit: one request per email per 24 hours
-
 import { NextRequest, NextResponse } from "next/server";
-import { createClient }              from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 
+/**
+ * supabase client using service role for privileged operations.
+ */
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
+/**
+ * sanitizes user input by trimming and removing unsafe characters.
+ * prevents basic injection and email/html abuse.
+ */
+function sanitize(input: string, maxLength = 500) {
+  return input
+    .replace(/[<>]/g, "") // strip html brackets
+    .replace(/\s+/g, " ") // normalize whitespace
+    .trim()
+    .slice(0, maxLength);
+}
+
+/**
+ * verifies cloudflare turnstile token using server-side secret key.
+ * also validates hostname to prevent token reuse across domains.
+ */
+async function verifyTurnstile(token: string, ip?: string | null) {
+  const res = await fetch(
+    "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        secret: process.env.TURNSTILE_SECRET_KEY!,
+        response: token,
+        remoteip: ip ?? "",
+      }),
+    },
+  );
+
+  const data = await res.json();
+
+  return (
+    data.success === true &&
+    (data.hostname === "echoproof.online" ||
+      data.hostname === "www.echoproof.online")
+  );
+}
+
+/**
+ * basic rate limiting using database.
+ * limits:
+ * - max 3 requests per IP per hour
+ * - max 1 request per email per 24h (already exists)
+ */
+async function checkRateLimit(ip: string | null) {
+  if (!ip) return false;
+
+  const oneHourAgo = new Date();
+  oneHourAgo.setHours(oneHourAgo.getHours() - 1);
+
+  const { count } = await supabase
+    .from("deletion_requests")
+    .select("*", { count: "exact", head: true })
+    .eq("ip", ip)
+    .gte("created_at", oneHourAgo.toISOString());
+
+  return (count ?? 0) >= 3;
+}
+
+/**
+ * handles deletion request submission with validation, sanitization,
+ * deduplication, rate limiting, and bot protection.
+ */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { email, reason, description } = body as {
-      email:       string;
-      reason:      string;
+
+    let { email, reason, description, token } = body as {
+      email: string;
+      reason: string;
       description: string;
+      token: string;
     };
 
-    if (!email || !reason) {
+    if (!email || !reason || !token) {
       return NextResponse.json(
-        { error: "Email and reason are required." },
+        { error: "Missing required fields." },
         { status: 400 },
       );
     }
 
-    // normalize
-    const normalizedEmail = email.trim().toLowerCase();
+    const ip =
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
 
-    // validate email format
+    const isHuman = await verifyTurnstile(token, ip);
+
+    if (!isHuman) {
+      return NextResponse.json(
+        { error: "Verification failed. Please refresh and try again." },
+        { status: 403 },
+      );
+    }
+
+    // rate limit by IP
+    const limited = await checkRateLimit(ip);
+    if (limited) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again later." },
+        { status: 429 },
+      );
+    }
+
+    // normalize + sanitize
+    const normalizedEmail = sanitize(email.toLowerCase(), 120);
+    reason = sanitize(reason, 120);
+    description = sanitize(description ?? "", 500);
+
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(normalizedEmail)) {
       return NextResponse.json(
@@ -39,41 +127,35 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // check for duplicate request in last 24 hours
+    // email-based 24h dedup
     const yesterday = new Date();
     yesterday.setHours(yesterday.getHours() - 24);
 
     const { data: existing } = await supabase
       .from("deletion_requests")
-      .select("id, created_at")
+      .select("id")
       .eq("email", normalizedEmail)
       .gte("created_at", yesterday.toISOString())
       .maybeSingle();
 
     if (existing) {
       return NextResponse.json(
-        {
-          error:
-            "A deletion request for this email was already submitted in the last 24 hours. Please check your email for confirmation or contact support@echoproof.online.",
-        },
+        { error: "Request already submitted in last 24 hours." },
         { status: 429 },
       );
     }
 
-    // save request to database
     await supabase.from("deletion_requests").insert({
-      email:       normalizedEmail,
+      email: normalizedEmail,
       reason,
-      description: description ?? "",
-      status:      "pending",
-      ip:          req.headers.get("x-forwarded-for") ?? "unknown",
+      description,
+      status: "pending",
+      ip: ip ?? "unknown",
     });
 
-    // send email notification to support team
-    // using supabase edge function so we don't need an SMTP server here
     await supabase.functions.invoke("send-support-email", {
       body: {
-        to:      "support@echoproof.online",
+        to: "support@echoproof.online",
         subject: `[Echoproof] Account deletion request — ${normalizedEmail}`,
         html: `
           <div style="font-family: 'Josefin Sans', sans-serif; max-width: 600px; margin: 0 auto;">
@@ -109,7 +191,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error("delete-request API error:", err);
     return NextResponse.json(
-      { error: "Internal server error. Please try again later." },
+      { error: "Internal server error." },
       { status: 500 },
     );
   }
