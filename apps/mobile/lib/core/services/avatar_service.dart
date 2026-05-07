@@ -35,34 +35,27 @@ class AvatarService {
       return existingUrl;
     }
 
-    // fetch from dicebear — png format, shapes style
-    final dicebearUrl =
-        'https://api.dicebear.com/9.x/$_style/png?seed=$username&size=$_size';
-
+    final seed = userId.replaceAll('-', '').substring(0, 8);
+    final dicebearUrl = 'https://api.dicebear.com/9.x/$_style/svg?seed=$seed';
     final response = await http.get(Uri.parse(dicebearUrl));
     if (response.statusCode != 200) {
-      throw Exception(
-        'dicebear fetch failed: ${response.statusCode}',
-      );
+      throw Exception('dicebear fetch failed: ${response.statusCode}');
     }
 
     final bytes = response.bodyBytes;
 
-    // upload to supabase storage bucket 'avatars'
-    final storagePath = '$userId.png';
-
-// upload to storage
+    // Upload as SVG — correct content type.
+    final storagePath = '$userId.svg';
     await _client.storage.from('avatars').uploadBinary(
-          '$userId.png',
+          storagePath,
           bytes,
           fileOptions: const FileOptions(
-            contentType: 'image/png',
+            contentType: 'image/svg+xml',
             upsert: true,
           ),
         );
 
-    // get public URL
-    final url = _client.storage.from('avatars').getPublicUrl('$userId.png');
+    final url = _client.storage.from('avatars').getPublicUrl(storagePath);
 
     // Try UPDATE first, then INSERT if no row exists yet.
     // This mirrors the same pattern as completeOnboarding to handle

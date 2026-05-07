@@ -134,105 +134,140 @@ class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
     with SingleTickerProviderStateMixin {
   static const _routes = ['/feed', '/discover', '/profile'];
 
-  late final AnimationController _swipeCtrl;
-  late Animation<double> _perspectiveAnim;
-  late Animation<double> _translateAnim;
-  late Animation<double> _opacityAnim;
+  // Live drag progress: -1.0 (going right→left) to +1.0 (going left→right)
+  double _drag = 0.0;
+  bool _dragging = false;
+  double _dragStartX = 0.0;
 
-  double _dragStartX = 0;
-  bool _isDragging = false;
-  int _swipeDirection = 0;
+  // Exit animation state
+  late final AnimationController _exitCtrl;
+  late Animation<double> _exitProgress;
+  int _exitDirection = 0; // -1 or +1
+  bool _exiting = false;
 
   @override
   void initState() {
     super.initState();
-    _swipeCtrl = AnimationController(
+    _exitCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 320),
+      duration: const Duration(milliseconds: 300),
     );
-    _perspectiveAnim = Tween<double>(begin: 0, end: 0).animate(_swipeCtrl);
-    _translateAnim = Tween<double>(begin: 0, end: 0).animate(_swipeCtrl);
-    _opacityAnim = Tween<double>(begin: 1, end: 1).animate(_swipeCtrl);
+    _exitProgress = const AlwaysStoppedAnimation(0.0);
   }
 
   @override
   void dispose() {
-    _swipeCtrl.dispose();
+    _exitCtrl.dispose();
     super.dispose();
   }
 
-  void _setupAnimations(int direction) {
-    // direction: -1 = swipe left (go forward), 1 = swipe right (go back)
-    _perspectiveAnim = Tween<double>(
-      begin: 0,
-      end: direction * 0.003,
-    ).animate(CurvedAnimation(parent: _swipeCtrl, curve: Curves.easeInCubic));
+  int get _idx => _routes.indexOf(widget.currentLocation);
 
-    _translateAnim = Tween<double>(
-      begin: 0,
-      end: direction * -60.0,
-    ).animate(CurvedAnimation(parent: _swipeCtrl, curve: Curves.easeInCubic));
-
-    _opacityAnim = Tween<double>(
-      begin: 1,
-      end: 0.0,
-    ).animate(CurvedAnimation(
-      parent: _swipeCtrl,
-      curve: const Interval(0.5, 1.0, curve: Curves.easeIn),
-    ));
+  void _onDragStart(DragStartDetails d) {
+    if (_exiting) return;
+    _dragStartX = d.globalPosition.dx;
+    _dragging = true;
+    _drag = 0.0;
   }
 
-  Future<void> _navigateTo(String route, int direction) async {
-    _swipeDirection = direction;
-    _setupAnimations(direction);
-    await _swipeCtrl.forward();
-    if (mounted) {
-      context.go(route);
-      await Future.delayed(const Duration(milliseconds: 16));
-      _swipeCtrl.reset();
+  void _onDragUpdate(DragUpdateDetails d) {
+    if (!_dragging || _exiting) return;
+    final w = MediaQuery.sizeOf(context).width;
+    var delta = (d.globalPosition.dx - _dragStartX) / w;
+    // Clamp based on available routes.
+    if (delta > 0 && _idx <= 0) delta = 0;
+    if (delta < 0 && _idx >= _routes.length - 1) delta = 0;
+    setState(() => _drag = delta.clamp(-1.0, 1.0));
+  }
+
+  void _onDragEnd(DragEndDetails d) {
+    if (!_dragging || _exiting) return;
+    _dragging = false;
+
+    final velocity = d.primaryVelocity ?? 0;
+    final shouldNavigate = _drag.abs() > 0.3 || velocity.abs() > 500;
+
+    if (shouldNavigate && _drag != 0) {
+      final dir = _drag > 0 ? 1 : -1; // +1=going back, -1=going forward
+      final targetIdx = _idx - dir;
+      if (targetIdx >= 0 && targetIdx < _routes.length) {
+        _triggerExit(dir, _routes[targetIdx]);
+        return;
+      }
     }
+
+    // Snap back with spring.
+    _snapBack();
+  }
+
+  void _snapBack() {
+    setState(() => _drag = 0.0);
+  }
+
+  Future<void> _triggerExit(int dir, String route) async {
+    _exiting = true;
+    _exitDirection = dir;
+    _exitProgress = Tween<double>(
+      begin: _drag.abs(),
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _exitCtrl, curve: Curves.easeInCubic));
+
+    await _exitCtrl.forward(from: 0);
+    if (!mounted) return;
+    context.go(route);
+    await Future.microtask(() {});
+    if (mounted) {
+      _exitCtrl.reset();
+      setState(() {
+        _drag = 0.0;
+        _exiting = false;
+      });
+    }
+  }
+
+  Matrix4 _buildMatrix(double p) {
+    // p: -1.0 to 1.0
+    // Positive p = rotating right edge back (swiping right).
+    // Negative p = rotating left edge back (swiping left).
+    if (p == 0.0) return Matrix4.identity();
+
+    final m = Matrix4.identity();
+    // Add perspective.
+    m.setEntry(3, 2, 0.0008);
+    // Rotate around Y — positive p rotates CCW when viewed from right.
+    final angle = p * (3.14159 / 5.5); // max ~32°
+    m.rotateY(-angle);
+    // Scale slightly.
+    final scale = 1.0 - p.abs() * 0.12;
+    m.scale(scale, scale, 1.0);
+
+    return m;
   }
 
   @override
   Widget build(BuildContext context) {
-    final idx = _routes.indexOf(widget.currentLocation);
+    return AnimatedBuilder(
+      animation: _exitCtrl,
+      builder: (context, _) {
+        // During exit animation use the animated value, otherwise use drag.
+        final p = _exiting ? _exitDirection * _exitProgress.value : _drag;
 
-    return GestureDetector(
-      onHorizontalDragStart: (details) {
-        _dragStartX = details.globalPosition.dx;
-        _isDragging = true;
-      },
-      onHorizontalDragEnd: (details) {
-        if (!_isDragging || idx == -1) return;
-        _isDragging = false;
+        final align = p >= 0 ? Alignment.centerLeft : Alignment.centerRight;
 
-        if (details.primaryVelocity == null) return;
-
-        if (details.primaryVelocity! < -400 && idx < _routes.length - 1) {
-          _navigateTo(_routes[idx + 1], -1);
-        } else if (details.primaryVelocity! > 400 && idx > 0) {
-          _navigateTo(_routes[idx - 1], 1);
-        }
-      },
-      child: AnimatedBuilder(
-        animation: _swipeCtrl,
-        builder: (context, child) {
-          return Opacity(
-            opacity: _opacityAnim.value,
-            child: Transform(
-              alignment: _swipeDirection < 0
-                  ? Alignment.centerRight
-                  : Alignment.centerLeft,
-              transform: Matrix4.identity()
-                ..setEntry(3, 2, 0.001)
-                ..rotateY(_perspectiveAnim.value)
-                ..translateByDouble(_translateAnim.value, 0, 0, 1),
-              child: child,
+        return GestureDetector(
+          onHorizontalDragStart: _onDragStart,
+          onHorizontalDragUpdate: _onDragUpdate,
+          onHorizontalDragEnd: _onDragEnd,
+          child: Transform(
+            alignment: align,
+            transform: _buildMatrix(p),
+            child: Opacity(
+              opacity: (1.0 - p.abs() * 0.15).clamp(0.0, 1.0),
+              child: widget.child,
             ),
-          );
-        },
-        child: widget.child,
-      ),
+          ),
+        );
+      },
     );
   }
 }

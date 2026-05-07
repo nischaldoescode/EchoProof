@@ -17,6 +17,7 @@ dependencies:
   solana: ^0.32.0+1
   bs58: ^1.0.2
 
+  flutter_svg: ^2.2.4
   http: ^1.6.0
   # supabase
   supabase_flutter: ^2.12.4

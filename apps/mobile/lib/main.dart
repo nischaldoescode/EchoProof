@@ -23,6 +23,8 @@ import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:flutter_portal/flutter_portal.dart';
 import 'core/services/connectivity_service.dart';
+import 'package:app_links/app_links.dart';
+import 'package:go_router/go_router.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -90,6 +92,20 @@ Future<void> main() async {
       router.push(route);
     }
   });
+  // handle custom scheme deep links — echoproof://echo/:id and echoproof://user/:username
+  // covers both cold start (getInitialAppLink) and foreground (uriLinkStream)
+  final appLinks = AppLinks();
+
+  // cold start — app was not running when link was tapped
+  final initialUri = await appLinks.getInitialLink();
+  if (initialUri != null) {
+    _handleDeepLink(initialUri, router);
+  }
+
+  // foreground — app already running when link is received
+  appLinks.uriLinkStream.listen((uri) {
+    _handleDeepLink(uri, router);
+  });
 
   // handle notification tap from terminated state
   FirebaseMessaging.instance.getInitialMessage().then((message) {
@@ -121,6 +137,50 @@ Future<void> main() async {
       ),
     ),
   );
+}
+
+String? _lastHandledLink;
+
+// maps custom scheme uris to internal go_router paths
+// echoproof://echo/:id  → /feed/echo/:id
+// echoproof://user/:username → /profile/:username
+// handles both custom scheme (echoproof://) and https app links (https://echoproof.online/)
+void _handleDeepLink(Uri uri, GoRouter router) {
+  final link = uri.toString();
+
+  // prevent duplicate handling
+  if (_lastHandledLink == link) return;
+  _lastHandledLink = link;
+
+  final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+
+  // custom scheme: echoproof://echo/:id and echoproof://user/:username
+  if (uri.scheme == 'echoproof') {
+    if (uri.host == 'echo' && segments.isNotEmpty) {
+      router.go('/feed/echo/${segments.first}');
+      return;
+    }
+
+    if (uri.host == 'user' && segments.isNotEmpty) {
+      router.go('/profile/${segments.first}');
+      return;
+    }
+  }
+
+  // https app links: https://echoproof.online/echo/:id
+  // pathSegments for /echo/abc-123 = ['echo', 'abc-123']
+  if (uri.scheme == 'https' &&
+      (uri.host == 'echoproof.online' || uri.host == 'www.echoproof.online')) {
+    if (segments.length >= 2 && segments[0] == 'echo') {
+      router.go('/feed/echo/${segments[1]}');
+      return;
+    }
+
+    if (segments.length >= 2 && segments[0] == 'user') {
+      router.go('/profile/${segments[1]}');
+      return;
+    }
+  }
 }
 
 class _SecurityWarningApp extends StatelessWidget {

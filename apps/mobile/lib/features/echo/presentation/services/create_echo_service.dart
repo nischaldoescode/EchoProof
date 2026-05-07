@@ -29,7 +29,6 @@ class CreateEchoService extends ChangeNotifier {
   bool get success => _success;
   String? get error => _error;
   int get echoesCreatedThisSession => _echoesCreatedThisSession;
-
   bool get canSubmit =>
       _title.trim().isNotEmpty &&
       _content.trim().isNotEmpty &&
@@ -38,6 +37,10 @@ class CreateEchoService extends ChangeNotifier {
 
   final List<String> _mediaUrls = [];
   List<String> get mediaUrls => List.unmodifiable(_mediaUrls);
+
+  // Local file paths for preview before upload.
+  final List<String> _localPaths = [];
+  List<String> get localMediaPaths => List.unmodifiable(_localPaths);
 
   Future<void> addMedia(String localPath, bool isVideo) async {
     // upload to supabase storage
@@ -63,8 +66,27 @@ class CreateEchoService extends ChangeNotifier {
     }
   }
 
+  void addLocalMedia(String path) {
+    if (_localPaths.length < 2) {
+      _localPaths.add(path);
+      notifyListeners();
+    }
+  }
+
+  void removeLocalMedia(int index) {
+    if (index < _localPaths.length) {
+      _localPaths.removeAt(index);
+      notifyListeners();
+    }
+  }
+
   void removeMedia(int index) {
-    _mediaUrls.removeAt(index);
+    if (index < _mediaUrls.length) {
+      _mediaUrls.removeAt(index);
+    }
+    if (index < _localPaths.length) {
+      _localPaths.removeAt(index);
+    }
     notifyListeners();
   }
 
@@ -95,7 +117,20 @@ class CreateEchoService extends ChangeNotifier {
   }
 
   void resetSuccess() {
+    reset();
+    notifyListeners();
+  }
+
+  void reset() {
+    _title = '';
+    _content = '';
+    _category = null;
+    _mediaUrls.clear();
+    _localPaths.clear();
+    _error = null;
+    _isSubmitting = false;
     _success = false;
+
     notifyListeners();
   }
 
@@ -126,6 +161,8 @@ class CreateEchoService extends ChangeNotifier {
 
       _title = '';
       _content = '';
+      _mediaUrls.clear();
+      _localPaths.clear();
       _category = null;
       _success = true;
 

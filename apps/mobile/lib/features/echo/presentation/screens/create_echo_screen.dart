@@ -20,6 +20,8 @@ import '../../../../core/utils/logger.dart';
 import 'package:flutter_mentions/flutter_mentions.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+enum _DraftAction { save, discard }
+
 class CreateEchoScreen extends StatefulWidget {
   const CreateEchoScreen({super.key});
 
@@ -144,7 +146,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
 
     final service = context.read<CreateEchoService>();
 
-    if (service.mediaUrls.length >= 2) {
+    if (service.localMediaPaths.length >= 2) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -152,10 +154,21 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
             style: GoogleFonts.josefinSans(fontSize: 13),
           ),
           backgroundColor: AppColors.sunsetCoral,
+          behavior: SnackBarBehavior.floating,
+          margin: EdgeInsets.only(
+            bottom: MediaQuery.of(context).padding.bottom + 72,
+            left: 16,
+            right: 16,
+          ),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
       return;
     }
+
+    // Store local path for preview + upload later.
+    service.addLocalMedia(file.path);
   }
 
   Future<void> _submit() async {
@@ -163,6 +176,90 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
     final content = _contentKey.currentState?.controller?.text ?? '';
     context.read<CreateEchoService>().setContent(content);
     await context.read<CreateEchoService>().submit();
+  }
+
+  Future<_DraftAction?> _showDiscardSheet(BuildContext context) {
+    return showModalBottomSheet<_DraftAction>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.borderMedium,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Save this draft?',
+                style: GoogleFonts.josefinSans(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.charcoal,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Your echo is not published. You can save it as a draft or discard it.',
+                style: GoogleFonts.josefinSans(
+                  fontSize: 13,
+                  color: AppColors.textSecondary,
+                  height: 1.5,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, _DraftAction.save),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.charcoal,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    'Save draft',
+                    style: GoogleFonts.josefinSans(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(ctx, _DraftAction.discard),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: Text(
+                    'Discard',
+                    style: GoogleFonts.josefinSans(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.sunsetCoral,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -220,142 +317,179 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
       });
     }
 
-    return Scaffold(
-      backgroundColor: AppColors.white,
-      appBar: AppBar(
-        title: Text('Create Echo', style: AppTypography.textTheme.titleLarge),
-        leading: IconButton(
-          icon: const Icon(Icons.close, size: 22),
-          onPressed: () => context.pop(),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: AppSpacing.md),
-            child: _SubmitButton(
-              canSubmit: service.canSubmit,
-              isLoading: service.isSubmitting,
-              onTap: _submit,
-            ),
-          ),
-        ],
-      ),
-      body: AnimatedBuilder(
-        animation: _entranceController,
-        builder: (context, child) {
-          return Opacity(
-            opacity: _fade.value,
-            child: Transform(
-              transform: Matrix4.identity()
-                ..setEntry(3, 2, 0.001)
-                ..rotateX(_rotX.value)
-                ..translateByDouble(0.0, _slideY.value, 0.0, 1.0),
-              alignment: Alignment.topCenter,
-              child: child,
-            ),
-          );
+    final hasDraft = service.title.isNotEmpty ||
+        service.content.isNotEmpty ||
+        service.localMediaPaths.isNotEmpty;
+
+    return PopScope(
+        canPop: !hasDraft,
+        onPopInvokedWithResult: (didPop, _) async {
+          if (didPop) return;
+          final action = await _showDiscardSheet(context);
+          if (!mounted) return;
+          if (action == _DraftAction.discard) {
+            service.reset();
+            context.pop();
+          }
+          // If save — just close (service retains state since it's a provider).
+          if (action == _DraftAction.save || action == _DraftAction.discard) {
+            // save = just close without clearing
+            if (action == _DraftAction.save) context.pop();
+          }
         },
-        child: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: isTablet ? 560 : double.infinity,
+        child: Scaffold(
+          backgroundColor: AppColors.white,
+          appBar: AppBar(
+            title:
+                Text('Create Echo', style: AppTypography.textTheme.titleLarge),
+            leading: IconButton(
+              icon: const Icon(Icons.close, size: 22),
+              onPressed: () async {
+                if (!hasDraft) {
+                  context.pop();
+                  return;
+                }
+                final action = await _showDiscardSheet(context);
+                if (!mounted) return;
+                if (action == _DraftAction.discard) {
+                  service.reset();
+                  context.pop();
+                } else if (action == _DraftAction.save) {
+                  context.pop(); // retain draft in service
+                }
+              },
             ),
-            child: Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(AppSpacing.xl),
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            actions: [
+              Padding(
+                padding: const EdgeInsets.only(right: AppSpacing.md),
+                child: _SubmitButton(
+                  canSubmit: service.canSubmit,
+                  isLoading: service.isSubmitting,
+                  onTap: _submit,
+                ),
+              ),
+            ],
+          ),
+          body: AnimatedBuilder(
+            animation: _entranceController,
+            builder: (context, child) {
+              return Opacity(
+                opacity: _fade.value,
+                child: Transform(
+                  transform: Matrix4.identity()
+                    ..setEntry(3, 2, 0.001)
+                    ..rotateX(_rotX.value)
+                    ..translateByDouble(0.0, _slideY.value, 0.0, 1.0),
+                  alignment: Alignment.topCenter,
+                  child: child,
+                ),
+              );
+            },
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: isTablet ? 560 : double.infinity,
+                ),
+                child: Form(
+                  key: _formKey,
+                  child: ListView(
+                    padding: const EdgeInsets.all(AppSpacing.xl),
                     children: [
-                      Text('Title', style: AppTypography.textTheme.titleSmall),
-                      _CharCounter(
-                        current: service.title.length,
-                        max: 120,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Title',
+                              style: AppTypography.textTheme.titleSmall),
+                          _CharCounter(
+                            current: service.title.length,
+                            max: 120,
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  TextFormField(
-                    controller: _titleController,
-                    maxLength: 120,
-                    buildCounter: (_,
-                            {required currentLength,
-                            required isFocused,
-                            maxLength}) =>
-                        null,
-                    onChanged: context.read<CreateEchoService>().setTitle,
-                    decoration: const InputDecoration(
-                      hintText: 'Short, clear claim or opinion',
-                    ),
-                    style: AppTypography.textTheme.bodyLarge,
-                    validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'title cannot be empty'
-                        : null,
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Content',
-                          style: AppTypography.textTheme.titleSmall),
-                      _CharCounter(
-                        current: service.content.length,
-                        max: 308,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  _ContentMentionField(
-                    mentionKey: _contentKey,
-                    mentionableUsers: _mentionableUsers,
-                    onChanged: context.read<CreateEchoService>().setContent,
-                    maxLength: 308,
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
-                  Text('Category', style: AppTypography.textTheme.titleSmall),
-                  const SizedBox(height: AppSpacing.sm),
-                  _CategoryPicker(
-                    selected: service.category,
-                    onSelect: context.read<CreateEchoService>().setCategory,
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
-                  _VerificationToggle(
-                    value: service.requiresVerification,
-                    onToggle:
-                        context.read<CreateEchoService>().toggleVerification,
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
-                  if (service.error != null)
-                    Container(
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      decoration: BoxDecoration(
-                        color: AppColors.sunsetCoralLight,
-                        borderRadius:
-                            BorderRadius.circular(AppSpacing.radiusMd),
-                      ),
-                      child: Text(
-                        service.error!,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.sunsetCoralDark,
-                          fontFamily: AppTypography.fontFamily,
+                      const SizedBox(height: AppSpacing.xs),
+                      TextFormField(
+                        controller: _titleController,
+                        maxLength: 120,
+                        buildCounter: (_,
+                                {required currentLength,
+                                required isFocused,
+                                maxLength}) =>
+                            null,
+                        onChanged: context.read<CreateEchoService>().setTitle,
+                        decoration: const InputDecoration(
+                          hintText: 'Short, clear claim or opinion',
                         ),
+                        style: AppTypography.textTheme.bodyLarge,
+                        validator: (v) => (v == null || v.trim().isEmpty)
+                            ? 'title cannot be empty'
+                            : null,
                       ),
-                    ),
-                  _MediaPickerRow(
-                    mediaUrls: service.mediaUrls,
-                    onPickImage: () => _pickMedia(false),
-                    onPickVideo: () => _pickMedia(true),
-                    onRemove: service.removeMedia,
+                      const SizedBox(height: AppSpacing.xl),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Content',
+                              style: AppTypography.textTheme.titleSmall),
+                          _CharCounter(
+                            current: service.content.length,
+                            max: 308,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      _ContentMentionField(
+                        mentionKey: _contentKey,
+                        mentionableUsers: _mentionableUsers,
+                        onChanged: context.read<CreateEchoService>().setContent,
+                        maxLength: 308,
+                      ),
+                      const SizedBox(height: AppSpacing.xl),
+                      Text('Category',
+                          style: AppTypography.textTheme.titleSmall),
+                      const SizedBox(height: AppSpacing.sm),
+                      _CategoryPicker(
+                        selected: service.category,
+                        onSelect: context.read<CreateEchoService>().setCategory,
+                      ),
+                      const SizedBox(height: AppSpacing.xl),
+                      _VerificationToggle(
+                        value: service.requiresVerification,
+                        onToggle: context
+                            .read<CreateEchoService>()
+                            .toggleVerification,
+                      ),
+                      const SizedBox(height: AppSpacing.xl),
+                      if (service.error != null)
+                        Container(
+                          padding: const EdgeInsets.all(AppSpacing.md),
+                          decoration: BoxDecoration(
+                            color: AppColors.sunsetCoralLight,
+                            borderRadius:
+                                BorderRadius.circular(AppSpacing.radiusMd),
+                          ),
+                          child: Text(
+                            service.error!,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.sunsetCoralDark,
+                              fontFamily: AppTypography.fontFamily,
+                            ),
+                          ),
+                        ),
+                      _MediaPickerRow(
+                        localPaths: service.localMediaPaths,
+                        onPickImage: () => _pickMedia(false),
+                        onPickVideo: () => _pickMedia(true),
+                        onRemove: (i) => service.removeLocalMedia(i),
+                      ),
+                      const SizedBox(height: 100),
+                    ],
                   ),
-                  const SizedBox(height: 100),
-                ],
+                ),
               ),
             ),
           ),
-        ),
-      ),
-    );
+        ));
   }
 }
 
@@ -625,28 +759,32 @@ class _CategoryPicker extends StatelessWidget {
 
 class _MediaPickerRow extends StatelessWidget {
   const _MediaPickerRow({
-    required this.mediaUrls,
+    required this.localPaths,
     required this.onPickImage,
     required this.onPickVideo,
     required this.onRemove,
   });
 
-  final List<String> mediaUrls;
+  // final List<String> mediaUrls;
   final VoidCallback onPickImage;
   final VoidCallback onPickVideo;
+  final List<String> localPaths;
   final void Function(int) onRemove;
 
-  bool _isVideo(String url) {
-    return url.endsWith('.mp4') || url.endsWith('.mov') || url.endsWith('.avi');
+  bool _isVideo(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.mp4') ||
+        lower.endsWith('.mov') ||
+        lower.endsWith('.avi');
   }
 
-  String _getName(String url) {
-    return url.split('/').last;
+  String _getName(String path) {
+    return path.split('/').last;
   }
 
   @override
   Widget build(BuildContext context) {
-    final isMax = mediaUrls.length >= 2;
+    final isMax = localPaths.length >= 2;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -675,12 +813,12 @@ class _MediaPickerRow extends StatelessWidget {
           ],
         ),
 
-        // 📊 COUNTER
-        if (mediaUrls.isNotEmpty) ...[
+        // counter
+        if (localPaths.isNotEmpty) ...[
           Row(
             children: [
               Text(
-                '${mediaUrls.length}/2 attachment${mediaUrls.length > 1 ? 's' : ''}',
+                '${localPaths.length}/2 attachment${localPaths.length > 1 ? 's' : ''}',
                 style: GoogleFonts.josefinSans(
                   fontSize: 11,
                   color:
@@ -697,12 +835,12 @@ class _MediaPickerRow extends StatelessWidget {
           const SizedBox(height: AppSpacing.xs),
         ],
 
-        // 📦 ATTACHMENT CARDS
-        if (mediaUrls.isNotEmpty) ...[
-          ...List.generate(mediaUrls.length, (i) {
-            final url = mediaUrls[i];
-            final isVideo = _isVideo(url);
-            final name = _getName(url);
+        // cards
+        if (localPaths.isNotEmpty) ...[
+          ...List.generate(localPaths.length, (i) {
+            final path = localPaths[i];
+            final isVideo = _isVideo(path);
+            final name = _getName(path);
             final ext = name.split('.').last.toUpperCase();
 
             return Padding(
@@ -732,8 +870,8 @@ class _MediaPickerRow extends StatelessWidget {
                                 size: 28,
                               ),
                             )
-                          : Image.network(
-                              url,
+                          : Image.file(
+                              File(path),
                               width: 64,
                               height: 64,
                               fit: BoxFit.cover,

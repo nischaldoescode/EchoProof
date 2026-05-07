@@ -18,6 +18,8 @@ import '../../../../core/security/secure_screen.dart';
 import '../../../../shared/widgets/app_bottom_nav.dart';
 import '../../../../app/app.dart';
 
+import 'package:flutter_svg/flutter_svg.dart';
+
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, this.username});
 
@@ -524,9 +526,10 @@ class _ProfileScreenState extends State<ProfileScreen>
         final result = await client
             .from('users_public')
             .select(
-              'id, username, avatar_url, trust_tier, trust_score, '
+              'id, username, display_name, avatar_url, trust_tier, trust_score, '
               'echo_count, proof_count, is_public, bio',
             )
+            .eq('username', widget.username!)
             .maybeSingle();
         if (result == null) {
           setState(() => _isLoading = false);
@@ -539,7 +542,7 @@ class _ProfileScreenState extends State<ProfileScreen>
         final result = await client
             .from('users_public')
             .select(
-              'id, username, avatar_url, trust_tier, trust_score, '
+              'id, username, display_name, avatar_url, trust_tier, trust_score, '
               'echo_count, proof_count, is_public, bio',
             )
             .eq('id', myId!)
@@ -1009,6 +1012,7 @@ class _AvatarCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final avatarUrl = profile['avatar_url'] as String?;
     final username = profile['username'] as String? ?? '';
+    final displayName = profile['display_name'] as String? ?? '';
     final bio = profile['bio'] as String?;
     final hasBio = bio != null && bio.isNotEmpty;
 
@@ -1025,19 +1029,46 @@ class _AvatarCard extends StatelessWidget {
           // avatar with verified badge
           Stack(
             children: [
-              CircleAvatar(
-                radius: 36,
-                backgroundColor: AppColors.softSand,
-                backgroundImage: (avatarUrl != null && avatarUrl.isNotEmpty)
-                    ? NetworkImage(avatarUrl)
-                    : null,
-                child: (avatarUrl == null || avatarUrl.isEmpty)
-                    ? const Icon(
-                        Icons.person_outline,
-                        size: 28,
-                        color: AppColors.textTertiary,
-                      )
-                    : null,
+              GestureDetector(
+                onTap:
+                    isOwnProfile || (avatarUrl != null && avatarUrl.isNotEmpty)
+                        ? () => _showAvatarZoom(context, avatarUrl)
+                        : null,
+                child: CircleAvatar(
+                  radius: 36,
+                  backgroundColor: AppColors.softSand,
+                  child: ClipOval(
+                    child: (avatarUrl != null && avatarUrl.isNotEmpty)
+                        ? avatarUrl.endsWith('.svg')
+                            ? SvgPicture.network(
+                                avatarUrl,
+                                width: 72,
+                                height: 72,
+                                fit: BoxFit.cover,
+                                placeholderBuilder: (_) => const Icon(
+                                  Icons.person_outline,
+                                  size: 28,
+                                  color: AppColors.textTertiary,
+                                ),
+                              )
+                            : Image.network(
+                                avatarUrl,
+                                width: 72,
+                                height: 72,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const Icon(
+                                  Icons.person_outline,
+                                  size: 28,
+                                  color: AppColors.textTertiary,
+                                ),
+                              )
+                        : const Icon(
+                            Icons.person_outline,
+                            size: 28,
+                            color: AppColors.textTertiary,
+                          ),
+                  ),
+                ),
               ),
               if (isIdentityVerified)
                 Positioned(
@@ -1066,11 +1097,23 @@ class _AvatarCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '@$username',
-                  style: AppTypography.textTheme.titleMedium,
-                ),
-
+                if (displayName.isNotEmpty) ...[
+                  Text(
+                    displayName,
+                    style: AppTypography.textTheme.titleMedium,
+                  ),
+                  Text(
+                    '@$username',
+                    style: GoogleFonts.josefinSans(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ] else
+                  Text(
+                    '@$username',
+                    style: AppTypography.textTheme.titleMedium,
+                  ),
                 // bio text or placeholder
                 if (hasBio) ...[
                   const SizedBox(height: 6),
@@ -1123,6 +1166,34 @@ class _AvatarCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  static void _showAvatarZoom(BuildContext context, String? avatarUrl) {
+    if (avatarUrl == null || avatarUrl.isEmpty) return;
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (_) => GestureDetector(
+        onTap: () => Navigator.pop(context),
+        child: Dialog(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          insetPadding: const EdgeInsets.all(24),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: avatarUrl.endsWith('.svg')
+                ? SvgPicture.network(
+                    avatarUrl,
+                    fit: BoxFit.contain,
+                  )
+                : Image.network(
+                    avatarUrl,
+                    fit: BoxFit.contain,
+                  ),
+          ),
+        ),
       ),
     );
   }
