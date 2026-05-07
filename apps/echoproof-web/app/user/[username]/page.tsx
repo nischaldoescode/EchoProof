@@ -1,7 +1,5 @@
-// public profile page — server component
-// shows real avatar + stats, blurs everything below to drive app installs
-// full seo with per-user og tags and android deep link
-// content below the fold is intentionally empty skeletons — not real data
+// public profile page — server component, app router only
+// generateMetadata requires app router — never put this in pages/
 
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -9,18 +7,16 @@ import { createClient } from "@supabase/supabase-js";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 
-
-// service role client — server only, bypasses rls for public profile read
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
+// next.js 16 app router — params is a Promise
 interface Props {
-  params: { username: string };
+  params: Promise<{ username: string }>;
 }
 
-// trust tier display config
 const tierConfig: Record<string, { label: string; color: string; bg: string }> =
   {
     elite: { label: "Elite", color: "#2D7A4A", bg: "#E8F5EE" },
@@ -30,9 +26,8 @@ const tierConfig: Record<string, { label: string; color: string; bg: string }> =
     unverified: { label: "Unverified", color: "#9A9A9A", bg: "#F8F7F5" },
   };
 
-// generate seo metadata per username — called by next.js at build/request time
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { username } = params;
+  const { username } = await params;
 
   const { data } = await supabase
     .from("users_public")
@@ -73,7 +68,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       description,
       images: [image],
     },
-    // android deep link meta tags — opens app if installed
     other: {
       "al:android:url": `echoproof://user/${username}`,
       "al:android:app_name": "Echoproof",
@@ -83,7 +77,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function UserProfilePage({ params }: Props) {
-  const { username } = params;
+  const { username } = await params;
 
   const { data: profile } = await supabase
     .from("users_public")
@@ -93,20 +87,15 @@ export default async function UserProfilePage({ params }: Props) {
     .eq("username", username)
     .maybeSingle();
 
-  // username doesn't exist → proper 404
   if (!profile) notFound();
 
   const tier = tierConfig[profile.trust_tier] ?? tierConfig.unverified;
   const displayName = profile.display_name || `@${profile.username}`;
   const joinedYear = new Date(profile.created_at).getFullYear();
-
-  // skeleton cards — intentionally blank, just structural chrome
-  // removing the blur overlay in devtools reveals these empty cards, not real echo content
   const skeletonCards = Array.from({ length: 4 });
 
   return (
     <>
-      {/* structured data — google rich results for the profile */}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
@@ -132,13 +121,9 @@ export default async function UserProfilePage({ params }: Props) {
         }}
       >
         <div
-          style={{
-            maxWidth: 600,
-            margin: "0 auto",
-            padding: "88px 16px 80px",
-          }}
+          style={{ maxWidth: 600, margin: "0 auto", padding: "88px 16px 80px" }}
         >
-          {/* profile card — fully visible, real data */}
+          {/* profile card */}
           <div
             style={{
               background: "#fff",
@@ -149,7 +134,6 @@ export default async function UserProfilePage({ params }: Props) {
               boxShadow: "0 2px 16px rgba(0,0,0,0.05)",
             }}
           >
-            {/* avatar + name row */}
             <div
               style={{
                 display: "flex",
@@ -179,7 +163,6 @@ export default async function UserProfilePage({ params }: Props) {
                     }}
                   />
                 ) : (
-                  // fallback avatar — first letter of username
                   <div
                     style={{
                       width: 72,
@@ -223,8 +206,6 @@ export default async function UserProfilePage({ params }: Props) {
                 >
                   @{profile.username} · joined {joinedYear}
                 </p>
-
-                {/* trust tier badge */}
                 <span
                   style={{
                     display: "inline-flex",
@@ -251,7 +232,6 @@ export default async function UserProfilePage({ params }: Props) {
               </div>
             </div>
 
-            {/* bio */}
             {profile.bio && (
               <p
                 style={{
@@ -267,7 +247,6 @@ export default async function UserProfilePage({ params }: Props) {
               </p>
             )}
 
-            {/* stats row */}
             <div
               style={{
                 display: "grid",
@@ -316,7 +295,7 @@ export default async function UserProfilePage({ params }: Props) {
             </div>
           </div>
 
-          {/* open in app cta — primary action */}
+          {/* open in app */}
           <a
             href={`echoproof://user/${profile.username}`}
             style={{
@@ -337,7 +316,6 @@ export default async function UserProfilePage({ params }: Props) {
               fontFamily: "'Josefin Sans', sans-serif",
             }}
           >
-            {/* play store icon */}
             <svg
               width="18"
               height="18"
@@ -365,7 +343,7 @@ export default async function UserProfilePage({ params }: Props) {
             Open in Echoproof
           </a>
 
-          {/* download fallback — if app not installed */}
+          {/* download fallback */}
           <a
             href="https://play.google.com/store/apps/details?id=com.echoproof.app"
             target="_blank"
@@ -390,9 +368,8 @@ export default async function UserProfilePage({ params }: Props) {
             Don't have the app? Download on Android
           </a>
 
-          {/* blurred echoes section — structural only, no real data */}
+          {/* blurred echoes section */}
           <div style={{ position: "relative" }}>
-            {/* section header */}
             <p
               style={{
                 fontSize: 11,
@@ -406,7 +383,7 @@ export default async function UserProfilePage({ params }: Props) {
               Echoes
             </p>
 
-            {/* skeleton cards — intentionally empty chrome */}
+            {/* skeleton cards — empty chrome only, no real data */}
             <div
               style={{
                 filter: "blur(7px)",
@@ -426,7 +403,6 @@ export default async function UserProfilePage({ params }: Props) {
                     marginBottom: 12,
                   }}
                 >
-                  {/* fake header */}
                   <div
                     style={{
                       display: "flex",
@@ -463,7 +439,6 @@ export default async function UserProfilePage({ params }: Props) {
                       />
                     </div>
                   </div>
-                  {/* fake content lines */}
                   <div
                     style={{
                       width: "100%",
@@ -490,7 +465,6 @@ export default async function UserProfilePage({ params }: Props) {
                       background: "#F8F7F5",
                     }}
                   />
-                  {/* fake confidence bar */}
                   <div
                     style={{
                       marginTop: 14,
@@ -512,7 +486,7 @@ export default async function UserProfilePage({ params }: Props) {
               ))}
             </div>
 
-            {/* overlay — tells user what they're looking at */}
+            {/* overlay */}
             <div
               style={{
                 position: "absolute",
