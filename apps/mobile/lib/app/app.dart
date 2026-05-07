@@ -99,7 +99,11 @@ class _ExitConfirmWrapperState extends State<ExitConfirmWrapper> {
                 ),
                 duration: const Duration(seconds: 2),
                 behavior: SnackBarBehavior.floating,
-                margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
+                margin: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).padding.bottom + 68,
+                  left: 16,
+                  right: 16,
+                ),
                 backgroundColor: const Color(0xFF2D2D2D),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),

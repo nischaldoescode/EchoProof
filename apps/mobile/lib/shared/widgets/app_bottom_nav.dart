@@ -226,20 +226,17 @@ class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
   }
 
   Matrix4 _buildMatrix(double p) {
-    // p: -1.0 to 1.0
-    // Positive p = rotating right edge back (swiping right).
-    // Negative p = rotating left edge back (swiping left).
     if (p == 0.0) return Matrix4.identity();
 
     final m = Matrix4.identity();
-    // Add perspective.
-    m.setEntry(3, 2, 0.0008);
-    // Rotate around Y — positive p rotates CCW when viewed from right.
-    final angle = p * (3.14159 / 5.5); // max ~32°
+    // Subtle perspective — too much causes a visible gap at the edge.
+    m.setEntry(3, 2, 0.0005);
+    // Max ~22° rotation — enough to feel 3D without exposing background.
+    final angle = p * (3.14159 / 8.0);
     m.rotateY(-angle);
-    // Scale slightly.
-    final scale = 1.0 - p.abs() * 0.12;
-    m.scale(scale, scale, 1.0);
+    // Scale down slightly as it rotates — card recedes into space.
+    final scale = 1.0 - p.abs() * 0.08;
+    m.scaleByDouble(scale, scale, 1.0, 1.0);
 
     return m;
   }
@@ -249,7 +246,6 @@ class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
     return AnimatedBuilder(
       animation: _exitCtrl,
       builder: (context, _) {
-        // During exit animation use the animated value, otherwise use drag.
         final p = _exiting ? _exitDirection * _exitProgress.value : _drag;
 
         final align = p >= 0 ? Alignment.centerLeft : Alignment.centerRight;
@@ -258,12 +254,18 @@ class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
           onHorizontalDragStart: _onDragStart,
           onHorizontalDragUpdate: _onDragUpdate,
           onHorizontalDragEnd: _onDragEnd,
-          child: Transform(
-            alignment: align,
-            transform: _buildMatrix(p),
-            child: Opacity(
-              opacity: (1.0 - p.abs() * 0.15).clamp(0.0, 1.0),
-              child: widget.child,
+          // ColoredBox fills the window with app background — prevents
+          // the Android black window from showing through the 3D gap.
+          child: ColoredBox(
+            color: const Color(0xFFF5FAF7), // AppColors.softGreen background
+            child: Transform(
+              alignment: align,
+              transform: _buildMatrix(p),
+              child: Opacity(
+                // Very subtle opacity — just enough to signal transition.
+                opacity: (1.0 - p.abs() * 0.08).clamp(0.0, 1.0),
+                child: widget.child,
+              ),
             ),
           ),
         );
