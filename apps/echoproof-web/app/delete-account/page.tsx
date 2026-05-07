@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 
@@ -13,18 +13,66 @@ const reasons = [
   "Other",
 ];
 
-// in-memory set to prevent duplicate submissions in the same session
-// server-side email dedup is in the API route
+/**
+ * in-memory set to prevent duplicate submissions within the same session.
+ * server-side deduplication is handled in the API route.
+ */
 const submittedEmails = new Set<string>();
 
-export default function DeleteAccountPage() {
-  const [email,       setEmail]       = useState("");
-  const [reason,      setReason]      = useState("");
-  const [description, setDescription] = useState("");
-  const [loading,     setLoading]     = useState(false);
-  const [done,        setDone]        = useState(false);
-  const [error,       setError]       = useState("");
+declare global {
+  interface Window {
+    turnstile: any;
+  }
+}
 
+export default function DeleteAccountPage() {
+  const [email, setEmail] = useState("");
+  const [reason, setReason] = useState("");
+  const [description, setDescription] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState("");
+
+  const turnstileRef = useRef<HTMLDivElement | null>(null);
+  const tokenRef = useRef<string | null>(null);
+
+  /**
+   * loads cloudflare turnstile script and renders widget.
+   * token is stored in tokenRef for submission.
+   */
+  useEffect(() => {
+    const script = document.createElement("script");
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+    script.async = true;
+    script.defer = true;
+
+    script.onload = () => {
+      if (window.turnstile && turnstileRef.current) {
+        window.turnstile.render(turnstileRef.current, {
+          sitekey: process.env.TURNSTILE_SITE_KEY!,
+          callback: (token: string) => {
+            tokenRef.current = token;
+          },
+          "expired-callback": () => {
+            tokenRef.current = null;
+          },
+          "error-callback": () => {
+            tokenRef.current = null;
+          },
+        });
+      }
+    };
+
+    document.body.appendChild(script);
+
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
+
+  /**
+   * handles form submission including turnstile verification token.
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -34,10 +82,17 @@ export default function DeleteAccountPage() {
       return;
     }
 
-    // client-side dedup — prevents double-submit
+    if (!tokenRef.current) {
+      setError("Verification failed. Please try again.");
+      return;
+    }
+
     const normalizedEmail = email.trim().toLowerCase();
+
     if (submittedEmails.has(normalizedEmail)) {
-      setError("A deletion request for this email was already submitted in this session.");
+      setError(
+        "A deletion request for this email was already submitted in this session.",
+      );
       return;
     }
 
@@ -45,12 +100,13 @@ export default function DeleteAccountPage() {
 
     try {
       const res = await fetch("/api/delete-request", {
-        method:  "POST",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email:       normalizedEmail,
+          email: normalizedEmail,
           reason,
           description: description.trim(),
+          token: tokenRef.current,
         }),
       });
 
@@ -63,6 +119,10 @@ export default function DeleteAccountPage() {
       }
 
       submittedEmails.add(normalizedEmail);
+      if (window.turnstile) {
+        window.turnstile.reset();
+      }
+      tokenRef.current = null;
       setDone(true);
     } catch {
       setError("Network error. Please check your connection and try again.");
@@ -91,162 +151,65 @@ export default function DeleteAccountPage() {
                 />
               </svg>
             </div>
-            <h2
-              className="text-2xl font-bold text-charcoal mb-3"
-              style={{ fontFamily: "'Josefin Sans', sans-serif" }}
-            >
+            <h2 className="text-2xl font-bold text-charcoal mb-3">
               Request received
             </h2>
-            <p
-              className="text-sm text-neutral-500 leading-6"
-              style={{ fontFamily: "'Josefin Sans', sans-serif" }}
-            >
+            <p className="text-sm text-neutral-500 leading-6">
               We have received your account deletion request. We will process it
-              within 30 days and send a confirmation to{" "}
-              <strong>{email}</strong>.
+              within 30 days and send a confirmation to <strong>{email}</strong>
+              .
             </p>
           </div>
         ) : (
           <>
-            <h1
-              className="text-3xl font-bold tracking-tight text-charcoal mb-2"
-              style={{ fontFamily: "'Josefin Sans', sans-serif" }}
-            >
+            <h1 className="text-3xl font-bold tracking-tight text-charcoal mb-2">
               Delete your account
             </h1>
-            <p
-              className="text-sm text-neutral-400 mb-10 leading-6"
-              style={{ fontFamily: "'Josefin Sans', sans-serif" }}
-            >
-              We are sorry to see you go. Fill out the form below and we will
-              process your deletion request within 30 days. You will receive a
-              confirmation at your email once complete.
-            </p>
 
             <form onSubmit={handleSubmit} className="space-y-5">
-              {/* email */}
-              <div>
-                <label
-                  className="block text-sm font-medium text-neutral-700 mb-1.5"
-                  style={{ fontFamily: "'Josefin Sans', sans-serif" }}
-                >
-                  Email address <span className="text-red-400">*</span>
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="the email on your Echoproof account"
-                  className="w-full px-4 py-3 text-sm rounded-xl border border-neutral-200 bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-[#4caf6e]/30 focus:border-[#4caf6e] transition-all"
-                  style={{ fontFamily: "'Josefin Sans', sans-serif" }}
-                />
-              </div>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="the email on your Echoproof account"
+                className="w-full px-4 py-3 text-sm rounded-xl border"
+              />
 
-              {/* reason */}
-              <div>
-                <label
-                  className="block text-sm font-medium text-neutral-700 mb-1.5"
-                  style={{ fontFamily: "'Josefin Sans', sans-serif" }}
-                >
-                  Reason <span className="text-red-400">*</span>
-                </label>
-                <select
-                  required
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  className="w-full px-4 py-3 text-sm rounded-xl border border-neutral-200 bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-[#4caf6e]/30 focus:border-[#4caf6e] transition-all appearance-none"
-                  style={{ fontFamily: "'Josefin Sans', sans-serif" }}
-                >
-                  <option value="">Select a reason</option>
-                  {reasons.map((r) => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-              </div>
+              <select
+                required
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                className="w-full px-4 py-3 text-sm rounded-xl border"
+              >
+                <option value="">Select a reason</option>
+                {reasons.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
 
-              {/* description */}
-              <div>
-                <label
-                  className="block text-sm font-medium text-neutral-700 mb-1.5"
-                  style={{ fontFamily: "'Josefin Sans', sans-serif" }}
-                >
-                  Additional details{" "}
-                  <span className="text-neutral-400 font-normal">(optional)</span>
-                </label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={4}
-                  maxLength={500}
-                  placeholder="Is there anything we could have done better?"
-                  className="w-full px-4 py-3 text-sm rounded-xl border border-neutral-200 bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-[#4caf6e]/30 focus:border-[#4caf6e] transition-all resize-none"
-                  style={{ fontFamily: "'Josefin Sans', sans-serif" }}
-                />
-                <p className="text-xs text-neutral-400 mt-1 text-right">
-                  {description.length}/500
-                </p>
-              </div>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={4}
+                maxLength={500}
+                className="w-full px-4 py-3 text-sm rounded-xl border"
+              />
 
-              {error && (
-                <div className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-100">
-                  <svg
-                    className="w-4 h-4 text-red-400 mt-0.5 shrink-0"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                  <p
-                    className="text-sm text-red-600"
-                    style={{ fontFamily: "'Josefin Sans', sans-serif" }}
-                  >
-                    {error}
-                  </p>
-                </div>
-              )}
+              <div ref={turnstileRef} />
+
+              {error && <p className="text-red-500 text-sm">{error}</p>}
 
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3.5 rounded-xl text-sm font-semibold text-white bg-charcoal hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                style={{ fontFamily: "'Josefin Sans', sans-serif" }}
+                className="w-full py-3 rounded-xl text-white bg-black"
               >
-                {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle
-                        className="opacity-25"
-                        cx="12" cy="12" r="10"
-                        stroke="currentColor" strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8v8z"
-                      />
-                    </svg>
-                    Submitting...
-                  </span>
-                ) : (
-                  "Submit deletion request"
-                )}
+                {loading ? "Submitting..." : "Submit deletion request"}
               </button>
             </form>
-
-            <p
-              className="mt-8 text-xs text-neutral-400 text-center leading-5"
-              style={{ fontFamily: "'Josefin Sans', sans-serif" }}
-            >
-              This action is permanent. All your echoes, interactions, and
-              account data will be deleted within 30 days of your request.
-            </p>
           </>
         )}
       </main>
