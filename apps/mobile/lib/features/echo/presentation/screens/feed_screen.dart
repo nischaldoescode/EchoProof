@@ -1,3 +1,5 @@
+// TO DO: check at the line for 33 the _computeItemCount function
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -16,7 +18,9 @@ import 'package:echoproof/shared/widgets/app_bottom_nav.dart';
 import '../../../../app/app.dart';
 import '../../../../shared/widgets/ad_card.dart';
 import '../../../../shared/widgets/rating_prompt.dart';
-
+import '../../../auth/presentation/screens/permission_sheet.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import '../services/create_echo_service.dart';
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
 
@@ -24,15 +28,17 @@ class FeedScreen extends StatefulWidget {
   State<FeedScreen> createState() => _FeedScreenState();
 }
 
-int _computeItemCount(EchoFeedService feed) {
-  final echoCount = feed.echoes.length;
+// compute count for loading the item cound we will show ads based on the interaction as well
+// the adcount will be counted based on the package scroll through the external package to monitor scroll usage
+// int _computeItemCount(EchoFeedService feed) {
+//   final echoCount = feed.echoes.length;
 
-  // one ad every 7 echoes
-  final adCount = echoCount ~/ 7;
+//   // one ad every 7 echoes
+//   final adCount = echoCount ~/ 7;
 
-  // +1 for loading spinner if more data exists
-  return echoCount + adCount + (feed.hasMore ? 1 : 0);
-}
+//   // +1 for loading spinner if more data exists
+//   return echoCount + adCount + (feed.hasMore ? 1 : 0);
+// }
 
 class _FeedScreenState extends State<FeedScreen> {
   final _scrollCtrl = ScrollController();
@@ -45,11 +51,37 @@ class _FeedScreenState extends State<FeedScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final feed = context.read<EchoFeedService>();
       if (feed.echoes.isEmpty) feed.loadFeed();
+      _maybeShowPermissionsOverlay();
       // Show rating prompt after sufficient use — uses progressive schedule.
       Future.delayed(const Duration(seconds: 3), () {
         if (mounted) RatingPrompt.maybeShow(context);
       });
     });
+  }
+
+  Future<void> _maybeShowPermissionsOverlay() async {
+    if (!Hive.isBoxOpen('app_settings')) {
+      await Hive.openBox('app_settings');
+    }
+    final box = Hive.box('app_settings');
+    final shown = box.get('permissions_shown', defaultValue: false) as bool;
+    if (shown) return;
+
+    await Future.delayed(const Duration(milliseconds: 800));
+    if (!mounted) return;
+
+    await showModalBottomSheet(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => const PermissionsSheet(),
+    );
+
+    await box.put('permissions_shown', true);
   }
 
   @override
@@ -201,11 +233,15 @@ class _ActiveFilterBar extends StatelessWidget {
     final parts = <String>[];
     if (filter.showVerifiedOnly) parts.add('Verified only');
     if (filter.showUnverifiedOnly) parts.add('Unverified only');
-    if (filter.statuses.isNotEmpty)
+    if (filter.statuses.isNotEmpty) {
       parts.add('${filter.statuses.length} status');
-    if (filter.categories.isNotEmpty)
+    }
+    if (filter.categories.isNotEmpty) {
       parts.add('${filter.categories.length} categories');
-    if (filter.sortBy != FeedSortBy.trending) parts.add(filter.sortBy.label);
+    }
+    if (filter.sortBy != FeedSortBy.trending) {
+      parts.add(filter.sortBy.label);
+    }
 
     return GestureDetector(
       onTap: onTap,
@@ -386,7 +422,8 @@ class _CreateFab extends StatefulWidget {
   @override
   State<_CreateFab> createState() => _CreateFabState();
 }
-
+final service = context.watch<CreateEchoService>();
+    final hasDraft = service.title.isNotEmpty || service.content.isNotEmpty;
 class _CreateFabState extends State<_CreateFab>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c;
@@ -437,8 +474,23 @@ class _CreateFabState extends State<_CreateFab>
           ),
           child: const Icon(Icons.edit_rounded, color: Colors.white, size: 22),
         ),
+                    if (hasDraft)
+              Positioned(
+                top: 0,
+                right: 0,
+                child: Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: AppColors.fernGreen,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                ),
+              ),
+          ],
+        );
       ),
-    );
   }
 }
 

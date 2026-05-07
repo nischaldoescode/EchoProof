@@ -409,7 +409,7 @@ class _LoginScreenState extends State<LoginScreen>
   }
 }
 
-// ─── sub-widgets ────────────────────────────────────────────────────────────
+//    sub-widgets  
 
 class _EmailField extends StatefulWidget {
   const _EmailField({required this.ctrl});
@@ -753,7 +753,7 @@ class _AnimatedLogo extends StatelessWidget {
   }
 }
 
-// ─── typewriter text ─────────────────────────────────────────────────────────
+//    typewriter text    ───
 
 class _TypewriterText extends StatefulWidget {
   const _TypewriterText({required this.text, required this.style});
@@ -811,7 +811,7 @@ class _TypewriterTextState extends State<_TypewriterText>
   }
 }
 
-// ─── animated dot ────────────────────────────────────────────────────────────
+//    animated dot  
 
 class _Dot extends StatefulWidget {
   const _Dot({required this.delay});
@@ -865,7 +865,7 @@ class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
   }
 }
 
-// ─── particle ────────────────────────────────────────────────────────────────
+//    particle  ────
 
 class _Particle {
   final double startX, startY, size, offset, amplitude;
