@@ -1,10 +1,183 @@
 "use client";
 
 // landing page — full parallax storytelling layout
-// multi-layer parallax on every section via individual useParallax hooks
-// scroll reveal on all content blocks, horizontal ticker, play store cta
+// page loader lives here — purely client-side, no ssr complications
+// smooth scroll, scroll reveal, parallax, horizontal ticker
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
+
+// ─── LOADER ──────────────────────────────────────────────────────────────────
+
+function PageLoader() {
+  // three states: "in" (fading in), "hold" (fully visible), "out" (fading out), "gone"
+  const [phase, setPhase] = useState<"in" | "hold" | "out" | "gone">("gone");
+
+  useEffect(() => {
+    const already = sessionStorage.getItem("echoproof_loader_shown");
+    if (already) return; // skip on refresh
+
+    sessionStorage.setItem("echoproof_loader_shown", "1");
+
+    // start fade-in immediately
+    setPhase("in");
+
+    // fully visible after fade-in completes (600ms)
+    const holdTimer = setTimeout(() => setPhase("hold"), 600);
+    // start fade-out at 2.8s
+    const outTimer = setTimeout(() => setPhase("out"), 2800);
+    // remove from dom at 3.4s
+    const goneTimer = setTimeout(() => setPhase("gone"), 3400);
+
+    return () => {
+      clearTimeout(holdTimer);
+      clearTimeout(outTimer);
+      clearTimeout(goneTimer);
+    };
+  }, []);
+
+  if (phase === "gone") return null;
+
+  const opacity = phase === "in" ? 1 : phase === "hold" ? 1 : 0;
+  const pointerEvents = phase === "out" ? "none" : "all";
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "#E8F5EE",
+        opacity,
+        // fade-in is fast, fade-out is slower and smooth
+        transition:
+          phase === "in"
+            ? "opacity 600ms ease-out"
+            : "opacity 600ms ease-in-out",
+        pointerEvents: pointerEvents as "none" | "all",
+      }}
+    >
+      <style>{`
+        @keyframes ldr-ring {
+          0%   { transform: scale(0.55); opacity: 0.4; }
+          100% { transform: scale(1.4);  opacity: 0; }
+        }
+        @keyframes ldr-logo {
+          0%   { opacity: 0; transform: scale(0.80); }
+          100% { opacity: 1; transform: scale(1); }
+        }
+        @keyframes ldr-glow {
+          0%,100% { box-shadow: 0 0 0px 0px rgba(76,175,110,0); }
+          50%      { box-shadow: 0 0 36px 10px rgba(76,175,110,0.22); }
+        }
+        @keyframes ldr-word {
+          0%   { opacity: 0; transform: translateY(10px); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
+        .ldr-ring {
+          position: absolute;
+          width: 160px; height: 160px;
+          border-radius: 50%;
+          border: 1.5px solid #4CAF6E;
+          animation: ldr-ring 1.2s ease-out forwards;
+        }
+        .ldr-r1 { animation-delay: 0.05s; }
+        .ldr-r2 { animation-delay: 0.22s; }
+        .ldr-r3 { animation-delay: 0.40s; }
+        .ldr-logo {
+          animation: ldr-logo 700ms cubic-bezier(0.34,1.56,0.64,1) 80ms both,
+                     ldr-glow 900ms ease-in-out 800ms both;
+        }
+        .ldr-name { animation: ldr-word 600ms ease-out 500ms both; }
+        .ldr-tag  { animation: ldr-word 600ms ease-out 660ms both; }
+      `}</style>
+
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 28,
+        }}
+      >
+        {/* rings + logo mark */}
+        <div
+          style={{
+            position: "relative",
+            width: 200,
+            height: 200,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div className="ldr-ring ldr-r1" />
+          <div className="ldr-ring ldr-r2" />
+          <div className="ldr-ring ldr-r3" />
+
+          <div className="ldr-logo" style={{ position: "relative", zIndex: 1 }}>
+            <div
+              style={{
+                width: 110,
+                height: 110,
+                borderRadius: 28,
+                overflow: "hidden",
+                boxShadow: "0 0 0 1px rgba(0,0,0,0.06)",
+              }}
+            >
+              <img
+                src="/logo.png"
+                alt="Echoproof"
+                width={110}
+                height={110}
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* wordmark */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 5,
+          }}
+        >
+          <span
+            className="ldr-name"
+            style={{
+              fontSize: 24,
+              fontWeight: 700,
+              letterSpacing: "-0.02em",
+              color: "#1A1A1A",
+              fontFamily: "'Josefin Sans', sans-serif",
+            }}
+          >
+            Echoproof
+          </span>
+          <span
+            className="ldr-tag"
+            style={{
+              fontSize: 12,
+              color: "#9A9A9A",
+              letterSpacing: "0.18em",
+              textTransform: "uppercase",
+              fontFamily: "'Josefin Sans', sans-serif",
+            }}
+          >
+            truth, verified
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── DATA ─────────────────────────────────────────────────────────────────────
 
 const tickerEchoes = [
   {
@@ -158,14 +331,13 @@ const chainFeatures = [
   },
 ];
 
-// parallax hook — uses getBoundingClientRect relative to viewport for accuracy
-// works on mobile (scroll-based) and desktop equally
+// ─── HOOKS ────────────────────────────────────────────────────────────────────
+
 function useParallax(speed = 0.3) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let ticking = false;
-
     const onScroll = () => {
       if (!ref.current || ticking) return;
       ticking = true;
@@ -175,22 +347,19 @@ function useParallax(speed = 0.3) {
         if (!parent) return;
         const rect = parent.getBoundingClientRect();
         const vh = window.innerHeight;
-        // how far the section has scrolled through the viewport, centred at 0
         const progress = (vh / 2 - rect.top - rect.height / 2) / vh;
         ref.current.style.transform = `translateY(${progress * speed * 160}px)`;
         ticking = false;
       });
     };
-
     window.addEventListener("scroll", onScroll, { passive: true });
-    onScroll(); // run once on mount
+    onScroll();
     return () => window.removeEventListener("scroll", onScroll);
   }, [speed]);
 
   return ref;
 }
 
-// scroll reveal hook
 function useScrollReveal(threshold = 0.12) {
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
@@ -214,7 +383,8 @@ function useScrollReveal(threshold = 0.12) {
   return { ref, visible };
 }
 
-// reveal wrapper with directional slide
+// ─── COMPONENTS ───────────────────────────────────────────────────────────────
+
 function Reveal({
   children,
   delay = 0,
@@ -246,7 +416,6 @@ function Reveal({
   );
 }
 
-// play store badge
 function PlayStoreBadge({
   href,
   light = false,
@@ -289,14 +458,13 @@ function PlayStoreBadge({
         flexShrink: 0,
       }}
     >
-      {/* google play logo svg — official shape */}
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
         <path
           d="M3.18 23.76c.42.24.9.24 1.32 0L16.1 16.9l-3.28-3.28-9.64 10.14z"
           fill={light ? "#fff" : "#EA4335"}
         />
         <path
-          d="M20.82 10.03c-.42-.24-.9-.35-1.38-.35l-3.34 1.93 3.52 3.52 1.2-.69c.84-.48.84-1.68 0-2.16l-.0-.25z"
+          d="M20.82 10.03c-.42-.24-.9-.35-1.38-.35l-3.34 1.93 3.52 3.52 1.2-.69c.84-.48.84-1.68 0-2.16z"
           fill={light ? "#fff" : "#FBBC04"}
         />
         <path
@@ -323,7 +491,7 @@ function PlayStoreBadge({
           style={{
             fontSize: 14,
             fontWeight: 700,
-            color: light ? "#fff" : "#fff",
+            color: "#fff",
             letterSpacing: "-0.01em",
           }}
         >
@@ -334,7 +502,6 @@ function PlayStoreBadge({
   );
 }
 
-// ticker card
 function TickerCard({ echo }: { echo: (typeof tickerEchoes)[0] }) {
   const cfg = statusConfig[echo.status] ?? statusConfig.active;
   return (
@@ -517,12 +684,7 @@ function EchoTicker() {
           from { transform: translateX(0); }
           to   { transform: translateX(-50%); }
         }
-        .ticker-track {
-          display: flex;
-          gap: 14px;
-          width: max-content;
-          padding: 4px 2px 12px;
-        }
+        .ticker-track { display: flex; gap: 14px; width: max-content; padding: 4px 2px 12px; }
         .ticker-running { animation: ticker-scroll 44s linear infinite; }
         .ticker-paused  { animation: ticker-scroll 44s linear infinite paused; }
       `}</style>
@@ -547,15 +709,14 @@ function EchoTicker() {
   );
 }
 
-export default function LandingClient() {
-  // hero parallax layers — each at a different depth
-  const heroMeshRef = useParallax(0.55); // bg mesh — slowest
-  const heroOrbTopRef = useParallax(0.75); // top-right orb — medium
-  const heroOrbBotRef = useParallax(0.4); // bottom-left orb
-  const heroGridRef = useParallax(0.2); // faint grid — very slow
-  const heroContentRef = useParallax(0.12); // text — near-still
+// ─── MAIN ─────────────────────────────────────────────────────────────────────
 
-  // section parallax — decorative layers behind content
+export default function LandingClient() {
+  const heroMeshRef = useParallax(0.55);
+  const heroOrbTopRef = useParallax(0.75);
+  const heroOrbBotRef = useParallax(0.4);
+  const heroGridRef = useParallax(0.2);
+  const heroContentRef = useParallax(0.12);
   const tickerOrbRef = useParallax(0.6);
   const howItWorksBgRef = useParallax(0.5);
   const trustMeshRef = useParallax(0.65);
@@ -564,1008 +725,1011 @@ export default function LandingClient() {
   const ctaOrbRef = useParallax(0.7);
 
   return (
-    <main
-      style={{
-        flex: 1,
-        background: "#fff",
-        overflowX: "hidden",
-        fontFamily: "'Josefin Sans', sans-serif",
-      }}
-    >
-      <style>{`
-        @keyframes float-slow {
-          0%,100% { transform: translateY(0) scale(1); }
-          50%      { transform: translateY(-22px) scale(1.03); }
-        }
-        @keyframes float-med {
-          0%,100% { transform: translateY(0) rotate(0deg); }
-          50%      { transform: translateY(-14px) rotate(2deg); }
-        }
-        @keyframes grid-drift {
-          0%   { transform: translateX(0) translateY(0); }
-          100% { transform: translateX(-40px) translateY(-20px); }
-        }
-        @keyframes hero-in {
-          0%   { opacity:0; transform:translateY(36px); }
-          100% { opacity:1; transform:translateY(0); }
-        }
-        @keyframes fade-up {
-          0%   { opacity:0; transform:translateY(20px); }
-          100% { opacity:1; transform:translateY(0); }
-        }
-        @keyframes line-in {
-          0%   { width:0; opacity:0; }
-          100% { width:48px; opacity:1; }
-        }
-        @keyframes spin-slow {
-          from { transform: rotate(0deg); }
-          to   { transform: rotate(360deg); }
-        }
-        .hero-eyebrow { animation: fade-up 0.8s ease 100ms both; }
-        .hero-h1-1    { animation: hero-in 1s cubic-bezier(0.16,1,0.3,1) 250ms both; }
-        .hero-h1-2    { animation: hero-in 1s cubic-bezier(0.16,1,0.3,1) 420ms both; }
-        .hero-sub     { animation: fade-up 1s ease 650ms both; }
-        .hero-cta     { animation: fade-up 1s ease 850ms both; }
-        .hero-hint    { animation: fade-up 1s ease 1150ms both; }
-        .ring-rotate  { animation: spin-slow 24s linear infinite; }
+    <>
+      {/* loader renders here — purely client side, no ssr involvement */}
+      <PageLoader />
 
-        @media (max-width:640px) {
-          .hero-h1 { font-size: clamp(38px, 12vw, 62px) !important; }
-        }
-      `}</style>
-
-      {/* ─── HERO ─────────────────────────────────────────────────────────── */}
-      <section
+      <main
         style={{
-          position: "relative",
-          minHeight: "100svh",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          overflow: "hidden",
-          padding: "120px 24px 96px",
+          flex: 1,
+          background: "#fff",
+          overflowX: "hidden",
+          fontFamily: "'Josefin Sans', sans-serif",
         }}
       >
-        {/* layer 0 — dot grid — very slow */}
-        <div
-          ref={heroGridRef}
-          aria-hidden
-          style={{
-            position: "absolute",
-            inset: "-30%",
-            zIndex: 0,
-            backgroundImage:
-              "radial-gradient(circle, rgba(26,26,26,0.07) 1px, transparent 1px)",
-            backgroundSize: "28px 28px",
-            animation: "grid-drift 30s linear infinite alternate",
-            opacity: 0.6,
-          }}
-        />
+        <style>{`
+          /* smooth scroll for anchor links */
+          html { scroll-behavior: smooth; }
 
-        {/* layer 1 — radial mesh — slowest */}
-        <div
-          ref={heroMeshRef}
-          aria-hidden
-          style={{
-            position: "absolute",
-            inset: "-20%",
-            zIndex: 1,
-            background:
-              "radial-gradient(ellipse 75% 60% at 50% 25%, rgba(76,175,110,0.11) 0%, transparent 65%), radial-gradient(ellipse 50% 40% at 20% 80%, rgba(232,160,0,0.06) 0%, transparent 55%)",
-          }}
-        />
+          /* section entrance — content fades up when navigating to anchor */
+          @keyframes section-enter {
+            0%   { opacity: 0.6; transform: translateY(12px); }
+            100% { opacity: 1;   transform: translateY(0); }
+          }
+          section:target {
+            animation: section-enter 0.7s cubic-bezier(0.16,1,0.3,1) both;
+          }
 
-        {/* layer 2 — top-right orb */}
-        <div
-          ref={heroOrbTopRef}
-          aria-hidden
-          style={{
-            position: "absolute",
-            top: "8%",
-            right: "-4%",
-            width: 500,
-            height: 500,
-            zIndex: 2,
-            borderRadius: "50%",
-            background:
-              "radial-gradient(circle, rgba(76,175,110,0.13) 0%, transparent 68%)",
-            animation: "float-slow 10s ease-in-out infinite",
-            filter: "blur(1px)",
-          }}
-        />
+          @keyframes float-slow {
+            0%,100% { transform: translateY(0) scale(1); }
+            50%      { transform: translateY(-22px) scale(1.03); }
+          }
+          @keyframes float-med {
+            0%,100% { transform: translateY(0) rotate(0deg); }
+            50%      { transform: translateY(-14px) rotate(2deg); }
+          }
+          @keyframes grid-drift {
+            0%   { transform: translateX(0) translateY(0); }
+            100% { transform: translateX(-40px) translateY(-20px); }
+          }
+          @keyframes hero-in {
+            0%   { opacity:0; transform:translateY(36px); }
+            100% { opacity:1; transform:translateY(0); }
+          }
+          @keyframes fade-up {
+            0%   { opacity:0; transform:translateY(20px); }
+            100% { opacity:1; transform:translateY(0); }
+          }
+          @keyframes spin-slow {
+            from { transform: rotate(0deg); }
+            to   { transform: rotate(360deg); }
+          }
+          .hero-eyebrow { animation: fade-up 0.8s ease 100ms both; }
+          .hero-h1-1    { animation: hero-in 1s cubic-bezier(0.16,1,0.3,1) 250ms both; }
+          .hero-h1-2    { animation: hero-in 1s cubic-bezier(0.16,1,0.3,1) 420ms both; }
+          .hero-sub     { animation: fade-up 1s ease 650ms both; }
+          .hero-cta     { animation: fade-up 1s ease 850ms both; }
+          .hero-hint    { animation: fade-up 1s ease 1150ms both; }
+          .ring-rotate  { animation: spin-slow 24s linear infinite; }
 
-        {/* layer 3 — bottom-left orb */}
-        <div
-          ref={heroOrbBotRef}
-          aria-hidden
-          style={{
-            position: "absolute",
-            bottom: "-5%",
-            left: "-8%",
-            width: 380,
-            height: 380,
-            zIndex: 2,
-            borderRadius: "50%",
-            background:
-              "radial-gradient(circle, rgba(76,175,110,0.08) 0%, transparent 65%)",
-            animation: "float-med 13s ease-in-out infinite 2s",
-          }}
-        />
+          @media (max-width:640px) {
+            .hero-h1 { font-size: clamp(38px, 12vw, 62px) !important; }
+          }
+        `}</style>
 
-        {/* layer 4 — rotating ring accent */}
-        <div
-          className="ring-rotate"
-          aria-hidden
-          style={{
-            position: "absolute",
-            top: "20%",
-            right: "12%",
-            width: 180,
-            height: 180,
-            zIndex: 2,
-            borderRadius: "50%",
-            opacity: 0.12,
-            border: "1px solid #4CAF6E",
-          }}
-        />
-        <div
-          className="ring-rotate"
-          aria-hidden
-          style={{
-            position: "absolute",
-            top: "22%",
-            right: "14%",
-            width: 120,
-            height: 120,
-            zIndex: 2,
-            borderRadius: "50%",
-            opacity: 0.08,
-            border: "1px solid #4CAF6E",
-            animationDirection: "reverse",
-            animationDuration: "16s",
-          }}
-        />
-
-        {/* layer 5 — text content — near-still */}
-        <div
-          ref={heroContentRef}
+        {/* ── HERO ──────────────────────────────────────────────────────────── */}
+        <section
           style={{
             position: "relative",
-            zIndex: 3,
-            maxWidth: 700,
-            width: "100%",
-            textAlign: "center",
-          }}
-        >
-          <p
-            className="hero-eyebrow"
-            style={{
-              fontSize: 11,
-              letterSpacing: "0.20em",
-              textTransform: "uppercase",
-              color: "#9A9A9A",
-              marginBottom: 28,
-            }}
-          >
-            A new kind of social network
-          </p>
-
-          <h1
-            className="hero-h1"
-            style={{
-              fontSize: "clamp(44px, 8vw, 78px)",
-              fontWeight: 700,
-              letterSpacing: "-0.035em",
-              lineHeight: 1.06,
-              color: "#1A1A1A",
-              margin: "0 0 26px",
-            }}
-          >
-            <span className="hero-h1-1" style={{ display: "block" }}>
-              The crowd decides
-            </span>
-            <span
-              className="hero-h1-2"
-              style={{ display: "block", color: "#4CAF6E" }}
-            >
-              what is true.
-            </span>
-          </h1>
-
-          <p
-            className="hero-sub"
-            style={{
-              fontSize: 16,
-              color: "#5A5A5A",
-              lineHeight: 1.8,
-              maxWidth: 460,
-              margin: "0 auto 44px",
-            }}
-          >
-            Echoproof is where claims meet scrutiny. Every post is weighed by
-            the community — and the ones that survive become permanent record.
-          </p>
-
-          <div
-            className="hero-cta"
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 12,
-              justifyContent: "center",
-              alignItems: "center",
-            }}
-          >
-            <PlayStoreBadge href="https://play.google.com/store/apps/details?id=com.echoproof.app" />
-            <a
-              href="#how-it-works"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                height: 52,
-                padding: "0 26px",
-                borderRadius: 14,
-                border: "1px solid #E6E6E6",
-                color: "#1A1A1A",
-                fontSize: 13,
-                fontWeight: 500,
-                textDecoration: "none",
-                transition: "border-color 0.2s, background 0.2s",
-                fontFamily: "'Josefin Sans', sans-serif",
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.borderColor = "#1A1A1A";
-                (e.currentTarget as HTMLElement).style.background = "#F8F7F5";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.borderColor = "#E6E6E6";
-                (e.currentTarget as HTMLElement).style.background =
-                  "transparent";
-              }}
-            >
-              How it works
-            </a>
-          </div>
-        </div>
-
-        {/* scroll breath line */}
-        <div
-          className="hero-hint"
-          aria-hidden
-          style={{
-            position: "absolute",
-            bottom: 32,
-            left: "50%",
-            transform: "translateX(-50%)",
+            minHeight: "100svh",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
+            justifyContent: "center",
+            overflow: "hidden",
+            padding: "120px 24px 96px",
           }}
         >
           <div
+            ref={heroGridRef}
+            aria-hidden
             style={{
-              width: 1,
-              height: 52,
-              background:
-                "linear-gradient(to bottom, transparent, rgba(154,154,154,0.5))",
-              borderRadius: 999,
+              position: "absolute",
+              inset: "-30%",
+              zIndex: 0,
+              backgroundImage:
+                "radial-gradient(circle, rgba(26,26,26,0.07) 1px, transparent 1px)",
+              backgroundSize: "28px 28px",
+              animation: "grid-drift 30s linear infinite alternate",
+              opacity: 0.6,
             }}
           />
-        </div>
-      </section>
 
-      {/* ─── TICKER ───────────────────────────────────────────────────────── */}
-      <section
-        style={{
-          position: "relative",
-          padding: "80px 0 72px",
-          background: "#F8F7F5",
-          overflow: "hidden",
-        }}
-      >
-        {/* parallax orb behind ticker */}
-        <div
-          ref={tickerOrbRef}
-          aria-hidden
-          style={{
-            position: "absolute",
-            top: "-30%",
-            right: "-5%",
-            width: 360,
-            height: 360,
-            borderRadius: "50%",
-            pointerEvents: "none",
-            background:
-              "radial-gradient(circle, rgba(76,175,110,0.09) 0%, transparent 65%)",
-          }}
-        />
+          <div
+            ref={heroMeshRef}
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: "-20%",
+              zIndex: 1,
+              background:
+                "radial-gradient(ellipse 75% 60% at 50% 25%, rgba(76,175,110,0.11) 0%, transparent 65%), radial-gradient(ellipse 50% 40% at 20% 80%, rgba(232,160,0,0.06) 0%, transparent 55%)",
+            }}
+          />
 
-        <div
-          style={{ maxWidth: 960, margin: "0 auto", padding: "0 24px 28px" }}
-        >
-          <Reveal>
+          <div
+            ref={heroOrbTopRef}
+            aria-hidden
+            style={{
+              position: "absolute",
+              top: "8%",
+              right: "-4%",
+              width: 500,
+              height: 500,
+              zIndex: 2,
+              borderRadius: "50%",
+              background:
+                "radial-gradient(circle, rgba(76,175,110,0.13) 0%, transparent 68%)",
+              animation: "float-slow 10s ease-in-out infinite",
+              filter: "blur(1px)",
+            }}
+          />
+
+          <div
+            ref={heroOrbBotRef}
+            aria-hidden
+            style={{
+              position: "absolute",
+              bottom: "-5%",
+              left: "-8%",
+              width: 380,
+              height: 380,
+              zIndex: 2,
+              borderRadius: "50%",
+              background:
+                "radial-gradient(circle, rgba(76,175,110,0.08) 0%, transparent 65%)",
+              animation: "float-med 13s ease-in-out infinite 2s",
+            }}
+          />
+
+          <div
+            className="ring-rotate"
+            aria-hidden
+            style={{
+              position: "absolute",
+              top: "20%",
+              right: "12%",
+              width: 180,
+              height: 180,
+              zIndex: 2,
+              borderRadius: "50%",
+              opacity: 0.12,
+              border: "1px solid #4CAF6E",
+            }}
+          />
+          <div
+            className="ring-rotate"
+            aria-hidden
+            style={{
+              position: "absolute",
+              top: "22%",
+              right: "14%",
+              width: 120,
+              height: 120,
+              zIndex: 2,
+              borderRadius: "50%",
+              opacity: 0.08,
+              border: "1px solid #4CAF6E",
+              animationDirection: "reverse",
+              animationDuration: "16s",
+            }}
+          />
+
+          <div
+            ref={heroContentRef}
+            style={{
+              position: "relative",
+              zIndex: 3,
+              maxWidth: 700,
+              width: "100%",
+              textAlign: "center",
+            }}
+          >
             <p
+              className="hero-eyebrow"
               style={{
                 fontSize: 11,
-                letterSpacing: "0.18em",
+                letterSpacing: "0.20em",
                 textTransform: "uppercase",
                 color: "#9A9A9A",
-                marginBottom: 8,
+                marginBottom: 28,
               }}
             >
-              Live from the platform
+              A new kind of social network
             </p>
-            <h2
+
+            <h1
+              className="hero-h1"
               style={{
-                fontSize: "clamp(24px, 4.5vw, 38px)",
+                fontSize: "clamp(44px, 8vw, 78px)",
                 fontWeight: 700,
-                letterSpacing: "-0.025em",
+                letterSpacing: "-0.035em",
+                lineHeight: 1.06,
                 color: "#1A1A1A",
-                lineHeight: 1.15,
+                margin: "0 0 26px",
               }}
             >
-              Real echoes. Real scrutiny.
-            </h2>
-          </Reveal>
-        </div>
+              <span className="hero-h1-1" style={{ display: "block" }}>
+                The crowd decides
+              </span>
+              <span
+                className="hero-h1-2"
+                style={{ display: "block", color: "#4CAF6E" }}
+              >
+                what is true.
+              </span>
+            </h1>
 
-        <EchoTicker />
-
-        <div
-          style={{ maxWidth: 960, margin: "20px auto 0", padding: "0 24px" }}
-        >
-          <Reveal delay={80}>
             <p
+              className="hero-sub"
               style={{
-                fontSize: 12,
-                color: "#9A9A9A",
-                lineHeight: 1.65,
-                maxWidth: 560,
+                fontSize: 16,
+                color: "#5A5A5A",
+                lineHeight: 1.8,
+                maxWidth: 460,
+                margin: "0 auto 44px",
               }}
             >
-              Every card above is a real format — exactly what you see in the
-              app. Status, confidence, and support counts evolve as the
-              community weighs in. Nothing is static.
+              Echoproof is where claims meet scrutiny. Every post is weighed by
+              the community — and the ones that survive become permanent record.
             </p>
-          </Reveal>
-        </div>
-      </section>
 
-      {/* ─── HOW IT WORKS ─────────────────────────────────────────────────── */}
-      <section
-        id="how-it-works"
-        style={{
-          position: "relative",
-          overflow: "hidden",
-          padding: "100px 24px",
-          maxWidth: 960,
-          margin: "0 auto",
-        }}
-      >
-        {/* parallax line accent */}
-        <div
-          ref={howItWorksBgRef}
-          aria-hidden
-          style={{
-            position: "absolute",
-            top: "5%",
-            right: "-2%",
-            width: 300,
-            height: 300,
-            borderRadius: "50%",
-            pointerEvents: "none",
-            background:
-              "radial-gradient(circle, rgba(76,175,110,0.06) 0%, transparent 65%)",
-          }}
-        />
+            <div
+              className="hero-cta"
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 12,
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <PlayStoreBadge href="https://play.google.com/store/apps/details?id=com.echoproof.app" />
+              <a
+                href="#how-it-works"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  height: 52,
+                  padding: "0 26px",
+                  borderRadius: 14,
+                  border: "1px solid #E6E6E6",
+                  color: "#1A1A1A",
+                  fontSize: 13,
+                  fontWeight: 500,
+                  textDecoration: "none",
+                  transition: "border-color 0.2s, background 0.2s",
+                  fontFamily: "'Josefin Sans', sans-serif",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor =
+                    "#1A1A1A";
+                  (e.currentTarget as HTMLElement).style.background = "#F8F7F5";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor =
+                    "#E6E6E6";
+                  (e.currentTarget as HTMLElement).style.background =
+                    "transparent";
+                }}
+              >
+                How it works
+              </a>
+            </div>
+          </div>
 
-        <Reveal>
-          <p
+          <div
+            className="hero-hint"
+            aria-hidden
             style={{
-              fontSize: 11,
-              letterSpacing: "0.18em",
-              textTransform: "uppercase",
-              color: "#9A9A9A",
-              marginBottom: 8,
+              position: "absolute",
+              bottom: 32,
+              left: "50%",
+              transform: "translateX(-50%)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
             }}
-          >
-            How it works
-          </p>
-          <h2
-            style={{
-              fontSize: "clamp(26px, 5vw, 42px)",
-              fontWeight: 700,
-              letterSpacing: "-0.025em",
-              color: "#1A1A1A",
-              lineHeight: 1.12,
-              marginBottom: 14,
-            }}
-          >
-            From claim to consensus
-          </h2>
-          <p
-            style={{
-              fontSize: 15,
-              color: "#5A5A5A",
-              lineHeight: 1.8,
-              maxWidth: 520,
-              marginBottom: 68,
-            }}
-          >
-            Most platforms amplify what is popular. Echoproof surfaces what
-            holds up under scrutiny. The process is transparent, weighted, and
-            once resolved — permanent.
-          </p>
-        </Reveal>
-
-        {[
-          {
-            number: "01",
-            title: "You post an echo.",
-            body: "Any claim, opinion, or observation — backed by evidence or standing on its own. Your trust tier determines how much weight your supporting interactions carry, but anyone can post. The floor for participation is zero.",
-            aside:
-              "Every echo starts neutral. No algorithm pre-sorts it. The community encounters it fresh.",
-          },
-          {
-            number: "02",
-            title: "The community weighs in.",
-            body: "Other users can support or challenge your echo. A support from an Elite-tier identity-verified user carries five times the weight of a brand-new account. This is not about volume — it is about signal quality.",
-            aside:
-              "Weighted consensus means a thousand anonymous accounts cannot drown out a hundred verified experts.",
-          },
-          {
-            number: "03",
-            title: "Scores evolve in real time.",
-            body: "The trust engine continuously recalculates four scores: trust, confidence, controversy, and report intensity. An echo that starts disputed can become verified as higher-tier users engage. Nothing is frozen.",
-            aside:
-              "Confidence above 70% with trust score above 50 triggers the verification threshold.",
-          },
-          {
-            number: "04",
-            title: "Truth is anchored on-chain.",
-            body: "When an echo crosses the verification threshold, a SHA-256 hash of its content along with its confidence score and timestamp is written to Solana. The record is permanent. Not even Echoproof can alter it.",
-            aside:
-              "Anyone with a Solana explorer can independently verify the record exists and matches the echo.",
-          },
-        ].map((step, i) => (
-          <Reveal
-            key={step.number}
-            delay={i * 75}
-            direction={i % 2 === 0 ? "left" : "right"}
           >
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: "auto 1fr",
-                gap: "0 28px",
-                alignItems: "start",
-                marginBottom: 52,
-                paddingBottom: 52,
-                borderBottom: "1px solid #F0F0F0",
+                width: 1,
+                height: 52,
+                background:
+                  "linear-gradient(to bottom, transparent, rgba(154,154,154,0.5))",
+                borderRadius: 999,
               }}
-            >
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: "#4CAF6E",
-                  letterSpacing: "0.10em",
-                  paddingTop: 5,
-                  minWidth: 24,
-                }}
-              >
-                {step.number}
-              </span>
-              <div>
-                <h3
-                  style={{
-                    fontSize: "clamp(17px, 2.8vw, 22px)",
-                    fontWeight: 700,
-                    color: "#1A1A1A",
-                    letterSpacing: "-0.02em",
-                    marginBottom: 11,
-                    lineHeight: 1.25,
-                  }}
-                >
-                  {step.title}
-                </h3>
-                <p
-                  style={{
-                    fontSize: 14,
-                    color: "#5A5A5A",
-                    lineHeight: 1.85,
-                    marginBottom: 14,
-                    maxWidth: 560,
-                  }}
-                >
-                  {step.body}
-                </p>
-                <p
-                  style={{
-                    fontSize: 12,
-                    color: "#9A9A9A",
-                    lineHeight: 1.7,
-                    borderLeft: "2px solid #E8F5EE",
-                    paddingLeft: 12,
-                    maxWidth: 480,
-                    fontStyle: "italic",
-                    margin: 0,
-                  }}
-                >
-                  {step.aside}
-                </p>
-              </div>
-            </div>
-          </Reveal>
-        ))}
-      </section>
+            />
+          </div>
+        </section>
 
-      {/* ─── TRUST ENGINE ─────────────────────────────────────────────────── */}
-      <section
-        id="trust"
-        style={{
-          position: "relative",
-          overflow: "hidden",
-          background: "#1A1A1A",
-          padding: "100px 24px",
-        }}
-      >
-        {/* multi-layer parallax on dark section */}
-        <div
-          ref={trustMeshRef}
-          aria-hidden
+        {/* ── TICKER ────────────────────────────────────────────────────────── */}
+        <section
           style={{
-            position: "absolute",
-            inset: "-20%",
-            background:
-              "radial-gradient(ellipse 65% 55% at 80% 40%, rgba(76,175,110,0.10) 0%, transparent 60%), radial-gradient(ellipse 40% 40% at 10% 70%, rgba(76,175,110,0.06) 0%, transparent 55%)",
-            pointerEvents: "none",
-            zIndex: 0,
-          }}
-        />
-        <div
-          ref={trustOrbRef}
-          aria-hidden
-          style={{
-            position: "absolute",
-            top: "-15%",
-            right: "-6%",
-            width: 440,
-            height: 440,
-            borderRadius: "50%",
-            pointerEvents: "none",
-            zIndex: 0,
-            background:
-              "radial-gradient(circle, rgba(76,175,110,0.13) 0%, transparent 62%)",
-            animation: "float-slow 12s ease-in-out infinite",
-          }}
-        />
-        {/* dot grid overlay */}
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            inset: 0,
-            backgroundImage:
-              "radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px)",
-            backgroundSize: "32px 32px",
-            pointerEvents: "none",
-            zIndex: 0,
-          }}
-        />
-
-        <div
-          style={{
-            maxWidth: 960,
-            margin: "0 auto",
             position: "relative",
-            zIndex: 1,
+            padding: "80px 0 72px",
+            background: "#F8F7F5",
+            overflow: "hidden",
           }}
         >
+          <div
+            ref={tickerOrbRef}
+            aria-hidden
+            style={{
+              position: "absolute",
+              top: "-30%",
+              right: "-5%",
+              width: 360,
+              height: 360,
+              borderRadius: "50%",
+              pointerEvents: "none",
+              background:
+                "radial-gradient(circle, rgba(76,175,110,0.09) 0%, transparent 65%)",
+            }}
+          />
+
+          <div
+            style={{ maxWidth: 960, margin: "0 auto", padding: "0 24px 28px" }}
+          >
+            <Reveal>
+              <p
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.18em",
+                  textTransform: "uppercase",
+                  color: "#9A9A9A",
+                  marginBottom: 8,
+                }}
+              >
+                Live from the platform
+              </p>
+              <h2
+                style={{
+                  fontSize: "clamp(24px, 4.5vw, 38px)",
+                  fontWeight: 700,
+                  letterSpacing: "-0.025em",
+                  color: "#1A1A1A",
+                  lineHeight: 1.15,
+                }}
+              >
+                Real echoes. Real scrutiny.
+              </h2>
+            </Reveal>
+          </div>
+
+          <EchoTicker />
+
+          <div
+            style={{ maxWidth: 960, margin: "20px auto 0", padding: "0 24px" }}
+          >
+            <Reveal delay={80}>
+              <p
+                style={{
+                  fontSize: 12,
+                  color: "#9A9A9A",
+                  lineHeight: 1.65,
+                  maxWidth: 560,
+                }}
+              >
+                Every card above is a real format — exactly what you see in the
+                app. Status, confidence, and support counts evolve as the
+                community weighs in. Nothing is static.
+              </p>
+            </Reveal>
+          </div>
+        </section>
+
+        {/* ── HOW IT WORKS ──────────────────────────────────────────────────── */}
+        <section
+          id="how-it-works"
+          style={{
+            position: "relative",
+            overflow: "hidden",
+            padding: "100px 24px",
+            maxWidth: 960,
+            margin: "0 auto",
+          }}
+        >
+          <div
+            ref={howItWorksBgRef}
+            aria-hidden
+            style={{
+              position: "absolute",
+              top: "5%",
+              right: "-2%",
+              width: 300,
+              height: 300,
+              borderRadius: "50%",
+              pointerEvents: "none",
+              background:
+                "radial-gradient(circle, rgba(76,175,110,0.06) 0%, transparent 65%)",
+            }}
+          />
+
           <Reveal>
             <p
               style={{
                 fontSize: 11,
                 letterSpacing: "0.18em",
                 textTransform: "uppercase",
-                color: "#4CAF6E",
+                color: "#9A9A9A",
                 marginBottom: 8,
               }}
             >
-              Trust engine
+              How it works
             </p>
             <h2
               style={{
                 fontSize: "clamp(26px, 5vw, 42px)",
                 fontWeight: 700,
                 letterSpacing: "-0.025em",
-                color: "#fff",
+                color: "#1A1A1A",
                 lineHeight: 1.12,
                 marginBottom: 14,
               }}
             >
-              Not all voices carry the same weight.
-            </h2>
-            <p
-              style={{
-                fontSize: 15,
-                color: "#9A9A9A",
-                lineHeight: 1.8,
-                maxWidth: 520,
-                marginBottom: 56,
-              }}
-            >
-              On every other platform, a thousand new accounts can out-shout a
-              hundred experts. On Echoproof, a verified contributor's single
-              vote can outweigh a wave of anonymous noise. The engine calculates
-              this automatically — no moderation team required.
-            </p>
-          </Reveal>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {tiers.map((tier, i) => (
-              <Reveal key={tier.label} delay={i * 65} direction="left">
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "100px 1fr auto",
-                    alignItems: "center",
-                    gap: 18,
-                    padding: "14px 18px",
-                    borderRadius: 13,
-                    background: "rgba(255,255,255,0.04)",
-                    border: "1px solid rgba(255,255,255,0.07)",
-                    transition: "background 0.2s",
-                  }}
-                  onMouseEnter={(e) =>
-                    ((e.currentTarget as HTMLElement).style.background =
-                      "rgba(255,255,255,0.07)")
-                  }
-                  onMouseLeave={(e) =>
-                    ((e.currentTarget as HTMLElement).style.background =
-                      "rgba(255,255,255,0.04)")
-                  }
-                >
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 9 }}
-                  >
-                    <div
-                      style={{
-                        width: 7,
-                        height: 7,
-                        borderRadius: "50%",
-                        background: tierColor[tier.label],
-                        flexShrink: 0,
-                      }}
-                    />
-                    <span
-                      style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}
-                    >
-                      {tier.label}
-                    </span>
-                  </div>
-                  <p
-                    style={{
-                      fontSize: 12,
-                      color: "#9A9A9A",
-                      lineHeight: 1.5,
-                      margin: 0,
-                    }}
-                  >
-                    {tier.description}
-                  </p>
-                  <span
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 700,
-                      color: tierColor[tier.label],
-                      minWidth: 24,
-                      textAlign: "right",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {tier.weight}
-                  </span>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ─── ON-CHAIN ─────────────────────────────────────────────────────── */}
-      <section
-        style={{
-          position: "relative",
-          overflow: "hidden",
-          padding: "100px 24px",
-          maxWidth: 960,
-          margin: "0 auto",
-        }}
-      >
-        <div
-          ref={chainBgRef}
-          aria-hidden
-          style={{
-            position: "absolute",
-            bottom: "-10%",
-            left: "-5%",
-            width: 350,
-            height: 350,
-            borderRadius: "50%",
-            pointerEvents: "none",
-            background:
-              "radial-gradient(circle, rgba(76,175,110,0.07) 0%, transparent 65%)",
-          }}
-        />
-
-        <Reveal>
-          <p
-            style={{
-              fontSize: 11,
-              letterSpacing: "0.18em",
-              textTransform: "uppercase",
-              color: "#9A9A9A",
-              marginBottom: 8,
-            }}
-          >
-            On-chain permanence
-          </p>
-          <h2
-            style={{
-              fontSize: "clamp(26px, 5vw, 42px)",
-              fontWeight: 700,
-              letterSpacing: "-0.025em",
-              color: "#1A1A1A",
-              lineHeight: 1.12,
-              marginBottom: 14,
-            }}
-          >
-            Once verified, no one can undo it.
-          </h2>
-          <p
-            style={{
-              fontSize: 15,
-              color: "#5A5A5A",
-              lineHeight: 1.8,
-              maxWidth: 560,
-              marginBottom: 60,
-            }}
-          >
-            Platforms delete posts. Institutions revise records. Echoproof
-            writes verified echoes to the Solana blockchain — where no single
-            entity, including us, can alter or remove what the community has
-            confirmed.
-          </p>
-        </Reveal>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(255px, 1fr))",
-            gap: 18,
-          }}
-        >
-          {chainFeatures.map((feature, i) => (
-            <Reveal key={feature.title} delay={i * 90}>
-              <div
-                style={{
-                  padding: 24,
-                  borderRadius: 18,
-                  border: "1px solid #E6E6E6",
-                  background: "#F8F7F5",
-                  height: "100%",
-                  boxSizing: "border-box",
-                  transition: "box-shadow 0.2s, transform 0.2s",
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.boxShadow =
-                    "0 8px 28px rgba(0,0,0,0.08)";
-                  (e.currentTarget as HTMLElement).style.transform =
-                    "translateY(-3px)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.boxShadow = "none";
-                  (e.currentTarget as HTMLElement).style.transform = "none";
-                }}
-              >
-                <div
-                  style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: "50%",
-                    background: "#4CAF6E",
-                    marginBottom: 16,
-                  }}
-                />
-                <h3
-                  style={{
-                    fontSize: 15,
-                    fontWeight: 700,
-                    color: "#1A1A1A",
-                    marginBottom: 10,
-                    letterSpacing: "-0.01em",
-                  }}
-                >
-                  {feature.title}
-                </h3>
-                <p
-                  style={{
-                    fontSize: 13,
-                    color: "#5A5A5A",
-                    lineHeight: 1.8,
-                    margin: 0,
-                  }}
-                >
-                  {feature.body}
-                </p>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-      </section>
-
-      {/* ─── REPUTATION PORTABILITY ───────────────────────────────────────── */}
-      <section
-        style={{
-          position: "relative",
-          overflow: "hidden",
-          background: "#EAE7DF",
-          padding: "88px 24px",
-        }}
-      >
-        <div
-          ref={ctaOrbRef}
-          aria-hidden
-          style={{
-            position: "absolute",
-            top: "-20%",
-            right: "-5%",
-            width: 380,
-            height: 380,
-            borderRadius: "50%",
-            pointerEvents: "none",
-            background:
-              "radial-gradient(circle, rgba(76,175,110,0.10) 0%, transparent 65%)",
-            animation: "float-med 11s ease-in-out infinite",
-          }}
-        />
-
-        <div
-          style={{
-            maxWidth: 680,
-            margin: "0 auto",
-            textAlign: "center",
-            position: "relative",
-            zIndex: 1,
-          }}
-        >
-          <Reveal>
-            <h2
-              style={{
-                fontSize: "clamp(22px, 4.5vw, 38px)",
-                fontWeight: 700,
-                letterSpacing: "-0.025em",
-                color: "#1A1A1A",
-                lineHeight: 1.2,
-                marginBottom: 18,
-              }}
-            >
-              Your reputation belongs to you — not the platform.
+              From claim to consensus
             </h2>
             <p
               style={{
                 fontSize: 15,
                 color: "#5A5A5A",
-                lineHeight: 1.85,
+                lineHeight: 1.8,
                 maxWidth: 520,
-                margin: "0 auto 40px",
+                marginBottom: 68,
               }}
             >
-              When you reach High or Elite trust tier, your reputation is
-              anchored to the Solana blockchain. That record is yours. It cannot
-              be deleted when you leave. It cannot be altered if we shut down.
-              It lives independently, and it travels with you to any platform
-              that reads the ledger.
+              Most platforms amplify what is popular. Echoproof surfaces what
+              holds up under scrutiny. The process is transparent, weighted, and
+              once resolved — permanent.
             </p>
-            <PlayStoreBadge href="https://play.google.com/store/apps/details?id=com.echoproof.app" />
           </Reveal>
-        </div>
-      </section>
 
-      {/* ─── FINAL CTA ────────────────────────────────────────────────────── */}
-      <section
-        style={{
-          position: "relative",
-          overflow: "hidden",
-          padding: "100px 24px",
-          background: "#1A1A1A",
-        }}
-      >
-        {/* multi-layer dark parallax */}
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            inset: 0,
-            backgroundImage:
-              "radial-gradient(circle, rgba(255,255,255,0.035) 1px, transparent 1px)",
-            backgroundSize: "28px 28px",
-            pointerEvents: "none",
-          }}
-        />
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            inset: "-20%",
-            background:
-              "radial-gradient(ellipse 70% 55% at 50% 50%, rgba(76,175,110,0.10) 0%, transparent 60%)",
-            pointerEvents: "none",
-          }}
-        />
+          {[
+            {
+              number: "01",
+              title: "You post an echo.",
+              body: "Any claim, opinion, or observation — backed by evidence or standing on its own. Your trust tier determines how much weight your supporting interactions carry, but anyone can post. The floor for participation is zero.",
+              aside:
+                "Every echo starts neutral. No algorithm pre-sorts it. The community encounters it fresh.",
+            },
+            {
+              number: "02",
+              title: "The community weighs in.",
+              body: "Other users can support or challenge your echo. A support from an Elite-tier identity-verified user carries five times the weight of a brand-new account. This is not about volume — it is about signal quality.",
+              aside:
+                "Weighted consensus means a thousand anonymous accounts cannot drown out a hundred verified experts.",
+            },
+            {
+              number: "03",
+              title: "Scores evolve in real time.",
+              body: "The trust engine continuously recalculates four scores: trust, confidence, controversy, and report intensity. An echo that starts disputed can become verified as higher-tier users engage. Nothing is frozen.",
+              aside:
+                "Confidence above 70% with trust score above 50 triggers the verification threshold.",
+            },
+            {
+              number: "04",
+              title: "Truth is anchored on-chain.",
+              body: "When an echo crosses the verification threshold, a SHA-256 hash of its content along with its confidence score and timestamp is written to Solana. The record is permanent. Not even Echoproof can alter it.",
+              aside:
+                "Anyone with a Solana explorer can independently verify the record exists and matches the echo.",
+            },
+          ].map((step, i) => (
+            <Reveal
+              key={step.number}
+              delay={i * 75}
+              direction={i % 2 === 0 ? "left" : "right"}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "auto 1fr",
+                  gap: "0 28px",
+                  alignItems: "start",
+                  marginBottom: 52,
+                  paddingBottom: 52,
+                  borderBottom: "1px solid #F0F0F0",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "#4CAF6E",
+                    letterSpacing: "0.10em",
+                    paddingTop: 5,
+                    minWidth: 24,
+                  }}
+                >
+                  {step.number}
+                </span>
+                <div>
+                  <h3
+                    style={{
+                      fontSize: "clamp(17px, 2.8vw, 22px)",
+                      fontWeight: 700,
+                      color: "#1A1A1A",
+                      letterSpacing: "-0.02em",
+                      marginBottom: 11,
+                      lineHeight: 1.25,
+                    }}
+                  >
+                    {step.title}
+                  </h3>
+                  <p
+                    style={{
+                      fontSize: 14,
+                      color: "#5A5A5A",
+                      lineHeight: 1.85,
+                      marginBottom: 14,
+                      maxWidth: 560,
+                    }}
+                  >
+                    {step.body}
+                  </p>
+                  <p
+                    style={{
+                      fontSize: 12,
+                      color: "#9A9A9A",
+                      lineHeight: 1.7,
+                      borderLeft: "2px solid #E8F5EE",
+                      paddingLeft: 12,
+                      maxWidth: 480,
+                      fontStyle: "italic",
+                      margin: 0,
+                    }}
+                  >
+                    {step.aside}
+                  </p>
+                </div>
+              </div>
+            </Reveal>
+          ))}
+        </section>
 
-        <div
+        {/* ── TRUST ENGINE ──────────────────────────────────────────────────── */}
+        <section
+          id="trust"
           style={{
-            maxWidth: 560,
-            margin: "0 auto",
-            textAlign: "center",
             position: "relative",
-            zIndex: 1,
+            overflow: "hidden",
+            background: "#1A1A1A",
+            padding: "100px 24px",
           }}
         >
+          <div
+            ref={trustMeshRef}
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: "-20%",
+              background:
+                "radial-gradient(ellipse 65% 55% at 80% 40%, rgba(76,175,110,0.10) 0%, transparent 60%), radial-gradient(ellipse 40% 40% at 10% 70%, rgba(76,175,110,0.06) 0%, transparent 55%)",
+              pointerEvents: "none",
+              zIndex: 0,
+            }}
+          />
+          <div
+            ref={trustOrbRef}
+            aria-hidden
+            style={{
+              position: "absolute",
+              top: "-15%",
+              right: "-6%",
+              width: 440,
+              height: 440,
+              borderRadius: "50%",
+              pointerEvents: "none",
+              zIndex: 0,
+              background:
+                "radial-gradient(circle, rgba(76,175,110,0.13) 0%, transparent 62%)",
+              animation: "float-slow 12s ease-in-out infinite",
+            }}
+          />
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              backgroundImage:
+                "radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px)",
+              backgroundSize: "32px 32px",
+              pointerEvents: "none",
+              zIndex: 0,
+            }}
+          />
+
+          <div
+            style={{
+              maxWidth: 960,
+              margin: "0 auto",
+              position: "relative",
+              zIndex: 1,
+            }}
+          >
+            <Reveal>
+              <p
+                style={{
+                  fontSize: 11,
+                  letterSpacing: "0.18em",
+                  textTransform: "uppercase",
+                  color: "#4CAF6E",
+                  marginBottom: 8,
+                }}
+              >
+                Trust engine
+              </p>
+              <h2
+                style={{
+                  fontSize: "clamp(26px, 5vw, 42px)",
+                  fontWeight: 700,
+                  letterSpacing: "-0.025em",
+                  color: "#fff",
+                  lineHeight: 1.12,
+                  marginBottom: 14,
+                }}
+              >
+                Not all voices carry the same weight.
+              </h2>
+              <p
+                style={{
+                  fontSize: 15,
+                  color: "#9A9A9A",
+                  lineHeight: 1.8,
+                  maxWidth: 520,
+                  marginBottom: 56,
+                }}
+              >
+                On every other platform, a thousand new accounts can out-shout a
+                hundred experts. On Echoproof, a verified contributor's single
+                vote can outweigh a wave of anonymous noise. The engine
+                calculates this automatically — no moderation team required.
+              </p>
+            </Reveal>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {tiers.map((tier, i) => (
+                <Reveal key={tier.label} delay={i * 65} direction="left">
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "100px 1fr auto",
+                      alignItems: "center",
+                      gap: 18,
+                      padding: "14px 18px",
+                      borderRadius: 13,
+                      background: "rgba(255,255,255,0.04)",
+                      border: "1px solid rgba(255,255,255,0.07)",
+                      transition: "background 0.2s",
+                    }}
+                    onMouseEnter={(e) =>
+                      ((e.currentTarget as HTMLElement).style.background =
+                        "rgba(255,255,255,0.07)")
+                    }
+                    onMouseLeave={(e) =>
+                      ((e.currentTarget as HTMLElement).style.background =
+                        "rgba(255,255,255,0.04)")
+                    }
+                  >
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 9 }}
+                    >
+                      <div
+                        style={{
+                          width: 7,
+                          height: 7,
+                          borderRadius: "50%",
+                          background: tierColor[tier.label],
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span
+                        style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}
+                      >
+                        {tier.label}
+                      </span>
+                    </div>
+                    <p
+                      style={{
+                        fontSize: 12,
+                        color: "#9A9A9A",
+                        lineHeight: 1.5,
+                        margin: 0,
+                      }}
+                    >
+                      {tier.description}
+                    </p>
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: tierColor[tier.label],
+                        minWidth: 24,
+                        textAlign: "right",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {tier.weight}
+                    </span>
+                  </div>
+                </Reveal>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ── ON-CHAIN ──────────────────────────────────────────────────────── */}
+        <section
+          style={{
+            position: "relative",
+            overflow: "hidden",
+            padding: "100px 24px",
+            maxWidth: 960,
+            margin: "0 auto",
+          }}
+        >
+          <div
+            ref={chainBgRef}
+            aria-hidden
+            style={{
+              position: "absolute",
+              bottom: "-10%",
+              left: "-5%",
+              width: 350,
+              height: 350,
+              borderRadius: "50%",
+              pointerEvents: "none",
+              background:
+                "radial-gradient(circle, rgba(76,175,110,0.07) 0%, transparent 65%)",
+            }}
+          />
+
           <Reveal>
-            <div
+            <p
               style={{
-                width: 64,
-                height: 64,
-                borderRadius: 18,
-                overflow: "hidden",
-                margin: "0 auto 28px",
-                boxShadow:
-                  "0 0 0 1px rgba(255,255,255,0.1), 0 8px 28px rgba(76,175,110,0.25)",
+                fontSize: 11,
+                letterSpacing: "0.18em",
+                textTransform: "uppercase",
+                color: "#9A9A9A",
+                marginBottom: 8,
               }}
             >
-              <img
-                src="/logo.png"
-                alt="Echoproof"
-                width={64}
-                height={64}
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
-            </div>
+              On-chain permanence
+            </p>
             <h2
               style={{
-                fontSize: "clamp(24px, 5vw, 38px)",
+                fontSize: "clamp(26px, 5vw, 42px)",
                 fontWeight: 700,
                 letterSpacing: "-0.025em",
-                color: "#fff",
-                lineHeight: 1.2,
+                color: "#1A1A1A",
+                lineHeight: 1.12,
                 marginBottom: 14,
               }}
             >
-              Join the conversation.{" "}
-              <span style={{ color: "#4CAF6E" }}>Make it count.</span>
+              Once verified, no one can undo it.
             </h2>
             <p
               style={{
-                fontSize: 14,
-                color: "#9A9A9A",
+                fontSize: 15,
+                color: "#5A5A5A",
                 lineHeight: 1.8,
-                marginBottom: 36,
+                maxWidth: 560,
+                marginBottom: 60,
               }}
             >
-              Available now on Android. Post echoes, earn trust, stake claims,
-              and help the community establish what is actually true.
+              Platforms delete posts. Institutions revise records. Echoproof
+              writes verified echoes to the Solana blockchain — where no single
+              entity, including us, can alter or remove what the community has
+              confirmed.
             </p>
-            <PlayStoreBadge
-              href="https://play.google.com/store/apps/details?id=com.echoproof.app"
-              light
-            />
           </Reveal>
-        </div>
-      </section>
-    </main>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(255px, 1fr))",
+              gap: 18,
+            }}
+          >
+            {chainFeatures.map((feature, i) => (
+              <Reveal key={feature.title} delay={i * 90}>
+                <div
+                  style={{
+                    padding: 24,
+                    borderRadius: 18,
+                    border: "1px solid #E6E6E6",
+                    background: "#F8F7F5",
+                    height: "100%",
+                    boxSizing: "border-box",
+                    transition: "box-shadow 0.2s, transform 0.2s",
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.boxShadow =
+                      "0 8px 28px rgba(0,0,0,0.08)";
+                    (e.currentTarget as HTMLElement).style.transform =
+                      "translateY(-3px)";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.boxShadow = "none";
+                    (e.currentTarget as HTMLElement).style.transform = "none";
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      background: "#4CAF6E",
+                      marginBottom: 16,
+                    }}
+                  />
+                  <h3
+                    style={{
+                      fontSize: 15,
+                      fontWeight: 700,
+                      color: "#1A1A1A",
+                      marginBottom: 10,
+                      letterSpacing: "-0.01em",
+                    }}
+                  >
+                    {feature.title}
+                  </h3>
+                  <p
+                    style={{
+                      fontSize: 13,
+                      color: "#5A5A5A",
+                      lineHeight: 1.8,
+                      margin: 0,
+                    }}
+                  >
+                    {feature.body}
+                  </p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </section>
+
+        {/* ── REPUTATION ────────────────────────────────────────────────────── */}
+        <section
+          style={{
+            position: "relative",
+            overflow: "hidden",
+            background: "#EAE7DF",
+            padding: "88px 24px",
+          }}
+        >
+          <div
+            ref={ctaOrbRef}
+            aria-hidden
+            style={{
+              position: "absolute",
+              top: "-20%",
+              right: "-5%",
+              width: 380,
+              height: 380,
+              borderRadius: "50%",
+              pointerEvents: "none",
+              background:
+                "radial-gradient(circle, rgba(76,175,110,0.10) 0%, transparent 65%)",
+              animation: "float-med 11s ease-in-out infinite",
+            }}
+          />
+
+          <div
+            style={{
+              maxWidth: 680,
+              margin: "0 auto",
+              textAlign: "center",
+              position: "relative",
+              zIndex: 1,
+            }}
+          >
+            <Reveal>
+              <h2
+                style={{
+                  fontSize: "clamp(22px, 4.5vw, 38px)",
+                  fontWeight: 700,
+                  letterSpacing: "-0.025em",
+                  color: "#1A1A1A",
+                  lineHeight: 1.2,
+                  marginBottom: 18,
+                }}
+              >
+                Your reputation belongs to you — not the platform.
+              </h2>
+              <p
+                style={{
+                  fontSize: 15,
+                  color: "#5A5A5A",
+                  lineHeight: 1.85,
+                  maxWidth: 520,
+                  margin: "0 auto 40px",
+                }}
+              >
+                When you reach High or Elite trust tier, your reputation is
+                anchored to the Solana blockchain. That record is yours. It
+                cannot be deleted when you leave. It cannot be altered if we
+                shut down. It lives independently, and it travels with you to
+                any platform that reads the ledger.
+              </p>
+              <PlayStoreBadge href="https://play.google.com/store/apps/details?id=com.echoproof.app" />
+            </Reveal>
+          </div>
+        </section>
+
+        {/* ── FINAL CTA ─────────────────────────────────────────────────────── */}
+        <section
+          style={{
+            position: "relative",
+            overflow: "hidden",
+            padding: "100px 24px",
+            background: "#1A1A1A",
+          }}
+        >
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              backgroundImage:
+                "radial-gradient(circle, rgba(255,255,255,0.035) 1px, transparent 1px)",
+              backgroundSize: "28px 28px",
+              pointerEvents: "none",
+            }}
+          />
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: "-20%",
+              background:
+                "radial-gradient(ellipse 70% 55% at 50% 50%, rgba(76,175,110,0.10) 0%, transparent 60%)",
+              pointerEvents: "none",
+            }}
+          />
+
+          <div
+            style={{
+              maxWidth: 560,
+              margin: "0 auto",
+              textAlign: "center",
+              position: "relative",
+              zIndex: 1,
+            }}
+          >
+            <Reveal>
+              <div
+                style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: 18,
+                  overflow: "hidden",
+                  margin: "0 auto 28px",
+                  boxShadow:
+                    "0 0 0 1px rgba(255,255,255,0.1), 0 8px 28px rgba(76,175,110,0.25)",
+                }}
+              >
+                <img
+                  src="/logo.png"
+                  alt="Echoproof"
+                  width={64}
+                  height={64}
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              </div>
+              <h2
+                style={{
+                  fontSize: "clamp(24px, 5vw, 38px)",
+                  fontWeight: 700,
+                  letterSpacing: "-0.025em",
+                  color: "#fff",
+                  lineHeight: 1.2,
+                  marginBottom: 14,
+                }}
+              >
+                Join the conversation.{" "}
+                <span style={{ color: "#4CAF6E" }}>Make it count.</span>
+              </h2>
+              <p
+                style={{
+                  fontSize: 14,
+                  color: "#9A9A9A",
+                  lineHeight: 1.8,
+                  marginBottom: 36,
+                }}
+              >
+                Available now on Android. Post echoes, earn trust, stake claims,
+                and help the community establish what is actually true.
+              </p>
+              <PlayStoreBadge
+                href="https://play.google.com/store/apps/details?id=com.echoproof.app"
+                light
+              />
+            </Reveal>
+          </div>
+        </section>
+      </main>
+    </>
   );
 }

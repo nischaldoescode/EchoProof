@@ -5,7 +5,6 @@
 import type { Metadata } from "next";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
-import ClientLoader from "@/components/ClientLoader";
 import LandingClient from "@/components/LandingClient";
 
 export const metadata: Metadata = {
@@ -20,7 +19,6 @@ export const metadata: Metadata = {
 export default function Home() {
   return (
     <>
-      <ClientLoader />
       <Nav />
       <LandingClient />
       <Footer />
