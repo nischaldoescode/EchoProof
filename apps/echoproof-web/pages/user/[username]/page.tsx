@@ -9,6 +9,7 @@ import { createClient } from "@supabase/supabase-js";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 
+
 // service role client — server only, bypasses rls for public profile read
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,7 +17,7 @@ const supabase = createClient(
 );
 
 interface Props {
-  params: Promise<{ username: string }>;
+  params: { username: string };
 }
 
 // trust tier display config
