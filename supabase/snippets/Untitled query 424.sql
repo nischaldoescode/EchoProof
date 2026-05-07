@@ -1,3 +1,1 @@
-select proname, prosrc
-from pg_proc
-where proname = 'get_personalized_feed';
+drop materialized view if exists user_category_affinity;

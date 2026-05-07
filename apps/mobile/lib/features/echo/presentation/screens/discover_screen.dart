@@ -114,7 +114,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   @override
   Widget build(BuildContext context) {
     return SwipeNavigationWrapper(
-        currentLocation: '/feed',
+        currentLocation: '/discover',
         child: Scaffold(
           backgroundColor: AppColors.white,
           appBar: AppBar(

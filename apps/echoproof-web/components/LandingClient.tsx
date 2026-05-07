@@ -1,12 +1,11 @@
 "use client";
 
-// landing page client component
-// handles all scroll reveals, parallax, ticker, and interactive sections
-// split from page.tsx so the server component can export metadata cleanly
+// landing page — full parallax storytelling layout
+// multi-layer parallax on every section via individual useParallax hooks
+// scroll reveal on all content blocks, horizontal ticker, play store cta
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 
-// real echo card data — representative of what lives in the app
 const tickerEchoes = [
   {
     id: 1,
@@ -100,7 +99,6 @@ const tickerEchoes = [
   },
 ];
 
-// status config
 const statusConfig: Record<string, { color: string; bg: string; dot: string }> =
   {
     verified: { color: "#2D7A4A", bg: "#E8F5EE", dot: "#4CAF6E" },
@@ -109,7 +107,6 @@ const statusConfig: Record<string, { color: string; bg: string; dot: string }> =
     active: { color: "#1A6DB5", bg: "#E8F4FD", dot: "#3498DB" },
   };
 
-// tier colors
 const tierColor: Record<string, string> = {
   Unverified: "#9A9A9A",
   Low: "#5A5A5A",
@@ -118,7 +115,6 @@ const tierColor: Record<string, string> = {
   Elite: "#2D7A4A",
 };
 
-// trust tier rows for the trust engine section
 const tiers = [
   {
     label: "Unverified",
@@ -147,7 +143,6 @@ const tiers = [
   },
 ];
 
-// on-chain features
 const chainFeatures = [
   {
     title: "Proof staking",
@@ -163,8 +158,40 @@ const chainFeatures = [
   },
 ];
 
-// hook: detect when element enters viewport
-function useScrollReveal(threshold = 0.15) {
+// parallax hook — uses getBoundingClientRect relative to viewport for accuracy
+// works on mobile (scroll-based) and desktop equally
+function useParallax(speed = 0.3) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let ticking = false;
+
+    const onScroll = () => {
+      if (!ref.current || ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        if (!ref.current) return;
+        const parent = ref.current.parentElement;
+        if (!parent) return;
+        const rect = parent.getBoundingClientRect();
+        const vh = window.innerHeight;
+        // how far the section has scrolled through the viewport, centred at 0
+        const progress = (vh / 2 - rect.top - rect.height / 2) / vh;
+        ref.current.style.transform = `translateY(${progress * speed * 160}px)`;
+        ticking = false;
+      });
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll(); // run once on mount
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [speed]);
+
+  return ref;
+}
+
+// scroll reveal hook
+function useScrollReveal(threshold = 0.12) {
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
 
@@ -187,33 +214,150 @@ function useScrollReveal(threshold = 0.15) {
   return { ref, visible };
 }
 
-// single echo card used in the ticker
+// reveal wrapper with directional slide
+function Reveal({
+  children,
+  delay = 0,
+  direction = "up",
+}: {
+  children: React.ReactNode;
+  delay?: number;
+  direction?: "up" | "left" | "right" | "none";
+}) {
+  const { ref, visible } = useScrollReveal();
+  const transforms: Record<string, string> = {
+    up: "translateY(48px)",
+    left: "translateX(-48px)",
+    right: "translateX(48px)",
+    none: "none",
+  };
+  return (
+    <div
+      ref={ref}
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: visible ? "none" : transforms[direction],
+        transition: `opacity 0.9s ease ${delay}ms, transform 0.9s cubic-bezier(0.16,1,0.3,1) ${delay}ms`,
+        willChange: "opacity, transform",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+// play store badge
+function PlayStoreBadge({
+  href,
+  light = false,
+}: {
+  href: string;
+  light?: boolean;
+}) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 10,
+        height: 52,
+        padding: "0 22px 0 18px",
+        borderRadius: 14,
+        background: light
+          ? hovered
+            ? "rgba(255,255,255,0.18)"
+            : "rgba(255,255,255,0.10)"
+          : hovered
+            ? "#2d2d2d"
+            : "#1A1A1A",
+        border: light ? "1px solid rgba(255,255,255,0.2)" : "none",
+        textDecoration: "none",
+        transition: "background 0.2s, box-shadow 0.2s, transform 0.2s",
+        boxShadow: hovered
+          ? light
+            ? "0 8px 28px rgba(0,0,0,0.25)"
+            : "0 8px 28px rgba(0,0,0,0.22)"
+          : "none",
+        transform: hovered ? "translateY(-2px)" : "none",
+        fontFamily: "'Josefin Sans', sans-serif",
+        flexShrink: 0,
+      }}
+    >
+      {/* google play logo svg — official shape */}
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <path
+          d="M3.18 23.76c.42.24.9.24 1.32 0L16.1 16.9l-3.28-3.28-9.64 10.14z"
+          fill={light ? "#fff" : "#EA4335"}
+        />
+        <path
+          d="M20.82 10.03c-.42-.24-.9-.35-1.38-.35l-3.34 1.93 3.52 3.52 1.2-.69c.84-.48.84-1.68 0-2.16l-.0-.25z"
+          fill={light ? "#fff" : "#FBBC04"}
+        />
+        <path
+          d="M3.18.24A1.44 1.44 0 002 1.68v20.64c0 .6.33 1.13.82 1.44L15.54 12 3.18.24z"
+          fill={light ? "#fff" : "#4285F4"}
+        />
+        <path
+          d="M4.5.24L16.1 7.1l-3.28 3.28L3.18.24A1.5 1.5 0 014.5.24z"
+          fill={light ? "#fff" : "#34A853"}
+        />
+      </svg>
+      <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+        <span
+          style={{
+            fontSize: 9,
+            color: light ? "rgba(255,255,255,0.7)" : "#9A9A9A",
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+          }}
+        >
+          Get it on
+        </span>
+        <span
+          style={{
+            fontSize: 14,
+            fontWeight: 700,
+            color: light ? "#fff" : "#fff",
+            letterSpacing: "-0.01em",
+          }}
+        >
+          Google Play
+        </span>
+      </div>
+    </a>
+  );
+}
+
+// ticker card
 function TickerCard({ echo }: { echo: (typeof tickerEchoes)[0] }) {
   const cfg = statusConfig[echo.status] ?? statusConfig.active;
-  const pct = echo.confidence;
-
   return (
     <div
       style={{
-        width: 320,
+        width: 310,
         flexShrink: 0,
         background: "#fff",
         borderRadius: 20,
-        border: `1.2px solid ${cfg.dot}40`,
-        padding: "20px 20px 16px",
-        boxShadow: "0 2px 16px rgba(0,0,0,0.05)",
+        border: `1.2px solid ${cfg.dot}35`,
+        padding: "18px 18px 14px",
+        boxShadow: "0 2px 20px rgba(0,0,0,0.06)",
         display: "flex",
         flexDirection: "column",
-        gap: 12,
+        gap: 11,
         fontFamily: "'Josefin Sans', sans-serif",
       }}
     >
-      {/* header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
         <div
           style={{
-            width: 36,
-            height: 36,
+            width: 34,
+            height: 34,
             borderRadius: "50%",
             background: "#E8F5EE",
             display: "flex",
@@ -226,7 +370,7 @@ function TickerCard({ echo }: { echo: (typeof tickerEchoes)[0] }) {
             flexShrink: 0,
           }}
         >
-          <span style={{ fontSize: 12, fontWeight: 700, color: "#2D7A4A" }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#2D7A4A" }}>
             {echo.username[1].toUpperCase()}
           </span>
         </div>
@@ -237,23 +381,25 @@ function TickerCard({ echo }: { echo: (typeof tickerEchoes)[0] }) {
               fontWeight: 600,
               color: "#1A1A1A",
               margin: 0,
+              lineHeight: 1.3,
             }}
           >
             {echo.username}
           </p>
           <p style={{ fontSize: 10, color: "#9A9A9A", margin: 0 }}>
-            {echo.tier} · {echo.tierWeight} weight · {echo.category}
+            {echo.tier} · {echo.tierWeight} · {echo.category}
           </p>
         </div>
-        <span style={{ fontSize: 10, color: "#9A9A9A" }}>{echo.timeAgo}</span>
+        <span style={{ fontSize: 10, color: "#AAAAAA", flexShrink: 0 }}>
+          {echo.timeAgo}
+        </span>
       </div>
 
-      {/* content */}
       <p
         style={{
-          fontSize: 13,
+          fontSize: 12.5,
           color: "#1A1A1A",
-          lineHeight: 1.6,
+          lineHeight: 1.65,
           margin: 0,
           display: "-webkit-box",
           WebkitLineClamp: 4,
@@ -264,7 +410,6 @@ function TickerCard({ echo }: { echo: (typeof tickerEchoes)[0] }) {
         {echo.content}
       </p>
 
-      {/* status label */}
       <div
         style={{
           display: "inline-flex",
@@ -290,11 +435,10 @@ function TickerCard({ echo }: { echo: (typeof tickerEchoes)[0] }) {
         </span>
       </div>
 
-      {/* confidence bar */}
       <div>
         <div
           style={{
-            height: 5,
+            height: 4,
             background: "#F8F7F5",
             borderRadius: 999,
             overflow: "hidden",
@@ -303,10 +447,9 @@ function TickerCard({ echo }: { echo: (typeof tickerEchoes)[0] }) {
           <div
             style={{
               height: "100%",
-              width: `${pct}%`,
+              width: `${echo.confidence}%`,
               background: cfg.dot,
               borderRadius: 999,
-              transition: "width 1s ease",
             }}
           />
         </div>
@@ -317,21 +460,20 @@ function TickerCard({ echo }: { echo: (typeof tickerEchoes)[0] }) {
             marginTop: 4,
           }}
         >
-          <span style={{ fontSize: 9, color: "#9A9A9A" }}>
+          <span style={{ fontSize: 9, color: "#AAAAAA" }}>
             Community confidence
           </span>
           <span style={{ fontSize: 9, fontWeight: 700, color: cfg.dot }}>
-            {pct}%
+            {echo.confidence}%
           </span>
         </div>
       </div>
 
-      {/* actions */}
       <div
         style={{
           display: "flex",
-          gap: 8,
-          paddingTop: 10,
+          gap: 7,
+          paddingTop: 9,
           borderTop: "1px solid #F8F7F5",
         }}
       >
@@ -342,7 +484,7 @@ function TickerCard({ echo }: { echo: (typeof tickerEchoes)[0] }) {
             color: "#4CAF6E",
             background: "#E8F5EE",
             borderRadius: 999,
-            padding: "4px 10px",
+            padding: "3px 10px",
           }}
         >
           Support · {echo.supports}
@@ -350,11 +492,10 @@ function TickerCard({ echo }: { echo: (typeof tickerEchoes)[0] }) {
         <span
           style={{
             fontSize: 11,
-            fontWeight: 500,
             color: "#9A9A9A",
             background: "#F8F7F5",
             borderRadius: 999,
-            padding: "4px 10px",
+            padding: "3px 10px",
           }}
         >
           Challenge · {echo.challenges}
@@ -364,99 +505,35 @@ function TickerCard({ echo }: { echo: (typeof tickerEchoes)[0] }) {
   );
 }
 
-// reveal wrapper
-function Reveal({
-  children,
-  delay = 0,
-  direction = "up",
-}: {
-  children: React.ReactNode;
-  delay?: number;
-  direction?: "up" | "left" | "right" | "none";
-}) {
-  const { ref, visible } = useScrollReveal();
-
-  const transforms: Record<string, string> = {
-    up: "translateY(40px)",
-    left: "translateX(-40px)",
-    right: "translateX(40px)",
-    none: "none",
-  };
-
-  return (
-    <div
-      ref={ref}
-      style={{
-        opacity: visible ? 1 : 0,
-        transform: visible ? "none" : transforms[direction],
-        transition: `opacity 0.8s ease ${delay}ms, transform 0.8s cubic-bezier(0.22,1,0.36,1) ${delay}ms`,
-        willChange: "opacity, transform",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-// parallax hook — works on both desktop and mobile (scroll-based, not mouse-based)
-function useParallax(speed = 0.3) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    let ticking = false;
-
-    const onScroll = () => {
-      if (!ref.current || ticking) return;
-      ticking = true;
-      requestAnimationFrame(() => {
-        if (!ref.current) return;
-        const rect = ref.current.parentElement?.getBoundingClientRect();
-        if (!rect) return;
-        const offset = -rect.top * speed;
-        ref.current.style.transform = `translateY(${offset}px)`;
-        ticking = false;
-      });
-    };
-
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, [speed]);
-
-  return ref;
-}
-
-// horizontal ticker with pause on hover and auto-scroll with IntersectionObserver trigger
 function EchoTicker() {
-  const trackRef = useRef<HTMLDivElement>(null);
+  const { ref: wrapperRef, visible } = useScrollReveal(0.05);
   const [paused, setPaused] = useState(false);
-  const { ref: wrapperRef, visible } = useScrollReveal(0.1);
-
-  // doubled for seamless loop
   const doubled = [...tickerEchoes, ...tickerEchoes];
 
   return (
     <div ref={wrapperRef} style={{ overflow: "hidden" }}>
       <style>{`
         @keyframes ticker-scroll {
-          0%   { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
+          from { transform: translateX(0); }
+          to   { transform: translateX(-50%); }
         }
         .ticker-track {
           display: flex;
-          gap: 16px;
+          gap: 14px;
           width: max-content;
-          animation: ticker-scroll 40s linear infinite;
+          padding: 4px 2px 12px;
         }
-        .ticker-track.paused {
-          animation-play-state: paused;
-        }
-        .ticker-track:not(.playing) {
-          animation-play-state: paused;
-        }
+        .ticker-running { animation: ticker-scroll 44s linear infinite; }
+        .ticker-paused  { animation: ticker-scroll 44s linear infinite paused; }
       `}</style>
       <div
-        className={`ticker-track ${paused ? "paused" : ""} ${visible ? "playing" : ""}`}
-        ref={trackRef}
+        className={
+          visible
+            ? paused
+              ? "ticker-track ticker-paused"
+              : "ticker-track ticker-running"
+            : "ticker-track"
+        }
         onMouseEnter={() => setPaused(true)}
         onMouseLeave={() => setPaused(false)}
         onTouchStart={() => setPaused(true)}
@@ -471,9 +548,20 @@ function EchoTicker() {
 }
 
 export default function LandingClient() {
-  const parallaxBgRef = useParallax(0.25);
-  const parallaxTextRef = useParallax(0.12);
-  const parallaxOrbRef = useParallax(0.4);
+  // hero parallax layers — each at a different depth
+  const heroMeshRef = useParallax(0.55); // bg mesh — slowest
+  const heroOrbTopRef = useParallax(0.75); // top-right orb — medium
+  const heroOrbBotRef = useParallax(0.4); // bottom-left orb
+  const heroGridRef = useParallax(0.2); // faint grid — very slow
+  const heroContentRef = useParallax(0.12); // text — near-still
+
+  // section parallax — decorative layers behind content
+  const tickerOrbRef = useParallax(0.6);
+  const howItWorksBgRef = useParallax(0.5);
+  const trustMeshRef = useParallax(0.65);
+  const trustOrbRef = useParallax(0.8);
+  const chainBgRef = useParallax(0.45);
+  const ctaOrbRef = useParallax(0.7);
 
   return (
     <main
@@ -485,34 +573,48 @@ export default function LandingClient() {
       }}
     >
       <style>{`
-        @keyframes float-orb {
-          0%, 100% { transform: translateY(0px) scale(1); }
-          50%       { transform: translateY(-20px) scale(1.04); }
+        @keyframes float-slow {
+          0%,100% { transform: translateY(0) scale(1); }
+          50%      { transform: translateY(-22px) scale(1.03); }
         }
-        @keyframes hero-line-in {
-          0%   { opacity: 0; transform: translateY(32px); }
-          100% { opacity: 1; transform: translateY(0); }
+        @keyframes float-med {
+          0%,100% { transform: translateY(0) rotate(0deg); }
+          50%      { transform: translateY(-14px) rotate(2deg); }
         }
-        @keyframes fade-up-slow {
-          0%   { opacity: 0; transform: translateY(20px); }
-          100% { opacity: 1; transform: translateY(0); }
+        @keyframes grid-drift {
+          0%   { transform: translateX(0) translateY(0); }
+          100% { transform: translateX(-40px) translateY(-20px); }
         }
-        @keyframes line-grow {
-          0%   { width: 0; }
-          100% { width: 48px; }
+        @keyframes hero-in {
+          0%   { opacity:0; transform:translateY(36px); }
+          100% { opacity:1; transform:translateY(0); }
         }
-        .hero-line-1 { animation: hero-line-in 1s cubic-bezier(0.22,1,0.36,1) 200ms both; }
-        .hero-line-2 { animation: hero-line-in 1s cubic-bezier(0.22,1,0.36,1) 400ms both; }
-        .hero-sub    { animation: fade-up-slow 1s ease 700ms both; }
-        .hero-cta    { animation: fade-up-slow 1s ease 950ms both; }
-        .hero-scroll-hint { animation: fade-up-slow 1s ease 1300ms both; }
+        @keyframes fade-up {
+          0%   { opacity:0; transform:translateY(20px); }
+          100% { opacity:1; transform:translateY(0); }
+        }
+        @keyframes line-in {
+          0%   { width:0; opacity:0; }
+          100% { width:48px; opacity:1; }
+        }
+        @keyframes spin-slow {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+        .hero-eyebrow { animation: fade-up 0.8s ease 100ms both; }
+        .hero-h1-1    { animation: hero-in 1s cubic-bezier(0.16,1,0.3,1) 250ms both; }
+        .hero-h1-2    { animation: hero-in 1s cubic-bezier(0.16,1,0.3,1) 420ms both; }
+        .hero-sub     { animation: fade-up 1s ease 650ms both; }
+        .hero-cta     { animation: fade-up 1s ease 850ms both; }
+        .hero-hint    { animation: fade-up 1s ease 1150ms both; }
+        .ring-rotate  { animation: spin-slow 24s linear infinite; }
 
-        @media (max-width: 640px) {
-          .hero-display { font-size: clamp(38px, 11vw, 64px) !important; }
+        @media (max-width:640px) {
+          .hero-h1 { font-size: clamp(38px, 12vw, 62px) !important; }
         }
       `}</style>
 
-      {/* hero — full viewport with parallax layers */}
+      {/* ─── HERO ─────────────────────────────────────────────────────────── */}
       <section
         style={{
           position: "relative",
@@ -522,80 +624,149 @@ export default function LandingClient() {
           alignItems: "center",
           justifyContent: "center",
           overflow: "hidden",
-          padding: "120px 24px 80px",
+          padding: "120px 24px 96px",
         }}
       >
-        {/* parallax background mesh */}
+        {/* layer 0 — dot grid — very slow */}
         <div
-          ref={parallaxBgRef}
+          ref={heroGridRef}
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: "-30%",
+            zIndex: 0,
+            backgroundImage:
+              "radial-gradient(circle, rgba(26,26,26,0.07) 1px, transparent 1px)",
+            backgroundSize: "28px 28px",
+            animation: "grid-drift 30s linear infinite alternate",
+            opacity: 0.6,
+          }}
+        />
+
+        {/* layer 1 — radial mesh — slowest */}
+        <div
+          ref={heroMeshRef}
           aria-hidden
           style={{
             position: "absolute",
             inset: "-20%",
-            zIndex: 0,
+            zIndex: 1,
             background:
-              "radial-gradient(ellipse 70% 55% at 50% 30%, rgba(76,175,110,0.10) 0%, transparent 65%), radial-gradient(ellipse 40% 40% at 80% 70%, rgba(232,160,0,0.05) 0%, transparent 60%)",
+              "radial-gradient(ellipse 75% 60% at 50% 25%, rgba(76,175,110,0.11) 0%, transparent 65%), radial-gradient(ellipse 50% 40% at 20% 80%, rgba(232,160,0,0.06) 0%, transparent 55%)",
           }}
         />
 
-        {/* floating orb — parallax */}
+        {/* layer 2 — top-right orb */}
         <div
-          ref={parallaxOrbRef}
+          ref={heroOrbTopRef}
           aria-hidden
           style={{
             position: "absolute",
-            top: "15%",
-            right: "8%",
-            width: 320,
-            height: 320,
+            top: "8%",
+            right: "-4%",
+            width: 500,
+            height: 500,
+            zIndex: 2,
             borderRadius: "50%",
             background:
-              "radial-gradient(circle, rgba(76,175,110,0.12) 0%, transparent 70%)",
-            animation: "float-orb 8s ease-in-out infinite",
-            zIndex: 0,
-            filter: "blur(2px)",
+              "radial-gradient(circle, rgba(76,175,110,0.13) 0%, transparent 68%)",
+            animation: "float-slow 10s ease-in-out infinite",
+            filter: "blur(1px)",
           }}
         />
 
+        {/* layer 3 — bottom-left orb */}
         <div
-          ref={parallaxTextRef}
+          ref={heroOrbBotRef}
+          aria-hidden
+          style={{
+            position: "absolute",
+            bottom: "-5%",
+            left: "-8%",
+            width: 380,
+            height: 380,
+            zIndex: 2,
+            borderRadius: "50%",
+            background:
+              "radial-gradient(circle, rgba(76,175,110,0.08) 0%, transparent 65%)",
+            animation: "float-med 13s ease-in-out infinite 2s",
+          }}
+        />
+
+        {/* layer 4 — rotating ring accent */}
+        <div
+          className="ring-rotate"
+          aria-hidden
+          style={{
+            position: "absolute",
+            top: "20%",
+            right: "12%",
+            width: 180,
+            height: 180,
+            zIndex: 2,
+            borderRadius: "50%",
+            opacity: 0.12,
+            border: "1px solid #4CAF6E",
+          }}
+        />
+        <div
+          className="ring-rotate"
+          aria-hidden
+          style={{
+            position: "absolute",
+            top: "22%",
+            right: "14%",
+            width: 120,
+            height: 120,
+            zIndex: 2,
+            borderRadius: "50%",
+            opacity: 0.08,
+            border: "1px solid #4CAF6E",
+            animationDirection: "reverse",
+            animationDuration: "16s",
+          }}
+        />
+
+        {/* layer 5 — text content — near-still */}
+        <div
+          ref={heroContentRef}
           style={{
             position: "relative",
-            zIndex: 1,
-            maxWidth: 720,
+            zIndex: 3,
+            maxWidth: 700,
             width: "100%",
             textAlign: "center",
           }}
         >
           <p
-            className="hero-scroll-hint"
+            className="hero-eyebrow"
             style={{
               fontSize: 11,
-              letterSpacing: "0.18em",
+              letterSpacing: "0.20em",
               textTransform: "uppercase",
               color: "#9A9A9A",
-              marginBottom: 32,
+              marginBottom: 28,
             }}
           >
             A new kind of social network
           </p>
 
           <h1
-            className="hero-display"
+            className="hero-h1"
             style={{
-              fontSize: "clamp(44px, 8vw, 80px)",
+              fontSize: "clamp(44px, 8vw, 78px)",
               fontWeight: 700,
-              letterSpacing: "-0.03em",
+              letterSpacing: "-0.035em",
               lineHeight: 1.06,
               color: "#1A1A1A",
-              margin: "0 0 28px",
+              margin: "0 0 26px",
             }}
           >
-            <span className="hero-line-1" style={{ display: "block" }}>
+            <span className="hero-h1-1" style={{ display: "block" }}>
               The crowd decides
             </span>
             <span
-              className="hero-line-2"
+              className="hero-h1-2"
               style={{ display: "block", color: "#4CAF6E" }}
             >
               what is true.
@@ -607,9 +778,9 @@ export default function LandingClient() {
             style={{
               fontSize: 16,
               color: "#5A5A5A",
-              lineHeight: 1.75,
-              maxWidth: 480,
-              margin: "0 auto 40px",
+              lineHeight: 1.8,
+              maxWidth: 460,
+              margin: "0 auto 44px",
             }}
           >
             Echoproof is where claims meet scrutiny. Every post is weighed by
@@ -623,48 +794,18 @@ export default function LandingClient() {
               flexWrap: "wrap",
               gap: 12,
               justifyContent: "center",
+              alignItems: "center",
             }}
           >
-            <a
-              href="https://play.google.com/store/apps/details?id=com.echoproof.app"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                height: 48,
-                padding: "0 28px",
-                borderRadius: 999,
-                background: "#1A1A1A",
-                color: "#fff",
-                fontSize: 13,
-                fontWeight: 600,
-                textDecoration: "none",
-                letterSpacing: "0.01em",
-                transition: "background 0.2s, box-shadow 0.2s",
-                fontFamily: "'Josefin Sans', sans-serif",
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.background = "#2d2d2d";
-                (e.currentTarget as HTMLElement).style.boxShadow =
-                  "0 8px 24px rgba(0,0,0,0.18)";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.background = "#1A1A1A";
-                (e.currentTarget as HTMLElement).style.boxShadow = "none";
-              }}
-            >
-              Download for Android
-            </a>
+            <PlayStoreBadge href="https://play.google.com/store/apps/details?id=com.echoproof.app" />
             <a
               href="#how-it-works"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                height: 48,
-                padding: "0 28px",
-                borderRadius: 999,
+                height: 52,
+                padding: "0 26px",
+                borderRadius: 14,
                 border: "1px solid #E6E6E6",
                 color: "#1A1A1A",
                 fontSize: 13,
@@ -688,42 +829,60 @@ export default function LandingClient() {
           </div>
         </div>
 
-        {/* scroll nudge line */}
+        {/* scroll breath line */}
         <div
-          className="hero-scroll-hint"
+          className="hero-hint"
           aria-hidden
           style={{
             position: "absolute",
-            bottom: 36,
+            bottom: 32,
             left: "50%",
             transform: "translateX(-50%)",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            gap: 6,
           }}
         >
           <div
             style={{
               width: 1,
-              height: 48,
-              background: "linear-gradient(to bottom, transparent, #9A9A9A60)",
+              height: 52,
+              background:
+                "linear-gradient(to bottom, transparent, rgba(154,154,154,0.5))",
               borderRadius: 999,
             }}
           />
         </div>
       </section>
 
-      {/* live echoes ticker — real content scrolling automatically */}
+      {/* ─── TICKER ───────────────────────────────────────────────────────── */}
       <section
         style={{
-          padding: "72px 0",
+          position: "relative",
+          padding: "80px 0 72px",
           background: "#F8F7F5",
           overflow: "hidden",
         }}
       >
+        {/* parallax orb behind ticker */}
         <div
-          style={{ maxWidth: 960, margin: "0 auto", padding: "0 24px 32px" }}
+          ref={tickerOrbRef}
+          aria-hidden
+          style={{
+            position: "absolute",
+            top: "-30%",
+            right: "-5%",
+            width: 360,
+            height: 360,
+            borderRadius: "50%",
+            pointerEvents: "none",
+            background:
+              "radial-gradient(circle, rgba(76,175,110,0.09) 0%, transparent 65%)",
+          }}
+        />
+
+        <div
+          style={{ maxWidth: 960, margin: "0 auto", padding: "0 24px 28px" }}
         >
           <Reveal>
             <p
@@ -732,14 +891,14 @@ export default function LandingClient() {
                 letterSpacing: "0.18em",
                 textTransform: "uppercase",
                 color: "#9A9A9A",
-                marginBottom: 10,
+                marginBottom: 8,
               }}
             >
               Live from the platform
             </p>
             <h2
               style={{
-                fontSize: "clamp(26px, 5vw, 40px)",
+                fontSize: "clamp(24px, 4.5vw, 38px)",
                 fontWeight: 700,
                 letterSpacing: "-0.025em",
                 color: "#1A1A1A",
@@ -750,29 +909,57 @@ export default function LandingClient() {
             </h2>
           </Reveal>
         </div>
+
         <EchoTicker />
+
         <div
-          style={{ maxWidth: 960, margin: "24px auto 0", padding: "0 24px" }}
+          style={{ maxWidth: 960, margin: "20px auto 0", padding: "0 24px" }}
         >
-          <Reveal delay={100}>
-            <p style={{ fontSize: 12, color: "#9A9A9A", lineHeight: 1.6 }}>
-              Every card above is a real format — what you see in the app.
-              Status, confidence, and support counts evolve as the community
-              weighs in.
+          <Reveal delay={80}>
+            <p
+              style={{
+                fontSize: 12,
+                color: "#9A9A9A",
+                lineHeight: 1.65,
+                maxWidth: 560,
+              }}
+            >
+              Every card above is a real format — exactly what you see in the
+              app. Status, confidence, and support counts evolve as the
+              community weighs in. Nothing is static.
             </p>
           </Reveal>
         </div>
       </section>
 
-      {/* how it works — editorial chapter layout */}
+      {/* ─── HOW IT WORKS ─────────────────────────────────────────────────── */}
       <section
         id="how-it-works"
         style={{
-          padding: "96px 24px",
+          position: "relative",
+          overflow: "hidden",
+          padding: "100px 24px",
           maxWidth: 960,
           margin: "0 auto",
         }}
       >
+        {/* parallax line accent */}
+        <div
+          ref={howItWorksBgRef}
+          aria-hidden
+          style={{
+            position: "absolute",
+            top: "5%",
+            right: "-2%",
+            width: 300,
+            height: 300,
+            borderRadius: "50%",
+            pointerEvents: "none",
+            background:
+              "radial-gradient(circle, rgba(76,175,110,0.06) 0%, transparent 65%)",
+          }}
+        />
+
         <Reveal>
           <p
             style={{
@@ -780,7 +967,7 @@ export default function LandingClient() {
               letterSpacing: "0.18em",
               textTransform: "uppercase",
               color: "#9A9A9A",
-              marginBottom: 10,
+              marginBottom: 8,
             }}
           >
             How it works
@@ -791,8 +978,8 @@ export default function LandingClient() {
               fontWeight: 700,
               letterSpacing: "-0.025em",
               color: "#1A1A1A",
-              lineHeight: 1.15,
-              marginBottom: 16,
+              lineHeight: 1.12,
+              marginBottom: 14,
             }}
           >
             From claim to consensus
@@ -801,18 +988,17 @@ export default function LandingClient() {
             style={{
               fontSize: 15,
               color: "#5A5A5A",
-              lineHeight: 1.75,
+              lineHeight: 1.8,
               maxWidth: 520,
-              marginBottom: 64,
+              marginBottom: 68,
             }}
           >
             Most platforms amplify what is popular. Echoproof surfaces what
             holds up under scrutiny. The process is transparent, weighted, and
-            permanent.
+            once resolved — permanent.
           </p>
         </Reveal>
 
-        {/* chapter steps — alternating layout */}
         {[
           {
             number: "01",
@@ -845,111 +1031,138 @@ export default function LandingClient() {
         ].map((step, i) => (
           <Reveal
             key={step.number}
-            delay={i * 80}
+            delay={i * 75}
             direction={i % 2 === 0 ? "left" : "right"}
           >
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "1fr",
-                gap: 24,
-                marginBottom: 56,
-                paddingBottom: 56,
+                gridTemplateColumns: "auto 1fr",
+                gap: "0 28px",
+                alignItems: "start",
+                marginBottom: 52,
+                paddingBottom: 52,
                 borderBottom: "1px solid #F0F0F0",
               }}
             >
-              <div
+              <span
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "auto 1fr",
-                  gap: "0 32px",
-                  alignItems: "start",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "#4CAF6E",
+                  letterSpacing: "0.10em",
+                  paddingTop: 5,
+                  minWidth: 24,
                 }}
               >
-                {/* step number */}
-                <span
+                {step.number}
+              </span>
+              <div>
+                <h3
                   style={{
-                    fontSize: 11,
+                    fontSize: "clamp(17px, 2.8vw, 22px)",
                     fontWeight: 700,
-                    color: "#4CAF6E",
-                    letterSpacing: "0.12em",
-                    paddingTop: 4,
-                    minWidth: 28,
+                    color: "#1A1A1A",
+                    letterSpacing: "-0.02em",
+                    marginBottom: 11,
+                    lineHeight: 1.25,
                   }}
                 >
-                  {step.number}
-                </span>
-                <div>
-                  <h3
-                    style={{
-                      fontSize: "clamp(18px, 3vw, 24px)",
-                      fontWeight: 700,
-                      color: "#1A1A1A",
-                      letterSpacing: "-0.02em",
-                      marginBottom: 12,
-                      lineHeight: 1.25,
-                    }}
-                  >
-                    {step.title}
-                  </h3>
-                  <p
-                    style={{
-                      fontSize: 14,
-                      color: "#5A5A5A",
-                      lineHeight: 1.8,
-                      marginBottom: 16,
-                      maxWidth: 560,
-                    }}
-                  >
-                    {step.body}
-                  </p>
-                  <p
-                    style={{
-                      fontSize: 12,
-                      color: "#9A9A9A",
-                      lineHeight: 1.7,
-                      borderLeft: "2px solid #E8F5EE",
-                      paddingLeft: 12,
-                      maxWidth: 480,
-                      fontStyle: "italic",
-                    }}
-                  >
-                    {step.aside}
-                  </p>
-                </div>
+                  {step.title}
+                </h3>
+                <p
+                  style={{
+                    fontSize: 14,
+                    color: "#5A5A5A",
+                    lineHeight: 1.85,
+                    marginBottom: 14,
+                    maxWidth: 560,
+                  }}
+                >
+                  {step.body}
+                </p>
+                <p
+                  style={{
+                    fontSize: 12,
+                    color: "#9A9A9A",
+                    lineHeight: 1.7,
+                    borderLeft: "2px solid #E8F5EE",
+                    paddingLeft: 12,
+                    maxWidth: 480,
+                    fontStyle: "italic",
+                    margin: 0,
+                  }}
+                >
+                  {step.aside}
+                </p>
               </div>
             </div>
           </Reveal>
         ))}
       </section>
 
-      {/* trust engine — dark section with parallax */}
+      {/* ─── TRUST ENGINE ─────────────────────────────────────────────────── */}
       <section
         id="trust"
         style={{
           position: "relative",
           overflow: "hidden",
           background: "#1A1A1A",
-          padding: "96px 24px",
+          padding: "100px 24px",
         }}
       >
-        {/* parallax accent orb */}
+        {/* multi-layer parallax on dark section */}
+        <div
+          ref={trustMeshRef}
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: "-20%",
+            background:
+              "radial-gradient(ellipse 65% 55% at 80% 40%, rgba(76,175,110,0.10) 0%, transparent 60%), radial-gradient(ellipse 40% 40% at 10% 70%, rgba(76,175,110,0.06) 0%, transparent 55%)",
+            pointerEvents: "none",
+            zIndex: 0,
+          }}
+        />
+        <div
+          ref={trustOrbRef}
+          aria-hidden
+          style={{
+            position: "absolute",
+            top: "-15%",
+            right: "-6%",
+            width: 440,
+            height: 440,
+            borderRadius: "50%",
+            pointerEvents: "none",
+            zIndex: 0,
+            background:
+              "radial-gradient(circle, rgba(76,175,110,0.13) 0%, transparent 62%)",
+            animation: "float-slow 12s ease-in-out infinite",
+          }}
+        />
+        {/* dot grid overlay */}
         <div
           aria-hidden
           style={{
             position: "absolute",
-            top: "-10%",
-            right: "-5%",
-            width: 400,
-            height: 400,
-            borderRadius: "50%",
-            background:
-              "radial-gradient(circle, rgba(76,175,110,0.12) 0%, transparent 65%)",
+            inset: 0,
+            backgroundImage:
+              "radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px)",
+            backgroundSize: "32px 32px",
             pointerEvents: "none",
+            zIndex: 0,
           }}
         />
 
-        <div style={{ maxWidth: 960, margin: "0 auto" }}>
+        <div
+          style={{
+            maxWidth: 960,
+            margin: "0 auto",
+            position: "relative",
+            zIndex: 1,
+          }}
+        >
           <Reveal>
             <p
               style={{
@@ -957,7 +1170,7 @@ export default function LandingClient() {
                 letterSpacing: "0.18em",
                 textTransform: "uppercase",
                 color: "#4CAF6E",
-                marginBottom: 10,
+                marginBottom: 8,
               }}
             >
               Trust engine
@@ -968,8 +1181,8 @@ export default function LandingClient() {
                 fontWeight: 700,
                 letterSpacing: "-0.025em",
                 color: "#fff",
-                lineHeight: 1.15,
-                marginBottom: 16,
+                lineHeight: 1.12,
+                marginBottom: 14,
               }}
             >
               Not all voices carry the same weight.
@@ -978,7 +1191,7 @@ export default function LandingClient() {
               style={{
                 fontSize: 15,
                 color: "#9A9A9A",
-                lineHeight: 1.75,
+                lineHeight: 1.8,
                 maxWidth: 520,
                 marginBottom: 56,
               }}
@@ -990,45 +1203,44 @@ export default function LandingClient() {
             </p>
           </Reveal>
 
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-            }}
-          >
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {tiers.map((tier, i) => (
-              <Reveal key={tier.label} delay={i * 70} direction="left">
+              <Reveal key={tier.label} delay={i * 65} direction="left">
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "120px 1fr auto",
+                    gridTemplateColumns: "100px 1fr auto",
                     alignItems: "center",
-                    gap: 20,
-                    padding: "16px 20px",
-                    borderRadius: 14,
+                    gap: 18,
+                    padding: "14px 18px",
+                    borderRadius: 13,
                     background: "rgba(255,255,255,0.04)",
                     border: "1px solid rgba(255,255,255,0.07)",
+                    transition: "background 0.2s",
                   }}
+                  onMouseEnter={(e) =>
+                    ((e.currentTarget as HTMLElement).style.background =
+                      "rgba(255,255,255,0.07)")
+                  }
+                  onMouseLeave={(e) =>
+                    ((e.currentTarget as HTMLElement).style.background =
+                      "rgba(255,255,255,0.04)")
+                  }
                 >
                   <div
-                    style={{ display: "flex", alignItems: "center", gap: 10 }}
+                    style={{ display: "flex", alignItems: "center", gap: 9 }}
                   >
                     <div
                       style={{
-                        width: 8,
-                        height: 8,
+                        width: 7,
+                        height: 7,
                         borderRadius: "50%",
                         background: tierColor[tier.label],
                         flexShrink: 0,
                       }}
                     />
                     <span
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: "#fff",
-                      }}
+                      style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}
                     >
                       {tier.label}
                     </span>
@@ -1048,7 +1260,7 @@ export default function LandingClient() {
                       fontSize: 13,
                       fontWeight: 700,
                       color: tierColor[tier.label],
-                      minWidth: 28,
+                      minWidth: 24,
                       textAlign: "right",
                       flexShrink: 0,
                     }}
@@ -1062,14 +1274,32 @@ export default function LandingClient() {
         </div>
       </section>
 
-      {/* on-chain section — what permanent means */}
+      {/* ─── ON-CHAIN ─────────────────────────────────────────────────────── */}
       <section
         style={{
-          padding: "96px 24px",
+          position: "relative",
+          overflow: "hidden",
+          padding: "100px 24px",
           maxWidth: 960,
           margin: "0 auto",
         }}
       >
+        <div
+          ref={chainBgRef}
+          aria-hidden
+          style={{
+            position: "absolute",
+            bottom: "-10%",
+            left: "-5%",
+            width: 350,
+            height: 350,
+            borderRadius: "50%",
+            pointerEvents: "none",
+            background:
+              "radial-gradient(circle, rgba(76,175,110,0.07) 0%, transparent 65%)",
+          }}
+        />
+
         <Reveal>
           <p
             style={{
@@ -1077,7 +1307,7 @@ export default function LandingClient() {
               letterSpacing: "0.18em",
               textTransform: "uppercase",
               color: "#9A9A9A",
-              marginBottom: 10,
+              marginBottom: 8,
             }}
           >
             On-chain permanence
@@ -1088,8 +1318,8 @@ export default function LandingClient() {
               fontWeight: 700,
               letterSpacing: "-0.025em",
               color: "#1A1A1A",
-              lineHeight: 1.15,
-              marginBottom: 16,
+              lineHeight: 1.12,
+              marginBottom: 14,
             }}
           >
             Once verified, no one can undo it.
@@ -1098,9 +1328,9 @@ export default function LandingClient() {
             style={{
               fontSize: 15,
               color: "#5A5A5A",
-              lineHeight: 1.75,
+              lineHeight: 1.8,
               maxWidth: 560,
-              marginBottom: 64,
+              marginBottom: 60,
             }}
           >
             Platforms delete posts. Institutions revise records. Echoproof
@@ -1113,12 +1343,12 @@ export default function LandingClient() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-            gap: 20,
+            gridTemplateColumns: "repeat(auto-fit, minmax(255px, 1fr))",
+            gap: 18,
           }}
         >
           {chainFeatures.map((feature, i) => (
-            <Reveal key={feature.title} delay={i * 100}>
+            <Reveal key={feature.title} delay={i * 90}>
               <div
                 style={{
                   padding: 24,
@@ -1127,6 +1357,17 @@ export default function LandingClient() {
                   background: "#F8F7F5",
                   height: "100%",
                   boxSizing: "border-box",
+                  transition: "box-shadow 0.2s, transform 0.2s",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.boxShadow =
+                    "0 8px 28px rgba(0,0,0,0.08)";
+                  (e.currentTarget as HTMLElement).style.transform =
+                    "translateY(-3px)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.boxShadow = "none";
+                  (e.currentTarget as HTMLElement).style.transform = "none";
                 }}
               >
                 <div
@@ -1153,7 +1394,7 @@ export default function LandingClient() {
                   style={{
                     fontSize: 13,
                     color: "#5A5A5A",
-                    lineHeight: 1.75,
+                    lineHeight: 1.8,
                     margin: 0,
                   }}
                 >
@@ -1165,14 +1406,41 @@ export default function LandingClient() {
         </div>
       </section>
 
-      {/* reputation portability — standalone statement section */}
+      {/* ─── REPUTATION PORTABILITY ───────────────────────────────────────── */}
       <section
         style={{
+          position: "relative",
+          overflow: "hidden",
           background: "#EAE7DF",
-          padding: "80px 24px",
+          padding: "88px 24px",
         }}
       >
-        <div style={{ maxWidth: 720, margin: "0 auto", textAlign: "center" }}>
+        <div
+          ref={ctaOrbRef}
+          aria-hidden
+          style={{
+            position: "absolute",
+            top: "-20%",
+            right: "-5%",
+            width: 380,
+            height: 380,
+            borderRadius: "50%",
+            pointerEvents: "none",
+            background:
+              "radial-gradient(circle, rgba(76,175,110,0.10) 0%, transparent 65%)",
+            animation: "float-med 11s ease-in-out infinite",
+          }}
+        />
+
+        <div
+          style={{
+            maxWidth: 680,
+            margin: "0 auto",
+            textAlign: "center",
+            position: "relative",
+            zIndex: 1,
+          }}
+        >
           <Reveal>
             <h2
               style={{
@@ -1181,7 +1449,7 @@ export default function LandingClient() {
                 letterSpacing: "-0.025em",
                 color: "#1A1A1A",
                 lineHeight: 1.2,
-                marginBottom: 20,
+                marginBottom: 18,
               }}
             >
               Your reputation belongs to you — not the platform.
@@ -1190,7 +1458,7 @@ export default function LandingClient() {
               style={{
                 fontSize: 15,
                 color: "#5A5A5A",
-                lineHeight: 1.8,
+                lineHeight: 1.85,
                 maxWidth: 520,
                 margin: "0 auto 40px",
               }}
@@ -1201,39 +1469,52 @@ export default function LandingClient() {
               It lives independently, and it travels with you to any platform
               that reads the ledger.
             </p>
-            <a
-              href="https://play.google.com/store/apps/details?id=com.echoproof.app"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                height: 48,
-                padding: "0 28px",
-                borderRadius: 999,
-                background: "#1A1A1A",
-                color: "#fff",
-                fontSize: 13,
-                fontWeight: 600,
-                textDecoration: "none",
-                transition: "background 0.2s",
-                fontFamily: "'Josefin Sans', sans-serif",
-              }}
-            >
-              Build your reputation
-            </a>
+            <PlayStoreBadge href="https://play.google.com/store/apps/details?id=com.echoproof.app" />
           </Reveal>
         </div>
       </section>
 
-      {/* final cta */}
+      {/* ─── FINAL CTA ────────────────────────────────────────────────────── */}
       <section
         style={{
-          padding: "96px 24px",
-          background: "#fff",
+          position: "relative",
+          overflow: "hidden",
+          padding: "100px 24px",
+          background: "#1A1A1A",
         }}
       >
-        <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
+        {/* multi-layer dark parallax */}
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            backgroundImage:
+              "radial-gradient(circle, rgba(255,255,255,0.035) 1px, transparent 1px)",
+            backgroundSize: "28px 28px",
+            pointerEvents: "none",
+          }}
+        />
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: "-20%",
+            background:
+              "radial-gradient(ellipse 70% 55% at 50% 50%, rgba(76,175,110,0.10) 0%, transparent 60%)",
+            pointerEvents: "none",
+          }}
+        />
+
+        <div
+          style={{
+            maxWidth: 560,
+            margin: "0 auto",
+            textAlign: "center",
+            position: "relative",
+            zIndex: 1,
+          }}
+        >
           <Reveal>
             <div
               style={{
@@ -1242,7 +1523,8 @@ export default function LandingClient() {
                 borderRadius: 18,
                 overflow: "hidden",
                 margin: "0 auto 28px",
-                boxShadow: "0 4px 20px rgba(76,175,110,0.2)",
+                boxShadow:
+                  "0 0 0 1px rgba(255,255,255,0.1), 0 8px 28px rgba(76,175,110,0.25)",
               }}
             >
               <img
@@ -1258,48 +1540,29 @@ export default function LandingClient() {
                 fontSize: "clamp(24px, 5vw, 38px)",
                 fontWeight: 700,
                 letterSpacing: "-0.025em",
-                color: "#1A1A1A",
+                color: "#fff",
                 lineHeight: 1.2,
-                marginBottom: 16,
+                marginBottom: 14,
               }}
             >
-              Join the conversation.
-              <br />
+              Join the conversation.{" "}
               <span style={{ color: "#4CAF6E" }}>Make it count.</span>
             </h2>
             <p
               style={{
                 fontSize: 14,
-                color: "#5A5A5A",
-                lineHeight: 1.75,
+                color: "#9A9A9A",
+                lineHeight: 1.8,
                 marginBottom: 36,
               }}
             >
               Available now on Android. Post echoes, earn trust, stake claims,
               and help the community establish what is actually true.
             </p>
-            <a
+            <PlayStoreBadge
               href="https://play.google.com/store/apps/details?id=com.echoproof.app"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                height: 52,
-                padding: "0 32px",
-                borderRadius: 999,
-                background: "#1A1A1A",
-                color: "#fff",
-                fontSize: 14,
-                fontWeight: 600,
-                textDecoration: "none",
-                transition: "background 0.2s, box-shadow 0.2s",
-                fontFamily: "'Josefin Sans', sans-serif",
-              }}
-            >
-              Download for Android
-            </a>
+              light
+            />
           </Reveal>
         </div>
       </section>

@@ -28,5 +28,5 @@ Write-Host "Done! Output saved to $outputFile"
 if (Test-Path $outputFile) {
     Invoke-Item $outputFile
 } else {
-    Write-Host "File was not created!"
+    Write-Host "file was not created!"
 }

@@ -35,26 +35,25 @@ class EchoProofApp extends StatelessWidget {
     final langCode = context.watch<OnboardingService>().language;
     final locale = _localeMap[langCode] ?? const Locale('en');
 
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 300),
-      child: KeyedSubtree(
-        key: ValueKey(langCode),
-        child: MaterialApp.router(
-          title: 'Echoproof',
-          debugShowCheckedModeBanner: false,
-          theme: buildAppTheme(),
-          locale: locale,
-          supportedLocales: _localeMap.values.toList(),
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-          ],
-          routerConfig: router,
-          builder: (context, child) => ConnectivityWrapper(
-            child: child ?? const SizedBox.shrink(),
-          ),
-        ),
+    // Do NOT wrap MaterialApp.router in AnimatedSwitcher — it creates
+    // duplicate GlobalKeys during the cross-fade because GoRouter uses
+    // GlobalObjectKey internally. Instead let MaterialApp.router react
+    // to locale changes directly. The locale prop itself is reactive since
+    // build() is called whenever OnboardingService notifies.
+    return MaterialApp.router(
+      title: 'Echoproof',
+      debugShowCheckedModeBanner: false,
+      theme: buildAppTheme(),
+      locale: locale,
+      supportedLocales: _localeMap.values.toList(),
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      routerConfig: router,
+      builder: (context, child) => ConnectivityWrapper(
+        child: child ?? const SizedBox.shrink(),
       ),
     );
   }

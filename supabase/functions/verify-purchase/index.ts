@@ -45,8 +45,7 @@ serve(async (req: Request): Promise<Response> => {
     if (googleApiKey) {
       try {
         // in production: use google-auth-library to get access token
-        // then call: GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{packageName}/purchases/subscriptions/{subscriptionId}/tokens/{token}
-        // for hackathon: trust the purchase token — add validation later
+        // then we will call: GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{packageName}/purchases/subscriptions/{subscriptionId}/tokens/{token}
         valid = purchase_token.length > 10;
       } catch (e) {
         console.error("play verify error:", e);

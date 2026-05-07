@@ -4,7 +4,7 @@
 create extension if not exists "pgcrypto";
 create extension if not exists "pg_trgm";
 
-create table user_feed_signals (
+create table if not exists user_feed_signals (
   id           uuid primary key default gen_random_uuid(),
   user_id      uuid not null references users_public(id) on delete cascade,
   signal_type  text not null check (signal_type in (
@@ -23,11 +23,13 @@ create table user_feed_signals (
   created_at   timestamptz not null default now()
 );
 
-create index user_feed_signals_user_idx on user_feed_signals(user_id);
-create index user_feed_signals_type_idx on user_feed_signals(signal_type, signal_value);
+create index if not exists user_feed_signals_user_idx on user_feed_signals(user_id);
+create index if not exists  user_feed_signals_type_idx on user_feed_signals(signal_type, signal_value);
 
 -- materialized view for user category affinity scores
 -- refreshed by trust engine every hour
+drop materialized view if exists user_category_affinity;
+
 create materialized view user_category_affinity as
 select
   user_id,
@@ -40,7 +42,7 @@ where signal_type in ('category_view', 'category_support', 'category_challenge')
   and created_at > now() - interval '30 days'
 group by user_id, signal_value;
 
-create index user_category_affinity_user_idx
+create index if not exists user_category_affinity_user_idx
   on user_category_affinity(user_id);
 
 create unique index user_category_affinity_unique_idx
