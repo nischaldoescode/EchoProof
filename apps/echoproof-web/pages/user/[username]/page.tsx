@@ -32,7 +32,7 @@ const tierConfig: Record<string, { label: string; color: string; bg: string }> =
 
 // generate seo metadata per username — called by next.js at build/request time
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { username } = await params;
+  const { username } = params;
 
   const { data } = await supabase
     .from("users_public")
@@ -83,7 +83,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function UserProfilePage({ params }: Props) {
-  const { username } = await params;
+  const { username } = params;
 
   const { data: profile } = await supabase
     .from("users_public")
