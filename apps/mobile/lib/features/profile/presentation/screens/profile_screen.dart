@@ -17,6 +17,7 @@ import 'package:flutter/foundation.dart';
 import '../../../../core/security/secure_screen.dart';
 import '../../../../shared/widgets/app_bottom_nav.dart';
 import '../../../../app/app.dart';
+import 'package:flutter/services.dart';
 
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -74,16 +75,46 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   bool _isSavingProfile = false;
 
+// opens the edit profile bottom sheet
+// covers display name, username (requires otp), gender, and dob (requires otp)
   Future<void> _showEditProfileSheet() async {
     final client = Supabase.instance.client;
     final currentUsername = _profile?['username'] as String? ?? '';
     final currentDisplay = _profile?['display_name'] as String? ?? '';
+    final currentGender = _profile?['gender'] as String?;
+
+    // parse stored dob — format is yyyy-mm-dd from postgres
+    DateTime? currentDob;
+    final dobRaw = _profile?['date_of_birth'] as String?;
+    if (dobRaw != null) {
+      currentDob = DateTime.tryParse(dobRaw);
+    }
 
     final usernameCtrl = TextEditingController(text: currentUsername);
     final displayCtrl = TextEditingController(text: currentDisplay);
     bool usernameAvailable = true;
     bool isCheckingUsername = false;
     String? usernameError;
+    String? selectedGender = currentGender;
+    DateTime? selectedDob = currentDob;
+
+    // month labels for display
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+
+    String formatDob(DateTime d) => '${d.day} ${months[d.month - 1]} ${d.year}';
 
     Future<bool> checkUsernameAvailability(String value) async {
       if (value == currentUsername) return true;
@@ -102,6 +133,21 @@ class _ProfileScreenState extends State<ProfileScreen>
       }
     }
 
+    const _genderOptions = [
+      (value: 'male', label: 'Male', icon: Icons.male_rounded),
+      (value: 'female', label: 'Female', icon: Icons.female_rounded),
+      (
+        value: 'non_binary',
+        label: 'Non-binary',
+        icon: Icons.transgender_rounded
+      ),
+      (
+        value: 'prefer_not_to_say',
+        label: 'Prefer not to say',
+        icon: Icons.person_outline_rounded
+      ),
+    ];
+
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -113,9 +159,9 @@ class _ProfileScreenState extends State<ProfileScreen>
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setSheet) {
-            return Padding(
+            return SingleChildScrollView(
               padding: EdgeInsets.only(
-                bottom: MediaQuery.viewInsetsOf(ctx).bottom,
+                bottom: MediaQuery.viewInsetsOf(ctx).bottom + AppSpacing.xl,
                 left: AppSpacing.xl,
                 right: AppSpacing.xl,
                 top: AppSpacing.xl,
@@ -124,6 +170,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // drag handle
                   Center(
                     child: Container(
                       width: 36,
@@ -141,10 +188,12 @@ class _ProfileScreenState extends State<ProfileScreen>
                   ),
                   const SizedBox(height: AppSpacing.xs),
                   Text(
-                    'Username changes require email verification.',
+                    'Username and date of birth changes require email verification.',
                     style: AppTypography.textTheme.bodySmall,
                   ),
                   const SizedBox(height: AppSpacing.lg),
+
+                  // display name
                   Text(
                     'Display name',
                     style: GoogleFonts.josefinSans(
@@ -181,6 +230,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                     ),
                   ),
                   const SizedBox(height: AppSpacing.md),
+
+                  // username
                   Text(
                     'Username',
                     style: GoogleFonts.josefinSans(
@@ -264,7 +315,162 @@ class _ProfileScreenState extends State<ProfileScreen>
                       });
                     },
                   ),
+                  const SizedBox(height: AppSpacing.lg),
+
+                  // date of birth — requires otp to change
+                  Text(
+                    'Date of birth',
+                    style: GoogleFonts.josefinSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  GestureDetector(
+                    onTap: () async {
+                      final now = DateTime.now();
+                      final picked = await showDatePicker(
+                        context: ctx,
+                        initialDate: selectedDob ??
+                            DateTime(now.year - 18, now.month, now.day),
+                        firstDate: DateTime(now.year - 120, now.month, now.day),
+                        lastDate: DateTime(now.year - 13, now.month, now.day),
+                        helpText: 'select your date of birth',
+                        builder: (dateCtx, child) => Theme(
+                          data: Theme.of(dateCtx).copyWith(
+                            colorScheme: ColorScheme.light(
+                              primary: AppColors.fernGreen,
+                              onPrimary: Colors.white,
+                              surface: Colors.white,
+                              onSurface: AppColors.charcoal,
+                            ),
+                            textButtonTheme: TextButtonThemeData(
+                              style: TextButton.styleFrom(
+                                foregroundColor: AppColors.fernGreen,
+                                textStyle: GoogleFonts.josefinSans(
+                                    fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ),
+                          child: child!,
+                        ),
+                      );
+                      if (picked != null) {
+                        setSheet(() => selectedDob = picked);
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: AppColors.softSand,
+                        borderRadius: BorderRadius.circular(12),
+                        border: selectedDob != currentDob
+                            ? Border.all(color: AppColors.fernGreen, width: 1.5)
+                            : null,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.cake_outlined,
+                            size: 16,
+                            color: selectedDob != null
+                                ? AppColors.fernGreen
+                                : AppColors.textTertiary,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              selectedDob != null
+                                  ? formatDob(selectedDob!)
+                                  : 'Not set',
+                              style: GoogleFonts.josefinSans(
+                                fontSize: 14,
+                                color: selectedDob != null
+                                    ? AppColors.charcoal
+                                    : AppColors.textTertiary,
+                              ),
+                            ),
+                          ),
+                          const Icon(
+                            Icons.edit_outlined,
+                            size: 14,
+                            color: AppColors.textTertiary,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+
+                  // gender selector
+                  Text(
+                    'Gender',
+                    style: GoogleFonts.josefinSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  GridView.count(
+                    crossAxisCount: 2,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisSpacing: AppSpacing.sm,
+                    mainAxisSpacing: AppSpacing.sm,
+                    childAspectRatio: 2.8,
+                    children: _genderOptions.map((g) {
+                      final sel = selectedGender == g.value;
+                      return GestureDetector(
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          setSheet(() => selectedGender = g.value);
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          decoration: BoxDecoration(
+                            color: sel ? AppColors.charcoal : Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: sel
+                                  ? AppColors.charcoal
+                                  : AppColors.borderSubtle,
+                              width: sel ? 2 : 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                g.icon,
+                                size: 14,
+                                color: sel
+                                    ? Colors.white
+                                    : AppColors.textSecondary,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                g.label,
+                                style: GoogleFonts.josefinSans(
+                                  fontSize: 12,
+                                  fontWeight:
+                                      sel ? FontWeight.w600 : FontWeight.w400,
+                                  color: sel
+                                      ? Colors.white
+                                      : AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
                   const SizedBox(height: AppSpacing.xl),
+
+                  // save button
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
@@ -276,6 +482,10 @@ class _ProfileScreenState extends State<ProfileScreen>
                                     usernameCtrl.text.trim().toLowerCase(),
                                 newDisplayName: displayCtrl.text.trim(),
                                 currentUsername: currentUsername,
+                                newGender:
+                                    selectedGender ?? 'prefer_not_to_say',
+                                newDob: selectedDob,
+                                currentDob: currentDob,
                               );
                             }
                           : null,
@@ -291,12 +501,10 @@ class _ProfileScreenState extends State<ProfileScreen>
                       child: Text(
                         'Save changes',
                         style: GoogleFonts.josefinSans(
-                          fontWeight: FontWeight.w600,
-                        ),
+                            fontWeight: FontWeight.w600),
                       ),
                     ),
                   ),
-                  const SizedBox(height: AppSpacing.xl),
                 ],
               ),
             );
@@ -306,15 +514,28 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
+// saves profile changes
+// username changes and dob changes both require otp re-verification
+// gender and display name save silently without otp
   Future<void> _saveProfileChanges({
     required String newUsername,
     required String newDisplayName,
     required String currentUsername,
+    required String newGender,
+    required DateTime? newDob,
+    required DateTime? currentDob,
   }) async {
-    // Username changed — require OTP re-verification before saving.
     final usernameChanged = newUsername != currentUsername;
+    final dobChanged = newDob != null &&
+        (currentDob == null ||
+            newDob.year != currentDob.year ||
+            newDob.month != currentDob.month ||
+            newDob.day != currentDob.day);
 
-    if (usernameChanged) {
+    // otp required if username or dob changed
+    final needsOtp = usernameChanged || dobChanged;
+
+    if (needsOtp) {
       final email = Supabase.instance.client.auth.currentUser?.email;
       if (email == null) return;
 
@@ -326,14 +547,13 @@ class _ProfileScreenState extends State<ProfileScreen>
           shouldCreateUser: false,
         );
       } catch (e) {
-        AppLogger.error('profile: OTP send failed $e');
+        AppLogger.error('profile: otp send failed $e');
         setState(() => _isSavingProfile = false);
         return;
       }
 
       if (!mounted) return;
 
-      // Show OTP dialog inline.
       final otpVerified = await _showOtpVerificationDialog(email);
       if (!mounted) return;
 
@@ -350,17 +570,41 @@ class _ProfileScreenState extends State<ProfileScreen>
       final userId = client.auth.currentUser?.id;
       if (userId == null) return;
 
-      await client.from('users_public').update({
-        'username': newUsername,
+      // build patch — only include changed fields
+      final patch = <String, dynamic>{
         'display_name':
             newDisplayName.isNotEmpty ? newDisplayName : newUsername,
-      }).eq('id', userId);
+        'gender': newGender,
+      };
+
+      if (usernameChanged) patch['username'] = newUsername;
+
+      if (dobChanged && newDob != null) {
+        // calculate age from new dob
+        final today = DateTime.now();
+        int age = today.year - newDob.year;
+        if (today.month < newDob.month ||
+            (today.month == newDob.month && today.day < newDob.day)) {
+          age--;
+        }
+        patch['date_of_birth'] = '${newDob.year.toString().padLeft(4, '0')}-'
+            '${newDob.month.toString().padLeft(2, '0')}-'
+            '${newDob.day.toString().padLeft(2, '0')}';
+        patch['age'] = age;
+      }
+
+      await client.from('users_public').update(patch).eq('id', userId);
 
       setState(() {
         _profile = {
           ..._profile!,
           'username': newUsername,
           'display_name': newDisplayName,
+          'gender': newGender,
+          if (dobChanged && newDob != null)
+            'date_of_birth': '${newDob.year.toString().padLeft(4, '0')}-'
+                '${newDob.month.toString().padLeft(2, '0')}-'
+                '${newDob.day.toString().padLeft(2, '0')}',
         };
       });
 
@@ -374,9 +618,8 @@ class _ProfileScreenState extends State<ProfileScreen>
             backgroundColor: AppColors.fernGreen,
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         );
       }
@@ -392,9 +635,8 @@ class _ProfileScreenState extends State<ProfileScreen>
             backgroundColor: AppColors.sunsetCoral,
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         );
       }
@@ -543,7 +785,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             .from('users_public')
             .select(
               'id, username, display_name, avatar_url, trust_tier, trust_score, '
-              'echo_count, proof_count, is_public, bio',
+              'echo_count, proof_count, is_public, bio, gender, date_of_birth',
             )
             .eq('id', myId!)
             .maybeSingle();

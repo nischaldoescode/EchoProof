@@ -36,7 +36,8 @@ class AvatarService {
     }
 
     final seed = userId.replaceAll('-', '').substring(0, 8);
-    final dicebearUrl = 'https://api.dicebear.com/9.x/$_style/svg?seed=$seed';
+    final dicebearUrl =
+        'https://api.dicebear.com/9.x/$_style/png?seed=$seed&size=128';
     final response = await http.get(Uri.parse(dicebearUrl));
     if (response.statusCode != 200) {
       throw Exception('dicebear fetch failed: ${response.statusCode}');
@@ -45,12 +46,12 @@ class AvatarService {
     final bytes = response.bodyBytes;
 
     // Upload as SVG — correct content type.
-    final storagePath = '$userId.svg';
+    final storagePath = '$userId.png';
     await _client.storage.from('avatars').uploadBinary(
           storagePath,
           bytes,
           fileOptions: const FileOptions(
-            contentType: 'image/svg+xml',
+            contentType: 'image/png',
             upsert: true,
           ),
         );

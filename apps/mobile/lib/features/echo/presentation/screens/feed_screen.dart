@@ -21,6 +21,7 @@ import '../../../../shared/widgets/rating_prompt.dart';
 import '../../../auth/presentation/screens/permission_sheet.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../services/create_echo_service.dart';
+
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
 
@@ -422,8 +423,7 @@ class _CreateFab extends StatefulWidget {
   @override
   State<_CreateFab> createState() => _CreateFabState();
 }
-final service = context.watch<CreateEchoService>();
-    final hasDraft = service.title.isNotEmpty || service.content.isNotEmpty;
+
 class _CreateFabState extends State<_CreateFab>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c;
@@ -449,48 +449,57 @@ class _CreateFabState extends State<_CreateFab>
 
   @override
   Widget build(BuildContext context) {
+    final service = context.watch<CreateEchoService>();
+    final hasDraft = service.title.isNotEmpty || service.content.isNotEmpty;
+
     return ScaleTransition(
       scale: _scale,
-      child: GestureDetector(
-        onTapDown: (_) => _c.forward(),
-        onTapUp: (_) async {
-          await _c.reverse();
-          if (context.mounted) context.push('/create');
-        },
-        onTapCancel: () => _c.reverse(),
-        child: Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            color: AppColors.charcoal,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.22),
-                blurRadius: 14,
-                offset: const Offset(0, 5),
-              ),
-            ],
-          ),
-          child: const Icon(Icons.edit_rounded, color: Colors.white, size: 22),
-        ),
-                    if (hasDraft)
-              Positioned(
-                top: 0,
-                right: 0,
-                child: Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: AppColors.fernGreen,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          GestureDetector(
+            onTapDown: (_) => _c.forward(),
+            onTapUp: (_) async {
+              await _c.reverse();
+              if (context.mounted) context.push('/create');
+            },
+            onTapCancel: () => _c.reverse(),
+            child: Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: AppColors.charcoal,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.22),
+                    blurRadius: 14,
+                    offset: const Offset(0, 5),
                   ),
+                ],
+              ),
+              child:
+                  const Icon(Icons.edit_rounded, color: Colors.white, size: 22),
+            ),
+          ),
+
+          if (hasDraft)
+            Positioned(
+              top: 0,
+              right: 0,
+              child: Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: AppColors.fernGreen,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
                 ),
               ),
-          ],
-        );
+            ),
+        ],
       ),
+    );
   }
 }
 

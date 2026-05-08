@@ -39,6 +39,11 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+    packaging {
+        resources {
+            pickFirsts += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+        }
+    }
 }
 
 dependencies {

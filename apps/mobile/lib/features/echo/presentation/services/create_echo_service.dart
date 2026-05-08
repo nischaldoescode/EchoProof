@@ -49,14 +49,24 @@ class CreateEchoService extends ChangeNotifier {
       final userId = client.auth.currentUser?.id;
       if (userId == null) return;
 
-      final ext = localPath.split('.').last;
-      final name = '${DateTime.now().millisecondsSinceEpoch}.$ext';
-      final path = 'echoes/$userId/$name';
+      final ext = localPath.split('.').last.toLowerCase();
+      // Rename to UUID to strip original filename metadata
+      final uuid = DateTime.now().millisecondsSinceEpoch.toRadixString(16);
+      final name = '$uuid.$ext';
+      final path = '$userId/$name';
       final file = File(localPath);
 
-      await client.storage.from('echo-media').upload(path, file);
+      await client.storage.from('media').uploadBinary(
+            path,
+            await file.readAsBytes(),
+            fileOptions: FileOptions(
+              contentType: isVideo ? 'video/mp4' : 'image/jpeg',
+              upsert: false,
+            ),
+          );
 
-      final url = client.storage.from('echo-media').getPublicUrl(path);
+
+      final url = client.storage.from('media').getPublicUrl(path);
       _mediaUrls.add(url);
       notifyListeners();
 

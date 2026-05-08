@@ -91,8 +91,9 @@ class _OtpScreenState extends State<OtpScreen>
       if (auth.hasUsername) {
         context.go('/feed');
       } else {
-        context.read<OnboardingService>().reset();
-        context.go('/onboarding');
+        // context.read<OnboardingService>().reset();
+        // context.go('/onboarding');
+        context.go('/age-gender');
       }
     } else {
       // Trigger error state before clearing the field to avoid a

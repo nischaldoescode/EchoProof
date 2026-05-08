@@ -53,11 +53,23 @@ class AuthService extends ChangeNotifier {
       }
       final row = await _client
           .from('users_public')
-          .select('onboarding_complete')
+          .select('onboarding_complete, username')
           .eq('id', userId)
           .maybeSingle();
-      final done = row != null ? row['onboarding_complete'] as bool? : null;
-      _hasUsername = done == true;
+      if (row == null) {
+        // Row doesn't exist yet — trigger may be slow, wait and retry once
+        await Future.delayed(const Duration(milliseconds: 800));
+        final retryRow = await _client
+            .from('users_public')
+            .select('onboarding_complete, username')
+            .eq('id', userId)
+            .maybeSingle();
+        final done = retryRow?['onboarding_complete'] as bool? ?? false;
+        _hasUsername = done == true;
+      } else {
+        final done = row['onboarding_complete'] as bool? ?? false;
+        _hasUsername = done == true;
+      }
       _hasUsernameChecked = true;
     } catch (e) {
       _hasUsername = false;
@@ -184,19 +196,22 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+// saves age, dob, and gender to users_public after initial profile setup
   Future<void> saveAgeAndGender({
     required int age,
     required String gender,
+    required DateTime dateOfBirth,
   }) async {
-    final userId = currentUser?.id;
+    final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) return;
-    try {
-      await _client
-          .from('users_private')
-          .update({'age': age, 'gender': gender}).eq('id', userId);
-    } catch (e) {
-      AppLogger.error('auth: save age/gender failed $e');
-    }
+    await Supabase.instance.client.from('users_public').update({
+      'age': age,
+      'gender': gender,
+      // stored as yyyy-mm-dd — postgres date type
+      'date_of_birth': '${dateOfBirth.year.toString().padLeft(4, '0')}-'
+          '${dateOfBirth.month.toString().padLeft(2, '0')}-'
+          '${dateOfBirth.day.toString().padLeft(2, '0')}',
+    }).eq('id', userId);
   }
 
   Future<void> deleteIncompleteAccount() async {
