@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../app/theme/colors.dart';
+import 'dart:io' show Platform;
+import 'package:flutter_windowmanager_plus/flutter_windowmanager_plus.dart';
 
 class ImageViewer extends StatefulWidget {
   const ImageViewer({
@@ -46,11 +48,30 @@ class _ImageViewerState extends State<ImageViewer> {
   final TransformationController _transformCtrl = TransformationController();
   bool _isZoomed = false;
 
+Future<void> _lockScreen() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await FlutterWindowManagerPlus.addFlags(
+        FlutterWindowManagerPlus.FLAG_SECURE,
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _unlockScreen() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await FlutterWindowManagerPlus.clearFlags(
+        FlutterWindowManagerPlus.FLAG_SECURE,
+      );
+    } catch (_) {}
+  }
+
   @override
   void initState() {
     super.initState();
     _current = widget.initialIndex;
     _pageController = PageController(initialPage: widget.initialIndex);
+    _lockScreen();
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
@@ -59,6 +80,7 @@ class _ImageViewerState extends State<ImageViewer> {
 
   @override
   void dispose() {
+    _unlockScreen();
     _pageController.dispose();
     _transformCtrl.dispose();
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(

@@ -65,6 +65,7 @@ class _PermissionsSheetState extends State<PermissionsSheet> {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
+        child: SingleChildScrollView(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
         child: Column(
@@ -165,7 +166,7 @@ class _PermissionsSheetState extends State<PermissionsSheet> {
           ],
         ),
       ),
-    );
+    ));
   }
 }
 

@@ -112,9 +112,10 @@ GoRouter createRouter({
 
       // Only hit the DB when we genuinely need fresh state:
       // first check after login, or when coming from an auth screen.
-      final needsDbCheck = !authService.hasUsernameChecked ||
-          location == '/login' ||
-          location == '/splash';
+      final needsDbCheck = (!authService.hasUsernameChecked ||
+              location == '/login' ||
+              location == '/splash') &&
+          location != '/onboarding';
 
       if (needsDbCheck) {
         await authService.checkUsername();

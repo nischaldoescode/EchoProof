@@ -1,1 +1,1 @@
-drop materialized view if exists user_category_affinity;
+refresh materialized view user_category_affinity;

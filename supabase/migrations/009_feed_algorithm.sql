@@ -28,8 +28,6 @@ create index if not exists  user_feed_signals_type_idx on user_feed_signals(sign
 
 -- materialized view for user category affinity scores
 -- refreshed by trust engine every hour
-drop materialized view if exists user_category_affinity;
-
 create materialized view user_category_affinity as
 select
   user_id,

@@ -16,7 +16,8 @@ dependencies:
   flutter_portal: ^0.4.0
   solana: ^0.32.0+1
   bs58: ^1.0.2
-
+  didit_sdk: ^3.6.0
+  
   flutter_svg: ^2.2.4
   http: ^1.6.0
   # supabase

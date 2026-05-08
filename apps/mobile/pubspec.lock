@@ -361,6 +361,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.2.4"
+  didit_sdk:
+    dependency: "direct main"
+    description:
+      name: didit_sdk
+      sha256: f616af6c4095624452b6017fb490c07ac9f83dab10f1e0d57faeae4dd017a2cd
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.6.0"
   dio:
     dependency: "direct main"
     description:

@@ -94,6 +94,7 @@ serve(async (req: Request): Promise<Response> => {
       JSON.stringify({
         session_id: session.session_id,
         session_url: sessionUrl,
+        session_token: session.session_token ?? session.sessionToken ?? null,
       }),
       { status: 200, headers: { ...CORS, "Content-Type": "application/json" } },
     );

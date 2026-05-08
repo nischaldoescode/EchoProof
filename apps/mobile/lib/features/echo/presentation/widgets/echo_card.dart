@@ -175,7 +175,8 @@ class _AvatarWithRing extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.all(2),
-        child: CircleAvatar(
+        child:
+        CircleAvatar(
           radius: AppSpacing.avatarSizeSm / 2,
           backgroundColor: AppColors.softSand,
           backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl!) : null,
