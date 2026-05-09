@@ -151,6 +151,7 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
       username: user['username'] as String,
       userTrustTier: user['trust_tier'] as String? ?? 'unverified',
       userIsVerified: false,
+      userIsPro: user['is_pro'] as bool? ?? false,
       userAvatarUrl: user['avatar_url'] as String?,
       category: EchoCategory.fromString(row['category'] as String),
       status: _parseStatus(row['status'] as String),

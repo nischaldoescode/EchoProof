@@ -17,6 +17,70 @@ serve(async (req: Request): Promise<Response> => {
   try {
     const { user_id, workflow_id, redirect_uri } = await req.json();
 
+    // --- Rate limiting: check server-side cooldown ---
+    const serviceClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
+    const { data: privateRow } = await serviceClient
+      .from("users_private")
+      .select("last_verification_request_at, verification_rejection_at, verification_attempt_count")
+      .eq("id", user_id)
+      .maybeSingle();
+
+    if (privateRow) {
+      const now = new Date();
+      const lastRequest = privateRow.last_verification_request_at
+        ? new Date(privateRow.last_verification_request_at)
+        : null;
+      const rejectionAt = privateRow.verification_rejection_at
+        ? new Date(privateRow.verification_rejection_at)
+        : null;
+
+      // 30-day cooldown after rejection (server-enforced, not cache-dependent)
+      if (rejectionAt) {
+        const daysSinceRejection = (now.getTime() - rejectionAt.getTime()) / (1000 * 60 * 60 * 24);
+        if (daysSinceRejection < 30) {
+          const daysRemaining = Math.ceil(30 - daysSinceRejection);
+          return new Response(
+            JSON.stringify({
+              error: `verification_cooldown`,
+              days_remaining: daysRemaining,
+              message: `You can re-apply for verification in ${daysRemaining} day(s).`,
+            }),
+            {
+              status: 429,
+              headers: { ...CORS, "Content-Type": "application/json" },
+            },
+          );
+        }
+      }
+
+      // Rate limit: max 3 requests per 24 hours regardless of outcome
+      if (lastRequest) {
+        const hoursSinceLastRequest = (now.getTime() - lastRequest.getTime()) / (1000 * 60 * 60);
+        if (hoursSinceLastRequest < 24 && (privateRow.verification_attempt_count ?? 0) >= 3) {
+          return new Response(
+            JSON.stringify({
+              error: `rate_limited`,
+              message: `Too many verification attempts. Please wait 24 hours.`,
+            }),
+            {
+              status: 429,
+              headers: { ...CORS, "Content-Type": "application/json" },
+            },
+          );
+        }
+      }
+    }
+
+    // Update last request timestamp
+    await serviceClient
+      .from("users_private")
+      .update({ last_verification_request_at: new Date().toISOString() })
+      .eq("id", user_id);
+
     const diditApiKey = Deno.env.get("DIDIT_API_KEY");
     if (!diditApiKey) {
       return new Response(
@@ -72,11 +136,6 @@ serve(async (req: Request): Promise<Response> => {
         },
       );
     }
-
-    const serviceClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
 
     await serviceClient
       .from("verification_sessions")

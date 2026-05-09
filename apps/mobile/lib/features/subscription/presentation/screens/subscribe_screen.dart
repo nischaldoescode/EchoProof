@@ -177,6 +177,7 @@ class _PricingSectionState extends State<_PricingSection> {
       children: [
         // plan toggle
         Container(
+          height: 82, // Fixed height prevents layout jitter during animation
           decoration: BoxDecoration(
             color: const Color(0xFFF0F4F2),
             borderRadius: BorderRadius.circular(14),
@@ -238,13 +239,30 @@ class _PricingSectionState extends State<_PricingSection> {
 
         const SizedBox(height: AppSpacing.sm),
 
-        Text(
-          'Cancel anytime. Billed through Google Play.',
-          style: GoogleFonts.josefinSans(
-            fontSize: 11,
-            color: AppColors.textTertiary,
+const SizedBox(height: AppSpacing.sm),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppColors.fernGreenLight,
+            borderRadius: BorderRadius.circular(10),
           ),
-          textAlign: TextAlign.center,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.info_outline, size: 13, color: AppColors.fernGreen),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'For maximum feed priority, verify your identity in Settings after subscribing. Verified Pro users get the highest trust weight.',
+                  style: GoogleFonts.josefinSans(
+                    fontSize: 11,
+                    color: AppColors.fernGreenDark,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -271,7 +289,8 @@ class _PlanTab extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
           decoration: BoxDecoration(
             color: selected ? Colors.white : Colors.transparent,
@@ -341,39 +360,58 @@ class _ActiveSubscriptionCard extends StatelessWidget {
         ),
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Row(
+      child: Column(
         children: [
-          const Icon(
-            Icons.star_rounded,
-            color: Color(0xFF4CAF6E),
-            size: 28,
-          ),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'You are on Pro',
-                  style: GoogleFonts.josefinSans(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
+          Row(
+            children: [
+              const Icon(Icons.star_rounded,
+                  color: Color(0xFF4CAF6E), size: 28),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'You are on Pro',
+                      style: GoogleFonts.josefinSans(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                    Text(
+                      'All features unlocked',
+                      style: GoogleFonts.josefinSans(
+                        fontSize: 13,
+                        color: Colors.white.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+              const Icon(Icons.check_circle_rounded, color: Color(0xFF4CAF6E)),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          GestureDetector(
+            onTap: () => context.push('/purchase-history'),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.receipt_long_outlined,
+                    size: 14, color: Colors.white54),
+                const SizedBox(width: 6),
                 Text(
-                  'All features unlocked',
+                  'View purchase history & invoices',
                   style: GoogleFonts.josefinSans(
-                    fontSize: 13,
-                    color: Colors.white.withValues(alpha: 0.7),
+                    fontSize: 12,
+                    color: Colors.white54,
+                    decoration: TextDecoration.underline,
+                    decorationColor: Colors.white54,
                   ),
                 ),
               ],
             ),
-          ),
-          const Icon(
-            Icons.check_circle_rounded,
-            color: Color(0xFF4CAF6E),
           ),
         ],
       ),

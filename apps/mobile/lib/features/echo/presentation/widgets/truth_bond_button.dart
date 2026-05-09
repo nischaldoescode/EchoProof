@@ -1,6 +1,7 @@
 // truth bond button — shown on verified echoes only
 // plain StatefulWidget — no riverpod
 
+import 'package:echoproof/core/utils/snack.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -97,46 +98,28 @@ class _TruthBondButtonState extends State<TruthBondButton>
       await _pulseController.forward();
       await _pulseController.reverse();
 
-      if (mounted)
+      if (mounted) {
         setState(() {
           _hasBonded = true;
           _isLoading = false;
         });
+      }
 
       AppLogger.info('truth bond created for echo ${widget.echoId}');
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-                'Bond created staking your reputation on this truth'),
-            backgroundColor: AppColors.fernGreen,
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
+        showSuccessSnack(
+            context, 'Bond created staking your reputation on this truth');
       }
     } catch (e) {
       AppLogger.error('truth bond failed', e);
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              e.toString().contains('duplicate')
-                  ? 'already bonded'
-                  : 'bond failed, try again',
-            ),
-            backgroundColor: AppColors.sunsetCoral,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
+        showErrorSnack(
+            context,
+            e.toString().contains('duplicate')
+                ? 'already bonded'
+                : 'bond failed, try again');
       }
     }
   }

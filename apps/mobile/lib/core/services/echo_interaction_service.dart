@@ -70,6 +70,7 @@ class EchoInteractionService {
     return EchoEntity(
       id: echoId,
       title: '',
+      userIsPro: false,
       content: '',
       username: '',
       userTrustTier: 'unverified',

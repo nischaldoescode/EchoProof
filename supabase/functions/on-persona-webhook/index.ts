@@ -27,7 +27,7 @@ serve(async (req: Request) => {
     // --------------------------------------------------------
 
     const personaSignature = req.headers.get("persona-signature") ?? "";
-    const personaSecret    = Deno.env.get("PERSONA_WEBHOOK_SECRET") ?? "";
+    const personaSecret = Deno.env.get("PERSONA_WEBHOOK_SECRET") ?? "";
 
     if (personaSecret) {
       const expected = createHmac("sha256", personaSecret)
@@ -42,34 +42,48 @@ serve(async (req: Request) => {
     }
 
     const payload = JSON.parse(body);
-    const event   = payload?.data?.type as string;
+    const event = payload?.data?.type as string;
 
     if (!["inquiry.completed", "inquiry.failed"].includes(event)) {
       return new Response("ignored event", { status: 200 });
     }
 
-    const inquiry   = payload.data.attributes;
-    const userId    = inquiry["reference-id"] as string; // the user id we passed
-    const isPassed  = event === "inquiry.completed" && inquiry.status === "completed";
+    const inquiry = payload.data.attributes;
+    const userId = inquiry["reference-id"] as string; // the user id we passed
+    const isPassed =
+      event === "inquiry.completed" && inquiry.status === "completed";
 
     const serviceClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
     if (!isPassed) {
-      // verification failed — update score only, do not set verified
+      // Record rejection — user cannot re-apply for 30 days (server-enforced)
       await serviceClient
         .from("users_private")
-        .update({ identity_score: 10 })
+        .update({
+          identity_score: 10,
+          verification_rejection_at: new Date().toISOString(),
+          verification_attempt_count: serviceClient.rpc(
+            "increment_verification_attempts",
+            {
+              p_user_id: userId,
+            },
+          ),
+        })
         .eq("id", userId);
       return new Response("verification failed recorded", { status: 200 });
     }
 
     // identity score calculation matching the sql formula
-    const idType  = inquiry["identification-class"] as string ?? "";
-    const idBonus = idType.includes("passport") ? 10 : idType.includes("national") ? 10 : 5;
-    const score   = 50 + 20 + idBonus; // base + liveness + id type
+    const idType = (inquiry["identification-class"] as string) ?? "";
+    const idBonus = idType.includes("passport")
+      ? 10
+      : idType.includes("national")
+        ? 10
+        : 5;
+    const score = 50 + 20 + idBonus; // base + liveness + id type
 
     // update private table
     await serviceClient
@@ -87,7 +101,6 @@ serve(async (req: Request) => {
       headers: { "Content-Type": "application/json" },
       status: 200,
     });
-
   } catch (err) {
     console.error("on-persona-webhook error:", err);
     return new Response("internal error", { status: 500 });

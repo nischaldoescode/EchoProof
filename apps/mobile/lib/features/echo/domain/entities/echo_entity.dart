@@ -97,6 +97,7 @@ class EchoEntity extends Equatable {
     required this.supportCount,
     required this.challengeCount,
     required this.timeAgo,
+    required this.userIsPro,
     this.proofCount = 0,
     this.requiresVerification = true,
     this.version = 1,
@@ -112,7 +113,7 @@ class EchoEntity extends Equatable {
   final String? userAvatarUrl;
   final EchoCategory category;
   final EchoStatus status;
-
+  final bool userIsPro;
   /// 0.0 to 100.0 — percentage of weighted support
   final double confidenceScore;
 
@@ -153,6 +154,7 @@ class EchoEntity extends Equatable {
       proofCount: (json['proof_count'] as int?) ?? 0,
       requiresVerification: (json['requires_verification'] as bool?) ?? true,
       version: (json['version'] as num?)?.toInt() ?? 1,
+      userIsPro: (json['user_is_pro'] as bool?) ?? false,
     );
   }
 
@@ -176,6 +178,7 @@ class EchoEntity extends Equatable {
     bool? requiresVerification,
     int? version,
     int? replyCount,
+    bool? userIsPro,
   }) {
     return EchoEntity(
       id: id ?? this.id,
@@ -197,6 +200,7 @@ class EchoEntity extends Equatable {
       proofCount: proofCount ?? this.proofCount,
       requiresVerification: requiresVerification ?? this.requiresVerification,
       version: version ?? this.version,
+      userIsPro: userIsPro ?? this.userIsPro,
     );
   }
 

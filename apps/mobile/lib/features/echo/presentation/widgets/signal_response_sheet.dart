@@ -2,6 +2,7 @@
 // plain StatefulWidget — no riverpod
 // uses Supabase.instance.client directly
 
+import 'package:echoproof/core/utils/snack.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -95,17 +96,7 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
     } catch (e) {
       AppLogger.error('signal response failed', e);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString()),
-            backgroundColor: AppColors.sunsetCoral,
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
+        showErrorSnack(context, e.toString());
         setState(() => _submitting = false);
       }
     }

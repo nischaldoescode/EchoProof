@@ -18,7 +18,8 @@ import '../../../../core/security/secure_screen.dart';
 import '../../../../shared/widgets/app_bottom_nav.dart';
 import '../../../../app/app.dart';
 import 'package:flutter/services.dart';
-
+import '../../../../shared/widgets/verified_badges.dart';
+import '../../../../core/utils/snack.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -41,7 +42,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   bool _isPublic = true;
   bool _isOwnProfile = true;
   bool _isLoading = true;
-
+  bool _isVerificationPending = false;
   late final AnimationController _entranceCtrl;
   late final Animation<double> _fade;
   late final Animation<Offset> _slide;
@@ -609,36 +610,12 @@ class _ProfileScreenState extends State<ProfileScreen>
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Profile updated.',
-              style: GoogleFonts.josefinSans(fontSize: 13),
-            ),
-            backgroundColor: AppColors.fernGreen,
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        );
+        showSuccessSnack(context, 'Profile updated.');
       }
     } catch (e) {
       AppLogger.error('profile: save changes failed $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Failed to save changes. Please try again.',
-              style: GoogleFonts.josefinSans(fontSize: 13),
-            ),
-            backgroundColor: AppColors.sunsetCoral,
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        );
+        showErrorSnack(context, 'Failed to save changes. Please try again.');
       }
     }
 
@@ -769,7 +746,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             .from('users_public')
             .select(
               'id, username, display_name, avatar_url, trust_tier, trust_score, '
-              'echo_count, proof_count, is_public, bio',
+              'echo_count, proof_count, is_public, bio, is_pro',
             )
             .eq('username', widget.username!)
             .maybeSingle();
@@ -785,7 +762,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             .from('users_public')
             .select(
               'id, username, display_name, avatar_url, trust_tier, trust_score, '
-              'echo_count, proof_count, is_public, bio, gender, date_of_birth',
+              'echo_count, proof_count, is_public, bio, gender, date_of_birth, is_pro',
             )
             .eq('id', myId!)
             .maybeSingle();
@@ -829,7 +806,7 @@ class _ProfileScreenState extends State<ProfileScreen>
               .eq('user_id', targetId),
           client
               .from('users_private')
-              .select('is_identity_verified')
+              .select('is_identity_verified, last_verification_request_at')
               .eq('id', targetId)
               .maybeSingle(),
         ],
@@ -861,6 +838,7 @@ class _ProfileScreenState extends State<ProfileScreen>
           supportCount: (r['support_count'] as num?)?.toInt() ?? 0,
           challengeCount: (r['challenge_count'] as num?)?.toInt() ?? 0,
           timeAgo: Formatters.timeAgo(created),
+          userIsPro: profile['is_pro'] as bool? ?? false,
         );
       }).toList();
 
@@ -873,6 +851,15 @@ class _ProfileScreenState extends State<ProfileScreen>
             bonds.where((b) => b['bond_status'] == 'contested').length;
         _activeBonds = bonds.where((b) => b['bond_status'] == 'active').length;
         _isIdentityVerified = priv?['is_identity_verified'] as bool? ?? false;
+        // Check if pending
+        final lastReqStr = priv?['last_verification_request_at'] as String?;
+        if (lastReqStr != null && !_isIdentityVerified) {
+          final reqTime = DateTime.tryParse(lastReqStr);
+          if (reqTime != null) {
+            _isVerificationPending =
+                DateTime.now().difference(reqTime).inMinutes < 60;
+          }
+        }
         _isLoading = false;
       });
       _entranceCtrl.forward();
@@ -914,20 +901,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     } catch (e) {
       AppLogger.error('profile: bio update failed $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Failed to update bio',
-              style: GoogleFonts.josefinSans(fontSize: 13),
-            ),
-            backgroundColor: AppColors.sunsetCoral,
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
+        showErrorSnack(context, 'Failed to update bio.');
       }
     }
   }
@@ -1100,7 +1074,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                       ),
                       const SizedBox(height: AppSpacing.lg),
                       if (_isOwnProfile && !_isIdentityVerified)
-                        _VerifyPrompt(),
+                        _VerifyPrompt(isPending: _isVerificationPending),
                       const SizedBox(height: AppSpacing.lg),
                       const SolanaInfoCard(),
                       const SizedBox(height: AppSpacing.lg),
@@ -1268,69 +1242,16 @@ class _AvatarCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // avatar with verified badge
-          Stack(
-            children: [
-              GestureDetector(
-                onTap:
-                    isOwnProfile || (avatarUrl != null && avatarUrl.isNotEmpty)
-                        ? () => _showAvatarZoom(context, avatarUrl)
-                        : null,
-                child: CircleAvatar(
-                  radius: 36,
-                  backgroundColor: AppColors.softSand,
-                  child: ClipOval(
-                    child: (avatarUrl != null && avatarUrl.isNotEmpty)
-                        ? avatarUrl.endsWith('.svg')
-                            ? SvgPicture.network(
-                                avatarUrl,
-                                width: 72,
-                                height: 72,
-                                fit: BoxFit.cover,
-                                placeholderBuilder: (_) => const Icon(
-                                  Icons.person_outline,
-                                  size: 28,
-                                  color: AppColors.textTertiary,
-                                ),
-                              )
-                            : Image.network(
-                                avatarUrl,
-                                width: 72,
-                                height: 72,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => const Icon(
-                                  Icons.person_outline,
-                                  size: 28,
-                                  color: AppColors.textTertiary,
-                                ),
-                              )
-                        : const Icon(
-                            Icons.person_outline,
-                            size: 28,
-                            color: AppColors.textTertiary,
-                          ),
-                  ),
-                ),
-              ),
-              if (isIdentityVerified)
-                Positioned(
-                  right: 0,
-                  bottom: 0,
-                  child: Container(
-                    width: 20,
-                    height: 20,
-                    decoration: const BoxDecoration(
-                      color: AppColors.fernGreen,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.verified,
-                      size: 13,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-            ],
+// avatar with badge — replaces raw Stack + CircleAvatar
+          GestureDetector(
+            onTap: isOwnProfile || (avatarUrl != null && avatarUrl.isNotEmpty)
+                ? () => _showAvatarZoom(context, avatarUrl)
+                : null,
+            child: _ProfileAvatarWithBadge(
+              avatarUrl: avatarUrl,
+              isIdentityVerified: isIdentityVerified,
+              radius: 36,
+            ),
           ),
 
           const SizedBox(width: AppSpacing.md),
@@ -1436,6 +1357,162 @@ class _AvatarCard extends StatelessWidget {
                   ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ProfileAvatarWithBadge extends StatefulWidget {
+  const _ProfileAvatarWithBadge({
+    required this.avatarUrl,
+    required this.isIdentityVerified,
+    required this.radius,
+  });
+
+  final String? avatarUrl;
+  final bool isIdentityVerified;
+  final double radius;
+
+  @override
+  State<_ProfileAvatarWithBadge> createState() =>
+      _ProfileAvatarWithBadgeState();
+}
+
+class _ProfileAvatarWithBadgeState extends State<_ProfileAvatarWithBadge>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _badgeCtrl;
+  late final Animation<double> _badgeScale;
+
+  @override
+  void initState() {
+    super.initState();
+    _badgeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _badgeScale = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _badgeCtrl, curve: Curves.easeOutBack),
+    );
+    if (widget.isIdentityVerified) {
+      // Small delay so it pops in after the avatar loads.
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted) _badgeCtrl.forward();
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(_ProfileAvatarWithBadge old) {
+    super.didUpdateWidget(old);
+    if (!old.isIdentityVerified && widget.isIdentityVerified) {
+      _badgeCtrl.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _badgeCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final diameter = widget.radius * 2;
+    // Ring thickness: 2.5px for profile (larger avatar).
+    const ringWidth = 2.5;
+    // Total container size = diameter + ring on each side + gap.
+    final containerSize = diameter + (ringWidth + 2) * 2;
+
+    return SizedBox(
+      width: containerSize,
+      height: containerSize,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          // Animated verified ring.
+          if (widget.isIdentityVerified)
+            ScaleTransition(
+              scale: _badgeScale,
+              child: Container(
+                width: containerSize,
+                height: containerSize,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    colors: [AppColors.fernGreen, AppColors.fernGreenDark],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+              ),
+            ),
+
+          // Avatar, inset from the ring.
+          Positioned(
+            left: widget.isIdentityVerified ? ringWidth + 2 : 0,
+            top: widget.isIdentityVerified ? ringWidth + 2 : 0,
+            child: CircleAvatar(
+              radius: widget.radius,
+              backgroundColor: AppColors.softSand,
+              child: ClipOval(
+                child:
+                    (widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty)
+                        ? widget.avatarUrl!.endsWith('.svg')
+                            ? SvgPicture.network(
+                                widget.avatarUrl!,
+                                width: diameter,
+                                height: diameter,
+                                fit: BoxFit.cover,
+                                placeholderBuilder: (_) => const Icon(
+                                  Icons.person_outline,
+                                  size: 28,
+                                  color: AppColors.textTertiary,
+                                ),
+                              )
+                            : Image.network(
+                                widget.avatarUrl!,
+                                width: diameter,
+                                height: diameter,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Icon(
+                                  Icons.person_outline,
+                                  size: widget.radius * 0.77,
+                                  color: AppColors.textTertiary,
+                                ),
+                              )
+                        : Icon(
+                            Icons.person_outline,
+                            size: widget.radius * 0.77,
+                            color: AppColors.textTertiary,
+                          ),
+              ),
+            ),
+          ),
+
+          // Verified checkmark dot — animated pop-in.
+          if (widget.isIdentityVerified)
+            Positioned(
+              right: 2,
+              bottom: 2,
+              child: ScaleTransition(
+                scale: _badgeScale,
+                child: Container(
+                  width: 22,
+                  height: 22,
+                  decoration: const BoxDecoration(
+                    color: AppColors.fernGreen,
+                    shape: BoxShape.circle,
+                    // White border separates the dot from the ring.
+                  ),
+                  child: const Icon(
+                    Icons.verified_rounded,
+                    size: 14,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1549,41 +1626,51 @@ class _PrivateProfileNotice extends StatelessWidget {
 }
 
 class _VerifyPrompt extends StatelessWidget {
+  const _VerifyPrompt({this.isPending = false});
+  final bool isPending;
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => context.push('/verify-identity'),
-      child: Container(
+      onTap: isPending ? null : () => context.push('/verify-identity'),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(AppSpacing.md),
         decoration: BoxDecoration(
-          color: AppColors.fernGreenLight,
+          color: isPending ? const Color(0xFFFFF8E1) : AppColors.fernGreenLight,
           borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
           border: Border.all(
-            color: AppColors.fernGreen.withValues(alpha: 0.3),
+            color: isPending
+                ? AppColors.statusControversial.withValues(alpha: 0.4)
+                : AppColors.fernGreen.withValues(alpha: 0.3),
           ),
         ),
         child: Row(
           children: [
-            const Icon(
-              Icons.shield_outlined,
+            Icon(
+              isPending ? Icons.pending_outlined : Icons.shield_outlined,
               size: 18,
-              color: AppColors.fernGreen,
+              color: isPending
+                  ? AppColors.statusControversial
+                  : AppColors.fernGreen,
             ),
             const SizedBox(width: AppSpacing.sm),
             Expanded(
               child: Text(
-                'Verify your identity to increase your trust weight',
+                isPending
+                    ? 'Verification in progress — usually takes a few minutes'
+                    : 'Verify your identity to increase your trust weight',
                 style: GoogleFonts.josefinSans(
                   fontSize: 13,
-                  color: AppColors.fernGreenDark,
+                  color: isPending
+                      ? const Color(0xFF7A5200)
+                      : AppColors.fernGreenDark,
                 ),
               ),
             ),
-            const Icon(
-              Icons.chevron_right,
-              size: 16,
-              color: AppColors.fernGreen,
-            ),
+            if (!isPending)
+              const Icon(Icons.chevron_right,
+                  size: 16, color: AppColors.fernGreen),
           ],
         ),
       ),

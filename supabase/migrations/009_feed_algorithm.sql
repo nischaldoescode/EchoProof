@@ -106,7 +106,8 @@ begin
       -- penalty for already-interacted echoes
       - case when exists (
           select 1 from echo_interactions
-          where echo_id = e.id and user_id = p_user_id
+          where echo_interactions.echo_id = e.id
+  and echo_interactions.user_id = p_user_id
         ) then 30 else 0 end
 
     ) as personalized_score
