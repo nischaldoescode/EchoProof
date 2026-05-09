@@ -3,6 +3,7 @@
 // links to solana explorer so anyone can independently verify
 // never mentions "solana" or "blockchain" in displayed text
 
+import 'package:echoproof/core/utils/snack.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -81,17 +82,7 @@ class VerifiedEchoRecord extends StatelessWidget {
               GestureDetector(
                 onTap: () {
                   Clipboard.setData(ClipboardData(text: transactionSignature));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: const Text('Record ID copied'),
-                      backgroundColor: AppColors.charcoal,
-                      behavior: SnackBarBehavior.floating,
-                      margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  );
+                  showInfoSnack(context, 'Record ID copied');
                 },
                 child: const Icon(
                   Icons.copy_outlined,

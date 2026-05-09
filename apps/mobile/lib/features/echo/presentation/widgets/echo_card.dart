@@ -11,6 +11,7 @@ import '../../domain/entities/echo_status.dart';
 import 'confidence_bar.dart';
 import 'trust_badge.dart';
 import 'interaction_buttons.dart';
+import '../../../../shared/widgets/verified_badges.dart';
 
 class EchoCard extends StatelessWidget {
   const EchoCard({
@@ -129,6 +130,7 @@ class _CardHeader extends StatelessWidget {
           _AvatarWithRing(
             avatarUrl: echo.userAvatarUrl,
             isVerified: echo.userIsVerified,
+            isPro: echo.userIsPro,
           ),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
@@ -157,37 +159,96 @@ class _CardHeader extends StatelessWidget {
 }
 
 class _AvatarWithRing extends StatelessWidget {
-  const _AvatarWithRing({required this.avatarUrl, required this.isVerified});
+  const _AvatarWithRing({
+    required this.avatarUrl,
+    required this.isVerified,
+    required this.isPro,
+  });
   final String? avatarUrl;
   final bool isVerified;
+  final bool isPro;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: AppSpacing.avatarSizeSm + 4,
-      height: AppSpacing.avatarSizeSm + 4,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: isVerified ? AppColors.fernGreen : AppColors.borderSubtle,
-          width: isVerified ? 1.5 : 1.0,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(2),
-        child:
-        CircleAvatar(
-          radius: AppSpacing.avatarSizeSm / 2,
-          backgroundColor: AppColors.softSand,
-          backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl!) : null,
-          child: avatarUrl == null
-              ? const Icon(
-                  Icons.person_outline,
-                  size: 18,
-                  color: AppColors.textTertiary,
-                )
-              : null,
-        ),
+    const double radius = AppSpacing.avatarSizeSm / 2;
+    const double ringWidth = 1.5;
+    const double gap = 1.5;
+    // Total size = diameter + ring on each side + gap on each side.
+    const double totalSize = radius * 2 + (ringWidth + gap) * 2;
+
+    if (!isVerified) {
+      // No ring — simple avatar.
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: AppColors.softSand,
+        backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl!) : null,
+        child: avatarUrl == null
+            ? const Icon(Icons.person_outline,
+                size: 16, color: AppColors.textTertiary)
+            : null,
+      );
+    }
+
+    final badgeType = resolveBadgeType(
+      isVerified: isVerified,
+      isPro: isPro,
+    );
+
+    final ringColor = switch (badgeType) {
+      BadgeType.verifiedPro => const Color(0xFF1DA1F2),
+      BadgeType.pro => const Color(0xFFFFB300),
+      BadgeType.verified => AppColors.fernGreen,
+      BadgeType.none => Colors.transparent,
+    };
+
+    return SizedBox(
+      width: totalSize,
+      height: totalSize,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: totalSize,
+            height: totalSize,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: ringColor,
+            ),
+          ),
+          // Avatar inset.
+          Positioned(
+            left: ringWidth + gap,
+            top: ringWidth + gap,
+            child: CircleAvatar(
+              radius: radius,
+              backgroundColor: AppColors.softSand,
+              backgroundImage:
+                  avatarUrl != null ? NetworkImage(avatarUrl!) : null,
+              child: avatarUrl == null
+                  ? const Icon(Icons.person_outline,
+                      size: 16, color: AppColors.textTertiary)
+                  : null,
+            ),
+          ),
+          // Tiny verified dot — bottom right.
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: Container(
+              width: 12,
+              height: 12,
+              decoration: const BoxDecoration(
+                color: AppColors.fernGreen,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.verified_rounded,
+                size: 8,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

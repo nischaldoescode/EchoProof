@@ -14,6 +14,9 @@ import '../../../../core/utils/logger.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../onboarding/presentation/services/onboarding_service.dart';
 import '../../../../core/services/ad_service.dart';
+import 'package:flutter/services.dart';
+import '../../../subscription/presentation/services/subscription_service.dart';
+import '../../../../core/utils/snack.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -22,13 +25,89 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends State<SettingsScreen>
+    with WidgetsBindingObserver {
   String _version = '';
+  int _secretTapCount = 0;
+  bool _secretUnlocked = false;
+  DateTime? _lastSecretTap;
+  bool _isVerified = false;
+  bool _isVerificationPending = false;
 
   @override
   void initState() {
     super.initState();
     _loadVersion();
+    _loadVerificationStatus();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  Future<void> _loadVerificationStatus() async {
+    try {
+      final client = Supabase.instance.client;
+      final userId = client.auth.currentUser?.id;
+      if (userId == null) return;
+
+      final row = await client
+          .from('users_private')
+          .select('is_identity_verified, last_verification_request_at')
+          .eq('id', userId)
+          .maybeSingle();
+
+      if (!mounted) return;
+      setState(() {
+        _isVerified = row?['is_identity_verified'] as bool? ?? false;
+        // Pending = requested in last 30 minutes and not yet verified
+        final lastReq = row?['last_verification_request_at'] as String?;
+        if (lastReq != null && !_isVerified) {
+          final reqTime = DateTime.tryParse(lastReq);
+          if (reqTime != null) {
+            _isVerificationPending =
+                DateTime.now().difference(reqTime).inMinutes < 30;
+          }
+        }
+      });
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Hide secret panel when app goes to background.
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      if (_secretUnlocked) {
+        setState(() {
+          _secretUnlocked = false;
+          _secretTapCount = 0;
+        });
+      }
+    }
+  }
+
+  void _onSecretTap() {
+    final now = DateTime.now();
+    if (_lastSecretTap != null &&
+        now.difference(_lastSecretTap!) > const Duration(seconds: 2)) {
+      // Reset if too slow.
+      _secretTapCount = 0;
+    }
+    _lastSecretTap = now;
+    _secretTapCount++;
+    if (_secretTapCount >= 5) {
+      setState(() {
+        _secretUnlocked = true;
+        _secretTapCount = 0;
+      });
+      HapticFeedback.heavyImpact();
+    } else {
+      HapticFeedback.selectionClick();
+    }
   }
 
   static const _languages = [
@@ -146,24 +225,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         Navigator.pop(ctx);
                         // Notify user the change applies on next restart
                         // because flutter_localizations requires app rebuild
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Language updated. Restart the app to apply.',
-                              style: GoogleFonts.josefinSans(fontSize: 13),
-                            ),
-                            behavior: SnackBarBehavior.floating,
-                            margin: const EdgeInsets.only(
-                              bottom: 88,
-                              left: 16,
-                              right: 16,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            backgroundColor: AppColors.charcoal,
-                          ),
-                        );
+                        showInfoSnack(context,
+                            'Language updated. Restart the app to apply.');
                         setState(() {});
                       },
                       style: ElevatedButton.styleFrom(
@@ -326,6 +389,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         foregroundColor: AppColors.charcoal,
+        actions: [
+          GestureDetector(
+            onTap: _onSecretTap,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: _secretUnlocked
+                      ? AppColors.fernGreenLight
+                      : AppColors.borderSubtle.withValues(alpha: 0.4),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.question_mark_rounded,
+                  size: 14,
+                  color: _secretUnlocked
+                      ? AppColors.fernGreen
+                      : AppColors.textTertiary,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       body: ListView(
         children: [
@@ -344,9 +433,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: () => context.push('/profile'),
             ),
             _Tile(
-              icon: Icons.verified_user_outlined,
-              label: 'Verify identity',
-              onTap: () => context.push('/verify-identity'),
+              icon: _isVerified
+                  ? Icons.verified_rounded
+                  : _isVerificationPending
+                      ? Icons.pending_outlined
+                      : Icons.verified_user_outlined,
+              label: _isVerified
+                  ? 'Identity verified ✓'
+                  : _isVerificationPending
+                      ? 'Verification in progress...'
+                      : 'Verify identity',
+              subtitle: _isVerified
+                  ? 'Your identity has been confirmed'
+                  : _isVerificationPending
+                      ? 'Usually takes a few minutes'
+                      : null,
+              color: _isVerified ? AppColors.fernGreen : null,
+              onTap: _isVerified || _isVerificationPending
+                  ? () {} // Disabled — show nothing or a snack
+                  : () => context.push('/verify-identity'),
+            ),
+            _Tile(
+              icon: Icons.receipt_long_outlined,
+              label: 'Purchase history',
+              onTap: () {
+                final sub = context.read<SubscriptionService>();
+                if (!sub.hasEverAttemptedPurchase && !sub.isPro) {
+                  showInfoSnack(context, 'No purchase history yet.');
+                  return;
+                }
+                context.push('/purchase-history');
+              },
             ),
           ]),
           _Section(title: 'Subscription', tiles: [
@@ -421,6 +538,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: () {},
             ),
           ]),
+// Secret developer panel — only visible after 5 quick taps on ?
+          AnimatedSize(
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeOutCubic,
+            child: _secretUnlocked
+                ? _SecretDevPanel(
+                    onClose: () => setState(() {
+                      _secretUnlocked = false;
+                      _secretTapCount = 0;
+                    }),
+                  )
+                : const SizedBox.shrink(),
+          ),
+
           const SizedBox(height: AppSpacing.lg),
           Padding(
             padding: const EdgeInsets.symmetric(
@@ -451,18 +582,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 80),
         ],
       ),
-    );
-  }
-
-  void _showChangePassword(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => const _ChangePasswordSheet(),
     );
   }
 
@@ -661,15 +780,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e) {
       AppLogger.error('settings: delete account failed: $e');
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to delete account. Please try again.',
-                style: GoogleFonts.josefinSans(fontSize: 13)),
-            backgroundColor: AppColors.sunsetCoral,
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-          ),
-        );
+        showErrorSnack(context, 'Failed to delete account. Please try again.');
       }
     }
   }
@@ -723,6 +834,177 @@ class _Section extends StatelessWidget {
           child: Column(children: tiles),
         ),
       ],
+    );
+  }
+}
+
+class _SecretDevPanel extends StatefulWidget {
+  const _SecretDevPanel({required this.onClose});
+  final VoidCallback onClose;
+
+  @override
+  State<_SecretDevPanel> createState() => _SecretDevPanelState();
+}
+
+class _SecretDevPanelState extends State<_SecretDevPanel>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _entranceCtrl;
+  late final Animation<double> _fade;
+  late final Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _entranceCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _fade = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _entranceCtrl, curve: Curves.easeOut),
+    );
+    _slide = Tween<Offset>(
+      begin: const Offset(0, -0.1),
+      end: Offset.zero,
+    ).animate(
+        CurvedAnimation(parent: _entranceCtrl, curve: Curves.easeOutCubic));
+    _entranceCtrl.forward();
+  }
+
+  @override
+  void dispose() {
+    _entranceCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _showDevAd(BuildContext context) async {
+    final adService = context.read<AdService>();
+    if (!adService.rewardedReady) return;
+
+    // Shows the rewarded ad but deliberately does NOT call onRewarded
+    // with any user-facing reward. Developer earns impression revenue.
+    await adService.showRewarded(
+      onRewarded: () {
+        // Intentionally empty — developer earns, user gets no reward.
+        if (context.mounted) {
+          showErrorSnack(
+              context, 'Ad Completed Thank You For Supporting EchoProof.');
+        }
+      },
+      onDismissed: () {},
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final adService = context.watch<AdService>();
+    final isAdReady = adService.rewardedReady;
+
+    return FadeTransition(
+      opacity: _fade,
+      child: SlideTransition(
+        position: _slide,
+        child: Container(
+          margin: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.sm,
+          ),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0D1117), // dark dev feel
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: AppColors.fernGreen.withValues(alpha: 0.3),
+            ),
+          ),
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Text('⚙️', style: TextStyle(fontSize: 16)),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Developer panel',
+                    style: GoogleFonts.josefinSans(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.fernGreen,
+                    ),
+                  ),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: widget.onClose,
+                    child: const Icon(
+                      Icons.close_rounded,
+                      size: 16,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Hidden section. Not visible to regular users.',
+                style: GoogleFonts.josefinSans(
+                  fontSize: 11,
+                  color: AppColors.textTertiary,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Tooltip(
+                message: isAdReady ? '' : 'No ad available right now',
+                child: SizedBox(
+                  width: double.infinity,
+                  child: AnimatedOpacity(
+                    opacity: isAdReady ? 1.0 : 0.4,
+                    duration: const Duration(milliseconds: 200),
+                    child: ElevatedButton.icon(
+                      onPressed: isAdReady ? () => _showDevAd(context) : null,
+                      icon: Icon(
+                        isAdReady
+                            ? Icons.play_arrow_rounded
+                            : Icons.block_rounded,
+                        size: 16,
+                      ),
+                      label: Text(
+                        isAdReady
+                            ? 'Show rewarded ad (dev revenue)'
+                            : 'Ad not available',
+                        style: GoogleFonts.josefinSans(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: isAdReady
+                            ? AppColors.fernGreen
+                            : AppColors.borderMedium,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        elevation: 0,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                isAdReady
+                    ? '● Ad loaded and ready'
+                    : '○ Waiting for ad to load...',
+                style: GoogleFonts.josefinSans(
+                  fontSize: 11,
+                  color:
+                      isAdReady ? AppColors.fernGreen : AppColors.textTertiary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

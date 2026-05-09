@@ -19,6 +19,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../../core/utils/logger.dart';
 import 'package:flutter_mentions/flutter_mentions.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../../core/utils/snack.dart';
 
 enum _DraftAction { save, discard }
 
@@ -126,20 +127,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
     final fileSize = await File(file.path).length();
     if (fileSize > 10 * 1024 * 1024) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'File is too large. Maximum size is 10MB.',
-              style: GoogleFonts.josefinSans(fontSize: 13),
-            ),
-            backgroundColor: AppColors.sunsetCoral,
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
+        showInfoSnack(context, "File is too large, Make sure the file is less than 10MB");
       }
       return;
     }
@@ -147,23 +135,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
     final service = context.read<CreateEchoService>();
 
     if (service.localMediaPaths.length >= 2) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Maximum 2 attachments allowed',
-            style: GoogleFonts.josefinSans(fontSize: 13),
-          ),
-          backgroundColor: AppColors.sunsetCoral,
-          behavior: SnackBarBehavior.floating,
-          margin: EdgeInsets.only(
-            bottom: MediaQuery.of(context).padding.bottom + 72,
-            left: 16,
-            right: 16,
-          ),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
+        showInfoSnack(context, 'Maximum 2 attachments allowed');
       return;
     }
 
@@ -282,37 +254,15 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
           if (!isPro && count % 3 == 0) {
             context.read<AdService>().showRewardedInterstitial(
               onRewarded: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      '🎉 Thanks for supporting Echoproof — 1 hour ad-free!',
-                      style: GoogleFonts.josefinSans(),
-                    ),
-                    backgroundColor: const Color(0xFF1E3A2A),
-                    behavior: SnackBarBehavior.floating,
-                    margin:
-                        const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                );
+                  showSuccessSnack(context, '🎉 Thanks for supporting Echoproof — 1 hour ad-free!');
               },
             );
           }
 
           context.pop();
           HapticFeedback.mediumImpact();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Echo created — awaiting community signals'),
-              backgroundColor: AppColors.fernGreen,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          );
+          showSuccessSnack(
+              context, 'Echo created — awaiting community signals');
         }
       });
     }

@@ -3,6 +3,7 @@
 // uses OnboardingService via provider — no riverpod
 // this is a stateful widget since it has local state for error/loading, and
 // it also asks for a display name
+import 'package:echoproof/core/utils/snack.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -148,17 +149,7 @@ class _StepUsernameState extends State<StepUsername> {
     } catch (e) {
       AppLogger.error('onboarding: set username failed $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Failed to save. Please try again.',
-              style: GoogleFonts.josefinSans(fontSize: 13),
-            ),
-            backgroundColor: AppColors.sunsetCoral,
-            margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        showErrorSnack(context, 'Failed to save. Please try again.');
       }
     }
 

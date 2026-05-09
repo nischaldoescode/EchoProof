@@ -6,7 +6,7 @@ import 'package:didit_sdk/sdk_flutter.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../core/utils/logger.dart';
-
+import '../../../../core/utils/snack.dart';
 class IdentityVerificationScreen extends StatefulWidget {
   const IdentityVerificationScreen({super.key});
 
@@ -21,6 +21,42 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
     'DIDIT_WORKFLOW_ID',
     defaultValue: '',
   );
+
+  RealtimeChannel? _verificationChannel;
+
+  void _subscribeToVerificationUpdates() {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    _verificationChannel = Supabase.instance.client
+        .channel('users_private:$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'users_private',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: userId,
+          ),
+          callback: (payload) {
+            final newRecord = payload.newRecord;
+            final isVerified =
+                newRecord['is_identity_verified'] as bool? ?? false;
+            if (isVerified && mounted) {
+              _showResultSheet(
+                icon: Icons.verified_rounded,
+                iconColor: AppColors.fernGreen,
+                title: 'Identity verified!',
+                body:
+                    'Your identity has been confirmed. Your trust tier has been updated.',
+                isSuccess: true,
+              );
+            }
+          },
+        )
+        .subscribe();
+  }
 
   bool _isLoading = false;
   VerificationResult? _lastResult;
@@ -62,25 +98,14 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
   void dispose() {
     _entranceCtrl.dispose();
     _pulseCtrl.dispose();
+    _verificationChannel?.unsubscribe();
     super.dispose();
   }
 
   // Block back navigation mid-verification
   Future<bool> _onWillPop() async {
     if (_isLoading) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Please complete or cancel verification first.',
-            style: GoogleFonts.josefinSans(fontSize: 13),
-          ),
-          backgroundColor: AppColors.charcoal,
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
+        showInfoSnack(context, 'Please complete or cancel verification first.');
       return false;
     }
     return true;
@@ -144,19 +169,18 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
       AppLogger.error('verification: error $e');
       if (!mounted) return;
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Could not start verification. Please try again.',
-            style: GoogleFonts.josefinSans(fontSize: 13),
-          ),
-          backgroundColor: AppColors.sunsetCoral,
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
+
+      // Parse cooldown error from edge function
+      String errorMessage = 'Could not start verification. Please try again.';
+      try {
+        if (e.toString().contains('verification_cooldown')) {
+          errorMessage = 'You can re-apply after your 30-day cooldown period.';
+        } else if (e.toString().contains('rate_limited')) {
+          errorMessage = 'Too many attempts today. Please try again tomorrow.';
+        }
+      } catch (_) {}
+
+      showInfoSnack(context, errorMessage);
     }
   }
 
@@ -194,19 +218,8 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
             );
         }
       case VerificationCancelled():
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Verification cancelled.',
-              style: GoogleFonts.josefinSans(fontSize: 13),
-            ),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: AppColors.charcoal,
-            margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-        );
+        showInfoSnack(context, 'Verification Canceled');
+      
       case VerificationFailed(:final error):
         AppLogger.error('verification: failed ${error.type} ${error.message}');
         _showResultSheet(
@@ -327,243 +340,253 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
           backgroundColor: Colors.transparent,
           elevation: 0,
         ),
-        body: FadeTransition(
-          opacity: _fade,
-          child: SlideTransition(
-            position: _slide,
-            child: ListView(
-              padding: const EdgeInsets.all(AppSpacing.xl),
-              children: [
-                const SizedBox(height: AppSpacing.xl),
-
-                // Hero icon with pulse
-                Center(
-                  child: AnimatedBuilder(
-                    animation: _pulseCtrl,
-                    builder: (_, __) => Transform.scale(
-                      scale: _isLoading ? 1.0 : _pulse.value,
-                      child: Container(
-                        width: 88,
-                        height: 88,
-                        decoration: BoxDecoration(
-                          color: AppColors.fernGreenLight,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.fernGreen.withValues(alpha: 0.2),
-                              blurRadius: 20,
-                              spreadRadius: 4,
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.verified_user_rounded,
-                          size: 44,
-                          color: AppColors.fernGreen,
-                        ),
-                      ),
-                    ),
-                  ),
+        body: SafeArea(
+          child: FadeTransition(
+            opacity: _fade,
+            child: SlideTransition(
+              position: _slide,
+              child: ListView(
+                padding: EdgeInsets.only(
+                  left: AppSpacing.xl,
+                  right: AppSpacing.xl,
+                  top: AppSpacing.xl,
+                  // Bottom padding accounts for home gesture bar
+                  bottom: MediaQuery.of(context).padding.bottom + AppSpacing.xl,
                 ),
+                children: [
+                  const SizedBox(height: AppSpacing.xl),
 
-                const SizedBox(height: AppSpacing.xl),
-
-                Text(
-                  'Verify your identity',
-                  style: GoogleFonts.josefinSans(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.charcoal,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: AppSpacing.sm),
-                Text(
-                  'Powered by Didit — bank-grade KYC in under 2 minutes.',
-                  style: GoogleFonts.josefinSans(
-                    fontSize: 14,
-                    color: AppColors.textSecondary,
-                    height: 1.5,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-
-                const SizedBox(height: AppSpacing.xxl),
-
-                // What didit checks
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.xl),
-                  decoration: BoxDecoration(
-                    color: AppColors.fernGreenLight,
-                    borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'What Didit verifies',
-                        style: GoogleFonts.josefinSans(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.charcoal,
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      ...[
-                        'Government-issued ID (passport, national ID, driving licence)',
-                        'Passive liveness — no blinking or head turns',
-                        'Face match — selfie vs ID photo',
-                        'AI deepfake and fraud detection',
-                        'NFC e-passport reading (where supported)',
-                        '14,000+ documents across 220+ countries',
-                      ].map((item) => Padding(
-                            padding: const EdgeInsets.only(top: AppSpacing.xs),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Padding(
-                                  padding: EdgeInsets.only(top: 2),
-                                  child: Icon(
-                                    Icons.check_circle_outline,
-                                    size: 14,
-                                    color: AppColors.fernGreen,
-                                  ),
-                                ),
-                                const SizedBox(width: AppSpacing.sm),
-                                Expanded(
-                                  child: Text(
-                                    item,
-                                    style: GoogleFonts.josefinSans(
-                                      fontSize: 13,
-                                      color: AppColors.textSecondary,
-                                      height: 1.5,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: AppSpacing.lg),
-
-                // Privacy note
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.lg),
-                  decoration: BoxDecoration(
-                    color: AppColors.softSand,
-                    borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-                    border: Border.all(color: AppColors.borderSubtle),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.lock_outline,
-                          size: 18, color: AppColors.textTertiary),
-                      const SizedBox(width: AppSpacing.sm),
-                      Expanded(
-                        child: Text(
-                          'Your identity is verified by Didit and stays private. Only your trust level is visible to others.',
-                          style: GoogleFonts.josefinSans(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                            height: 1.5,
+                  // Hero icon with pulse
+                  Center(
+                    child: AnimatedBuilder(
+                      animation: _pulseCtrl,
+                      builder: (_, __) => Transform.scale(
+                        scale: _isLoading ? 1.0 : _pulse.value,
+                        child: Container(
+                          width: 88,
+                          height: 88,
+                          decoration: BoxDecoration(
+                            color: AppColors.fernGreenLight,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color:
+                                    AppColors.fernGreen.withValues(alpha: 0.2),
+                                blurRadius: 20,
+                                spreadRadius: 4,
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.verified_user_rounded,
+                            size: 44,
+                            color: AppColors.fernGreen,
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: AppSpacing.lg),
-
-                _BenefitRow(
-                  icon: Icons.trending_up_outlined,
-                  title: 'Higher trust weight',
-                  desc: 'Your votes count more — real people matter more.',
-                ),
-                _BenefitRow(
-                  icon: Icons.verified_outlined,
-                  title: 'Verified badge',
-                  desc: 'A visible verified ring on your avatar.',
-                ),
-                _BenefitRow(
-                  icon: Icons.link_outlined,
-                  title: 'Portable reputation',
-                  desc: 'Your trust tier is anchored on-chain.',
-                ),
-
-                const SizedBox(height: AppSpacing.xxl),
-
-                // CTA button
-                ScaleTransition(
-                  scale: _isLoading
-                      ? const AlwaysStoppedAnimation(0.97)
-                      : const AlwaysStoppedAnimation(1.0),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _startVerification,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.charcoal,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 200),
-                        child: _isLoading
-                            ? Row(
-                                key: const ValueKey('loading'),
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Text(
-                                    'Starting verification...',
-                                    style: GoogleFonts.josefinSans(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              )
-                            : Text(
-                                key: const ValueKey('idle'),
-                                'Start verification',
-                                style: GoogleFonts.josefinSans(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                      ),
                     ),
                   ),
-                ),
 
-                const SizedBox(height: AppSpacing.md),
-                Center(
-                  child: Text(
-                    'Powered by Didit — bank-grade identity verification',
+                  const SizedBox(height: AppSpacing.xl),
+
+                  Text(
+                    'Verify your identity',
                     style: GoogleFonts.josefinSans(
-                      fontSize: 11,
-                      color: AppColors.textTertiary,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.charcoal,
                     ),
                     textAlign: TextAlign.center,
                   ),
-                ),
-                const SizedBox(height: AppSpacing.xl),
-              ],
+                  const SizedBox(height: AppSpacing.sm),
+                  Text(
+                    'Powered by Didit — bank-grade KYC in under 2 minutes.',
+                    style: GoogleFonts.josefinSans(
+                      fontSize: 14,
+                      color: AppColors.textSecondary,
+                      height: 1.5,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+
+                  const SizedBox(height: AppSpacing.xxl),
+
+                  // What didit checks
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.xl),
+                    decoration: BoxDecoration(
+                      color: AppColors.fernGreenLight,
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'What Didit verifies',
+                          style: GoogleFonts.josefinSans(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.charcoal,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                        ...[
+                          'Government-issued ID (passport, national ID, driving licence)',
+                          'Passive liveness — no blinking or head turns',
+                          'Face match — selfie vs ID photo',
+                          'AI deepfake and fraud detection',
+                          'NFC e-passport reading (where supported)',
+                          '14,000+ documents across 220+ countries',
+                        ].map((item) => Padding(
+                              padding:
+                                  const EdgeInsets.only(top: AppSpacing.xs),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Padding(
+                                    padding: EdgeInsets.only(top: 2),
+                                    child: Icon(
+                                      Icons.check_circle_outline,
+                                      size: 14,
+                                      color: AppColors.fernGreen,
+                                    ),
+                                  ),
+                                  const SizedBox(width: AppSpacing.sm),
+                                  Expanded(
+                                    child: Text(
+                                      item,
+                                      style: GoogleFonts.josefinSans(
+                                        fontSize: 13,
+                                        color: AppColors.textSecondary,
+                                        height: 1.5,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: AppSpacing.lg),
+
+                  // Privacy note
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    decoration: BoxDecoration(
+                      color: AppColors.softSand,
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                      border: Border.all(color: AppColors.borderSubtle),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.lock_outline,
+                            size: 18, color: AppColors.textTertiary),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: Text(
+                            'Your identity is verified by Didit and stays private. Only your trust level is visible to others.',
+                            style: GoogleFonts.josefinSans(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                              height: 1.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: AppSpacing.lg),
+
+                  _BenefitRow(
+                    icon: Icons.trending_up_outlined,
+                    title: 'Higher trust weight',
+                    desc: 'Your votes count more — real people matter more.',
+                  ),
+                  _BenefitRow(
+                    icon: Icons.verified_outlined,
+                    title: 'Verified badge',
+                    desc: 'A visible verified ring on your avatar.',
+                  ),
+                  _BenefitRow(
+                    icon: Icons.link_outlined,
+                    title: 'Portable reputation',
+                    desc: 'Your trust tier is anchored on-chain.',
+                  ),
+
+                  const SizedBox(height: AppSpacing.xxl),
+
+                  // CTA button
+                  ScaleTransition(
+                    scale: _isLoading
+                        ? const AlwaysStoppedAnimation(0.97)
+                        : const AlwaysStoppedAnimation(1.0),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _startVerification,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.charcoal,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 200),
+                          child: _isLoading
+                              ? Row(
+                                  key: const ValueKey('loading'),
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Text(
+                                      'Starting verification...',
+                                      style: GoogleFonts.josefinSans(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : Text(
+                                  key: const ValueKey('idle'),
+                                  'Start verification',
+                                  style: GoogleFonts.josefinSans(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: AppSpacing.md),
+                  Center(
+                    child: Text(
+                      'Powered by Didit — bank-grade identity verification',
+                      style: GoogleFonts.josefinSans(
+                        fontSize: 11,
+                        color: AppColors.textTertiary,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xl),
+                ],
+              ),
             ),
           ),
         ),

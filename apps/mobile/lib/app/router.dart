@@ -23,6 +23,7 @@ import '../features/subscription/presentation/services/subscription_service.dart
 import '../features/search/presentation/screens/search_screen.dart';
 import '../features/echo/presentation/screens/echo_replies_screen.dart';
 import '../core/utils/logger.dart';
+import '../features/subscription/presentation/screens/purchase_history_screen.dart';
 
 CustomTransitionPage<void> _slidePage(Widget child) {
   return CustomTransitionPage<void>(
@@ -110,12 +111,17 @@ GoRouter createRouter({
         return '/feed';
       }
 
-      // Only hit the DB when we genuinely need fresh state:
-      // first check after login, or when coming from an auth screen.
-      final needsDbCheck = (!authService.hasUsernameChecked ||
-              location == '/login' ||
-              location == '/splash') &&
-          location != '/onboarding';
+      // If we're already on an onboarding route and the check has run at least once,
+      // do NOT re-query and do NOT redirect away — let the user stay and complete it.
+      if (isOnboardingRoute && authService.hasUsernameChecked) {
+        AppLogger.info('router: already on onboarding route, no redirect');
+        return null;
+      }
+
+      // Only hit the DB when we genuinely need fresh state.
+      final needsDbCheck = !authService.hasUsernameChecked ||
+          location == '/login' ||
+          location == '/splash';
 
       if (needsDbCheck) {
         await authService.checkUsername();
@@ -129,6 +135,13 @@ GoRouter createRouter({
 
       if (!hasUsername) {
         if (isOnboardingRoute) return null;
+        // New user — send to age/gender first, then permissions, then onboarding
+        if (authService.needsAgeGender &&
+            location != '/age-gender' &&
+            location != '/permissions') {
+          AppLogger.info('router: new user, redirecting to age-gender');
+          return '/age-gender';
+        }
         AppLogger.info('router: no username, redirecting to onboarding');
         return '/onboarding';
       }
@@ -241,6 +254,14 @@ GoRouter createRouter({
           email: state.extra as String? ?? '',
         ),
       ),
+      GoRoute(
+        path: '/purchase-history',
+        pageBuilder: (_, __) => _slidePage(const PurchaseHistoryScreen()),
+      ),
+      // GoRoute(
+      //   path: '/analytics',
+      //   pageBuilder: (_, __) => _slidePage(const ProAnalyticsScreen()),
+      // ),
       GoRoute(
         path: '/onboarding-age-gender',
         builder: (context, state) => const AgeGenderScreen(),

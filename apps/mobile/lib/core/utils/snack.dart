@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import '../../app/theme/colors.dart';
+import 'package:hyper_snackbar/hyper_snackbar.dart';
 
 enum SnackType { success, error, warning, info }
 
@@ -20,46 +19,12 @@ void showAppSnack(
 
   final colors = _snackColors(type);
 
-  ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(_snackIcon(type), size: 16, color: colors.fg),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                message,
-                style: GoogleFonts.josefinSans(
-                  fontSize: 13,
-                  color: colors.fg,
-                ),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: colors.bg,
-        behavior: SnackBarBehavior.floating,
-        margin: EdgeInsets.only(
-          bottom: bottomPadding,
-          left: 16,
-          right: 16,
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-          side: BorderSide(color: colors.border, width: 0.5),
-        ),
-        duration: duration,
-        action: actionLabel != null && onAction != null
-            ? SnackBarAction(
-                label: actionLabel,
-                textColor: colors.fg,
-                onPressed: onAction,
-              )
-            : null,
-      ),
-    );
+  final myBrandPreset = HyperSnackbar.preset(
+  backgroundColor: Colors.deepPurple,
+  icon: Icon(Icons.star, color: Colors.amber),
+  borderRadius: 16,
+  animationType: HyperSnackAnimationType.scale, // Sets both enter & exit
+);
 }
 
 // Convenience wrappers.
@@ -74,13 +39,6 @@ void showWarningSnack(BuildContext context, String message) =>
 
 void showInfoSnack(BuildContext context, String message) =>
     showAppSnack(context, message, type: SnackType.info);
-
-IconData _snackIcon(SnackType type) => switch (type) {
-      SnackType.success => Icons.check_circle_outline_rounded,
-      SnackType.error => Icons.error_outline_rounded,
-      SnackType.warning => Icons.warning_amber_rounded,
-      SnackType.info => Icons.info_outline_rounded,
-    };
 
 ({Color bg, Color fg, Color border}) _snackColors(SnackType type) =>
     switch (type) {

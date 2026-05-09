@@ -21,6 +21,8 @@ import '../../../../shared/widgets/rating_prompt.dart';
 import '../../../auth/presentation/screens/permission_sheet.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../services/create_echo_service.dart';
+import '../../../../shared/widgets/birthday_celebration.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
@@ -45,6 +47,31 @@ class _FeedScreenState extends State<FeedScreen> {
   final _scrollCtrl = ScrollController();
   FeedFilter _filter = const FeedFilter();
 
+  Future<void> _maybeTriggerBirthdayEaster() async {
+    // Only check once per app session using Hive.
+    final box = Hive.box('app_settings');
+    final today = DateTime.now();
+    final lastChecked =
+        box.get('birthday_checked_date', defaultValue: '') as String;
+    final todayStr = '${today.year}-${today.month}-${today.day}';
+    if (lastChecked == todayStr) return;
+    await box.put('birthday_checked_date', todayStr);
+
+    try {
+      final client = Supabase.instance.client;
+      final userId = client.auth.currentUser?.id;
+      if (userId == null) return;
+      final row = await client
+          .from('users_public')
+          .select('date_of_birth')
+          .eq('id', userId)
+          .maybeSingle();
+      final dob = row?['date_of_birth'] as String?;
+      if (!mounted) return;
+      maybeTriggerBirthdayEaster(context, dob);
+    } catch (_) {}
+  }
+
   @override
   void initState() {
     super.initState();
@@ -53,6 +80,7 @@ class _FeedScreenState extends State<FeedScreen> {
       final feed = context.read<EchoFeedService>();
       if (feed.echoes.isEmpty) feed.loadFeed();
       _maybeShowPermissionsOverlay();
+      _maybeTriggerBirthdayEaster();
       // Show rating prompt after sufficient use — uses progressive schedule.
       Future.delayed(const Duration(seconds: 3), () {
         if (mounted) RatingPrompt.maybeShow(context);
@@ -482,7 +510,6 @@ class _CreateFabState extends State<_CreateFab>
                   const Icon(Icons.edit_rounded, color: Colors.white, size: 22),
             ),
           ),
-
           if (hasDraft)
             Positioned(
               top: 0,

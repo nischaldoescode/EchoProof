@@ -25,6 +25,7 @@ import 'package:flutter_portal/flutter_portal.dart';
 import 'core/services/connectivity_service.dart';
 import 'package:app_links/app_links.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hyper_snackbar/hyper_snackbar.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -85,6 +86,16 @@ Future<void> main() async {
     subscriptionService: subscriptionService,
   );
 
+  // handle notification tap  deep link to echo detail
+  // Notify AdService when user logs in/out for interstitial frequency control.
+  authService.addListener(() {
+    if (authService.isLoggedIn) {
+      adService.onUserLoggedIn();
+    } else {
+      adService.onUserLoggedOut();
+    }
+  });
+
   // handle notification tap — deep link to echo detail
   FirebaseMessaging.onMessageOpenedApp.listen((message) {
     final route = message.data['route'] as String?;
@@ -117,6 +128,9 @@ Future<void> main() async {
       });
     }
   });
+  final lifecycleObserver = _AppLifecycleObserver(subscriptionService);
+  WidgetsBinding.instance.addObserver(lifecycleObserver);
+  
   runApp(
     Portal(
       child: MultiProvider(
@@ -183,6 +197,18 @@ void _handleDeepLink(Uri uri, GoRouter router) {
   }
 }
 
+class _AppLifecycleObserver extends WidgetsBindingObserver {
+  _AppLifecycleObserver(this._sub);
+  final SubscriptionService _sub;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _sub.checkSubscriptionStatus();
+    }
+  }
+}
+
 class _SecurityWarningApp extends StatelessWidget {
   const _SecurityWarningApp();
 
@@ -190,6 +216,7 @@ class _SecurityWarningApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      navigatorKey: HyperSnackbar.navigatorKey,
       home: Scaffold(
         backgroundColor: const Color(0xFF1A1A1A),
         body: Center(

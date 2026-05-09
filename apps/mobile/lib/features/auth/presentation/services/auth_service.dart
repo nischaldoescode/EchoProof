@@ -27,6 +27,8 @@ class AuthService extends ChangeNotifier {
   /// navigation event.
   bool get hasUsernameChecked => _hasUsernameChecked;
   String? get googleDisplayName => _googleDisplayName;
+  bool _needsAgeGender = false;
+  bool get needsAgeGender => _needsAgeGender;
 
   void clearError() {
     _error = null;
@@ -42,40 +44,60 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
   }
 
+// Prevents concurrent calls — if one checkUsername is in flight, don't start another.
+  bool _checkingUsername = false;
+
   Future<void> checkUsername() async {
+    if (_checkingUsername) return;
+    _checkingUsername = true;
+
     try {
       final userId = _client.auth.currentUser?.id;
       if (userId == null) {
         _hasUsername = false;
         _hasUsernameChecked = true;
+        _checkingUsername = false;
         notifyListeners();
         return;
       }
-      final row = await _client
-          .from('users_public')
-          .select('onboarding_complete, username')
-          .eq('id', userId)
-          .maybeSingle();
-      if (row == null) {
-        // Row doesn't exist yet — trigger may be slow, wait and retry once
-        await Future.delayed(const Duration(milliseconds: 800));
-        final retryRow = await _client
+
+      // Try up to 5 times with increasing delay — handles slow trigger on new signup.
+      // On subsequent app opens the row will always exist immediately.
+      Map<String, dynamic>? row;
+      for (int attempt = 0; attempt < 5; attempt++) {
+        row = await _client
             .from('users_public')
-            .select('onboarding_complete, username')
+            .select('onboarding_complete, username, date_of_birth')
             .eq('id', userId)
             .maybeSingle();
-        final done = retryRow?['onboarding_complete'] as bool? ?? false;
-        _hasUsername = done == true;
+
+        if (row != null) break;
+
+        // Row not yet created by trigger — wait and retry.
+        // Only retry on first-ever signup (attempt < 4).
+        if (attempt < 4) {
+          await Future.delayed(Duration(milliseconds: 300 * (attempt + 1)));
+        }
+      }
+
+      if (row == null) {
+        _hasUsername = false;
+        _hasUsernameChecked = true;
+        _needsAgeGender = true; // New user — needs age/gender
       } else {
         final done = row['onboarding_complete'] as bool? ?? false;
         _hasUsername = done == true;
+        _hasUsernameChecked = true;
+        // Only needs age/gender if not yet set (date_of_birth is null)
+        _needsAgeGender = row['date_of_birth'] == null;
       }
-      _hasUsernameChecked = true;
     } catch (e) {
       _hasUsername = false;
       _hasUsernameChecked = true;
     }
-    notifyListeners();
+
+    _checkingUsername = false;
+    notifyListeners(); // Single notify after all retries complete.
   }
 
   Future<bool> sendOtp({required String email}) async {
@@ -196,22 +218,29 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-// saves age, dob, and gender to users_public after initial profile setup
   Future<void> saveAgeAndGender({
     required int age,
     required String gender,
-    required DateTime dateOfBirth,
+    DateTime? dateOfBirth,
   }) async {
-    final userId = Supabase.instance.client.auth.currentUser?.id;
+    final userId = currentUser?.id;
     if (userId == null) return;
-    await Supabase.instance.client.from('users_public').update({
-      'age': age,
-      'gender': gender,
-      // stored as yyyy-mm-dd — postgres date type
-      'date_of_birth': '${dateOfBirth.year.toString().padLeft(4, '0')}-'
-          '${dateOfBirth.month.toString().padLeft(2, '0')}-'
-          '${dateOfBirth.day.toString().padLeft(2, '0')}',
-    }).eq('id', userId);
+    try {
+      // Save age + dob to users_public (needed for profile display)
+      final publicPatch = <String, dynamic>{
+        'age': age,
+        'gender': gender,
+      };
+      if (dateOfBirth != null) {
+        publicPatch['date_of_birth'] =
+            '${dateOfBirth.year.toString().padLeft(4, '0')}-'
+            '${dateOfBirth.month.toString().padLeft(2, '0')}-'
+            '${dateOfBirth.day.toString().padLeft(2, '0')}';
+      }
+      await _client.from('users_public').update(publicPatch).eq('id', userId);
+    } catch (e) {
+      AppLogger.error('auth: save age/gender failed $e');
+    }
   }
 
   Future<void> deleteIncompleteAccount() async {

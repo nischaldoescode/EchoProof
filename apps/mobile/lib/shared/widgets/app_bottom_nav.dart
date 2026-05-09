@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../app/theme/colors.dart';
+import 'bottom_ad_banner.dart';
+import 'app_banner_ad.dart';
 
 class AppBottomNav extends StatelessWidget {
   const AppBottomNav({super.key, required this.currentLocation});
@@ -41,78 +43,92 @@ class AppBottomNav extends StatelessWidget {
   Widget build(BuildContext context) {
     final activePath = _activePathFor(currentLocation);
 
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          top: BorderSide(color: AppColors.borderSubtle, width: 0.5),
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      // Interstitial prompt banner — above nav, dismissible
+      const BottomAdBanner(),
+
+      Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(
+            top: BorderSide(color: AppColors.borderSubtle, width: 0.5),
+          ),
         ),
-      ),
-      child: SafeArea(
-        top: false,
-        child: SizedBox(
-          height: 60,
-          child: Row(
-            children: _items.map((item) {
-              final isActive = activePath == item.path;
-              return Expanded(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () {
-                    if (!isActive) {
-                      context.go(item.path);
-                    }
-                  },
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-                        curve: Curves.easeOutCubic,
-                        padding: EdgeInsets.symmetric(
-                          horizontal: isActive ? 16 : 0,
-                          vertical: 6,
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 60,
+            child: Row(
+              children: _items.map((item) {
+                final isActive = activePath == item.path;
+                return Expanded(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      if (!isActive) {
+                        context.go(item.path);
+                      }
+                    },
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 250),
+                          curve: Curves.easeOutCubic,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isActive ? 16 : 0,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isActive
+                                ? AppColors.charcoal.withValues(alpha: 0.08)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 200),
+                            child: Icon(
+                              isActive ? item.activeIcon : item.icon,
+                              key: ValueKey('${item.path}_$isActive'),
+                              size: 22,
+                              color: isActive
+                                  ? AppColors.charcoal
+                                  : AppColors.textTertiary,
+                            ),
+                          ),
                         ),
-                        decoration: BoxDecoration(
-                          color: isActive
-                              ? AppColors.charcoal.withValues(alpha: 0.08)
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: AnimatedSwitcher(
+                        const SizedBox(height: 2),
+                        AnimatedDefaultTextStyle(
                           duration: const Duration(milliseconds: 200),
-                          child: Icon(
-                            isActive ? item.activeIcon : item.icon,
-                            key: ValueKey('${item.path}_$isActive'),
-                            size: 22,
+                          style: GoogleFonts.josefinSans(
+                            fontSize: 10,
+                            fontWeight:
+                                isActive ? FontWeight.w600 : FontWeight.w400,
                             color: isActive
                                 ? AppColors.charcoal
                                 : AppColors.textTertiary,
                           ),
+                          child: Text(item.label),
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      AnimatedDefaultTextStyle(
-                        duration: const Duration(milliseconds: 200),
-                        style: GoogleFonts.josefinSans(
-                          fontSize: 10,
-                          fontWeight:
-                              isActive ? FontWeight.w600 : FontWeight.w400,
-                          color: isActive
-                              ? AppColors.charcoal
-                              : AppColors.textTertiary,
-                        ),
-                        child: Text(item.label),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              );
-            }).toList(),
+                );
+              }).toList(),
+            ),
           ),
         ),
       ),
-    );
+      Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).padding.bottom,
+        ),
+        child: const SizedBox(
+          width: double.infinity,
+          child: AppBannerAd(),
+        ),
+      ),
+    ]);
   }
 }
 
@@ -176,7 +192,14 @@ class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
     var delta = (d.globalPosition.dx - _dragStartX) / w;
     // Clamp based on available routes.
     if (delta > 0 && _idx <= 0) delta = 0;
-    if (delta < 0 && _idx >= _routes.length - 1) delta = 0;
+    // On last screen, allow tiny right-swipe drag with rubber-band resistance
+    if (delta < 0 && _idx >= _routes.length - 1) {
+      delta = delta * 0.12; // rubber-band: 12% resistance
+    }
+    // On first screen, same for left-swipe
+    if (delta > 0 && _idx <= 0) {
+      delta = delta * 0.12;
+    }
     setState(() => _drag = delta.clamp(-1.0, 1.0));
   }
 

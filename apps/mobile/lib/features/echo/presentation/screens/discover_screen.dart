@@ -2,6 +2,7 @@
 // shows trending signals by country or globally
 // uses plain StatefulWidget with supabase queries — no riverpod
 
+import 'package:echoproof/core/utils/snack.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
@@ -9,6 +10,7 @@ import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../shared/widgets/app_bottom_nav.dart';
+import 'package:hyper_snackbar/hyper_snackbar.dart';
 
 class TrendingSignal {
   const TrendingSignal({
@@ -262,17 +264,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   }
 
   void _openSignalFeed(String signal) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Showing echoes for $signal'),
-        backgroundColor: AppColors.charcoal,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-      ),
-    );
+    showInfoSnack(context, 'Maximum 2 attachments allowed');
   }
 }
 

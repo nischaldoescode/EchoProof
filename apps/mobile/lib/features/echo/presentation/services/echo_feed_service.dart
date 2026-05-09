@@ -242,6 +242,7 @@ class EchoFeedService extends ChangeNotifier {
       username: user['username'] as String,
       userTrustTier: user['trust_tier'] as String? ?? 'unverified',
       userIsVerified: user['is_identity_verified'] as bool? ?? false,
+      userIsPro: user['is_pro'] as bool? ?? false,
       // is_identity_verified is on users_private not users_public
       // so fallback queries will return null here and default to false
       // only the edge function which does a join to users_private will have this

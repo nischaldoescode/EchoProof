@@ -3,6 +3,7 @@
 // pro users never see this — checked before rendering
 // rewarded: user watches ad to get 1 hour ad-free
 
+import 'package:echoproof/core/utils/snack.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -19,12 +20,10 @@ class AdCard extends StatefulWidget {
   State<AdCard> createState() => _AdCardState();
 }
 
-class _AdCardState extends State<AdCard>
-    with SingleTickerProviderStateMixin {
-
+class _AdCardState extends State<AdCard> with SingleTickerProviderStateMixin {
   late final AnimationController _shimmerController;
   bool _isWatching = false;
-  bool _earned     = false;
+  bool _earned = false;
 
   @override
   void initState() {
@@ -43,7 +42,7 @@ class _AdCardState extends State<AdCard>
 
   @override
   Widget build(BuildContext context) {
-    final adService  = context.watch<AdService>();
+    final adService = context.watch<AdService>();
     final subService = context.watch<SubscriptionService>();
 
     // pro users and ad-free users never see this
@@ -54,13 +53,13 @@ class _AdCardState extends State<AdCard>
     return Container(
       margin: const EdgeInsets.symmetric(
         horizontal: AppSpacing.lg,
-        vertical:   AppSpacing.sm,
+        vertical: AppSpacing.sm,
       ),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(AppSpacing.echoCardRadius),
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
-          end:   Alignment.bottomRight,
+          end: Alignment.bottomRight,
           colors: [
             Color(0xFF1A1A1A),
             Color(0xFF1E3A2A),
@@ -99,10 +98,11 @@ class _AdCardState extends State<AdCard>
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3,
+                          horizontal: 8,
+                          vertical: 3,
                         ),
                         decoration: BoxDecoration(
-                          color:        AppColors.fernGreen.withValues(alpha: 0.2),
+                          color: AppColors.fernGreen.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(4),
                           border: Border.all(
                             color: AppColors.fernGreen.withValues(alpha: 0.4),
@@ -111,9 +111,9 @@ class _AdCardState extends State<AdCard>
                         child: Text(
                           'SPONSORED',
                           style: GoogleFonts.josefinSans(
-                            fontSize:   9,
+                            fontSize: 9,
                             fontWeight: FontWeight.w700,
-                            color:      AppColors.fernGreen,
+                            color: AppColors.fernGreen,
                             letterSpacing: 1.2,
                           ),
                         ),
@@ -125,7 +125,7 @@ class _AdCardState extends State<AdCard>
                           '${adService.adFreeMinutesRemaining}m ad-free left',
                           style: GoogleFonts.josefinSans(
                             fontSize: 11,
-                            color:    AppColors.fernGreen.withValues(alpha: 0.8),
+                            color: AppColors.fernGreen.withValues(alpha: 0.8),
                           ),
                         ),
                     ],
@@ -139,10 +139,10 @@ class _AdCardState extends State<AdCard>
                         ? '🎉 1 hour ad-free unlocked!'
                         : 'Support Echoproof.',
                     style: GoogleFonts.josefinSans(
-                      fontSize:   18,
+                      fontSize: 18,
                       fontWeight: FontWeight.w700,
-                      color:      Colors.white,
-                      height:     1.2,
+                      color: Colors.white,
+                      height: 1.2,
                     ),
                   ),
 
@@ -154,8 +154,8 @@ class _AdCardState extends State<AdCard>
                         : 'Watch a short video and browse ad-free for 1 hour.',
                     style: GoogleFonts.josefinSans(
                       fontSize: 13,
-                      color:    Colors.white.withValues(alpha: 0.7),
-                      height:   1.4,
+                      color: Colors.white.withValues(alpha: 0.7),
+                      height: 1.4,
                     ),
                   ),
 
@@ -167,8 +167,8 @@ class _AdCardState extends State<AdCard>
                       if (!_earned)
                         _WatchButton(
                           isLoading: _isWatching,
-                          isReady:   adService.rewardedReady,
-                          onTap:     () => _watchAd(context),
+                          isReady: adService.rewardedReady,
+                          onTap: _watchAd,
                         ),
 
                       const SizedBox(width: AppSpacing.sm),
@@ -176,13 +176,13 @@ class _AdCardState extends State<AdCard>
                       // go pro link
                       if (!_earned)
                         GestureDetector(
-                          onTap: () => Navigator.of(context)
-                              .pushNamed('/subscribe'),
+                          onTap: () =>
+                              Navigator.of(context).pushNamed('/subscribe'),
                           child: Text(
                             'Go Pro instead →',
                             style: GoogleFonts.josefinSans(
-                              fontSize:   12,
-                              color:      AppColors.fernGreen,
+                              fontSize: 12,
+                              color: AppColors.fernGreen,
                               fontWeight: FontWeight.w600,
                               decoration: TextDecoration.underline,
                               decorationColor: AppColors.fernGreen,
@@ -200,35 +200,20 @@ class _AdCardState extends State<AdCard>
     );
   }
 
-  Future<void> _watchAd(BuildContext context) async {
+  Future<void> _watchAd() async {
     if (_isWatching) return;
     setState(() => _isWatching = true);
 
     final adService = context.read<AdService>();
     final shown = await adService.showRewarded(
       onRewarded: () {
-        if (mounted) setState(() { _earned = true; _isWatching = false; });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.star_rounded, color: Colors.amber, size: 18),
-                const SizedBox(width: 8),
-                Text(
-                  '1 hour ad-free unlocked!',
-                  style: GoogleFonts.josefinSans(fontWeight: FontWeight.w600),
-                ),
-              ],
-            ),
-            backgroundColor: const Color(0xFF1E3A2A),
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            duration: const Duration(seconds: 3),
-          ),
-        );
+        if (mounted) {
+          setState(() {
+            _earned = true;
+            _isWatching = false;
+          });
+          showSuccessSnack(context, '1 hour ad-free unlocked!');
+        }
       },
       onDismissed: () {
         if (mounted) setState(() => _isWatching = false);
@@ -236,20 +221,8 @@ class _AdCardState extends State<AdCard>
     );
 
     if (!shown && mounted) {
-      setState(() => _isWatching = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'No ad available right now — try again in a moment',
-            style: GoogleFonts.josefinSans(),
-          ),
-          behavior: SnackBarBehavior.floating,
-          margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      );
+      showInfoSnack(
+          context, 'No ad available right now — try again in a moment');
     }
   }
 }
@@ -261,8 +234,8 @@ class _WatchButton extends StatefulWidget {
     required this.isReady,
     required this.onTap,
   });
-  final bool         isLoading;
-  final bool         isReady;
+  final bool isLoading;
+  final bool isReady;
   final VoidCallback onTap;
 
   @override
@@ -271,9 +244,8 @@ class _WatchButton extends StatefulWidget {
 
 class _WatchButtonState extends State<_WatchButton>
     with SingleTickerProviderStateMixin {
-
   late final AnimationController _pulseController;
-  late final Animation<double>   _pulse;
+  late final Animation<double> _pulse;
 
   @override
   void initState() {
@@ -313,7 +285,8 @@ class _WatchButtonState extends State<_WatchButton>
             children: [
               if (widget.isLoading)
                 const SizedBox(
-                  width: 14, height: 14,
+                  width: 14,
+                  height: 14,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
                     color: Colors.white,
@@ -322,7 +295,8 @@ class _WatchButtonState extends State<_WatchButton>
               else
                 const Icon(
                   Icons.play_circle_outline_rounded,
-                  size: 16, color: Colors.white,
+                  size: 16,
+                  color: Colors.white,
                 ),
               const SizedBox(width: 6),
               Text(
@@ -332,9 +306,9 @@ class _WatchButtonState extends State<_WatchButton>
                         ? 'Watch ad (1 hr free)'
                         : 'Ad loading...',
                 style: GoogleFonts.josefinSans(
-                  fontSize:   12,
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color:      Colors.white,
+                  color: Colors.white,
                 ),
               ),
             ],
@@ -354,8 +328,8 @@ class _ShimmerPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..shader = LinearGradient(
-        begin:  Alignment.topLeft,
-        end:    Alignment.bottomRight,
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
         colors: [
           Colors.transparent,
           Colors.white.withValues(alpha: 0.03),

@@ -10,7 +10,7 @@ import 'theme/app_theme.dart';
 import '../shared/widgets/connectivity_wrapper.dart';
 import '../features/onboarding/presentation/services/onboarding_service.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-
+import '../../../../core/utils/snack.dart';
 class EchoProofApp extends StatelessWidget {
   const EchoProofApp({super.key, required this.router});
   final GoRouter router;
@@ -88,28 +88,12 @@ class _ExitConfirmWrapperState extends State<ExitConfirmWrapper> {
         } else {
           _lastBackPress = now;
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Press back again to exit',
-                  style: TextStyle(
-                    fontFamily: 'Josefin Sans',
-                    fontSize: 13,
-                  ),
-                ),
-                duration: const Duration(seconds: 2),
-                behavior: SnackBarBehavior.floating,
-                margin: EdgeInsets.only(
-                  bottom: MediaQuery.of(context).padding.bottom + 68,
-                  left: 16,
-                  right: 16,
-                ),
-                backgroundColor: const Color(0xFF2D2D2D),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-            );
+            if (mounted) {
+              showInfoSnack(
+                context,
+                'Press back again to exit',
+              );
+            }
           }
         }
       },

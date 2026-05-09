@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../app/theme/colors.dart';
 import '../../app/theme/spacing.dart';
 import '../../app/theme/typography.dart';
+import '../../../../core/utils/snack.dart';
 
 void showEchoActionSheet({
   required BuildContext context,
@@ -74,17 +75,7 @@ class _EchoActionSheet extends StatelessWidget {
               iconColor: AppColors.charcoal,
               onTap: () {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(parentContext).showSnackBar(
-                  SnackBar(
-                    content: const Text('Share coming soon'),
-                    backgroundColor: AppColors.charcoal,
-                    behavior: SnackBarBehavior.floating,
-                    margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                );
+                showInfoSnack(context, 'Share Coming Soon');
               },
             ),
             const Divider(
@@ -97,17 +88,7 @@ class _EchoActionSheet extends StatelessWidget {
                 Navigator.pop(context);
                 final url = 'https://echoproof.online/echo/$echoId';
                 Clipboard.setData(ClipboardData(text: url));
-                ScaffoldMessenger.of(parentContext).showSnackBar(
-                  SnackBar(
-                    content: const Text('Link copied'),
-                    backgroundColor: AppColors.charcoal,
-                    behavior: SnackBarBehavior.floating,
-                    margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                );
+                showSuccessSnack(parentContext, 'Link copied');
               },
             ),
           ],
@@ -216,17 +197,7 @@ class _ReportSheetState extends State<_ReportSheet> {
       });
 
       if (widget.parentContext.mounted) {
-        ScaffoldMessenger.of(widget.parentContext).showSnackBar(
-          SnackBar(
-            content: const Text('Report submitted — thank you'),
-            backgroundColor: AppColors.fernGreen,
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
+        showSuccessSnack(widget.parentContext, 'Report submitted — thank you');
       }
     } catch (e) {
       final isDuplicate =

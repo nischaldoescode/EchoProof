@@ -25,6 +25,7 @@ class EchoModel {
       challengeCount:   (row['challenge_count'] as num?)?.toInt() ?? 0,
       timeAgo:          Formatters.timeAgo(created),
       proofCount:       (row['proof_count'] as num?)?.toInt() ?? 0,
+      userIsPro: user['is_pro'] as bool? ?? false,
     );
   }
 

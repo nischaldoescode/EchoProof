@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../app/theme/colors.dart';
 
-enum BadgeType { none, verified, verifiedPro }
+enum BadgeType { none, verified, pro, verifiedPro }
 
 BadgeType resolveBadgeType({
   required bool isVerified,
@@ -9,6 +9,7 @@ BadgeType resolveBadgeType({
 }) {
   if (isVerified && isPro) return BadgeType.verifiedPro;
   if (isVerified) return BadgeType.verified;
+  if (isPro) return BadgeType.pro;
   return BadgeType.none;
 }
 
@@ -106,7 +107,23 @@ class _AnimatedBadgeDotState extends State<_AnimatedBadgeDot>
 
   @override
   Widget build(BuildContext context) {
-    final isProVerified = widget.type == BadgeType.verifiedPro;
+    final Color badgeColor;
+    final IconData badgeIcon;
+    switch (widget.type) {
+      case BadgeType.verifiedPro:
+        badgeColor = const Color(0xFF1DA1F2); // blue
+        badgeIcon = Icons.star_rounded;
+      case BadgeType.pro:
+        badgeColor = const Color(0xFFFFB300); // amber gold
+        badgeIcon = Icons.star_rounded;
+      case BadgeType.verified:
+        badgeColor = AppColors.fernGreen;
+        badgeIcon = Icons.verified_rounded;
+      case BadgeType.none:
+        badgeColor = Colors.transparent;
+        badgeIcon = Icons.circle;
+    }
+
     return ScaleTransition(
       scale: _scale,
       child: Container(
@@ -114,14 +131,10 @@ class _AnimatedBadgeDotState extends State<_AnimatedBadgeDot>
         height: 14,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: isProVerified ? const Color(0xFF1DA1F2) : AppColors.fernGreen,
+          color: badgeColor,
           border: Border.all(color: Colors.white, width: 1.5),
         ),
-        child: Icon(
-          isProVerified ? Icons.star_rounded : Icons.verified_rounded,
-          size: 8,
-          color: Colors.white,
-        ),
+        child: Icon(badgeIcon, size: 8, color: Colors.white),
       ),
     );
   }
