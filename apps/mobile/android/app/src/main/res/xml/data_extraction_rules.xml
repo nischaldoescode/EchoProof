@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    data_extraction_rules.xml
+    Controls what data Android Auto Backup and Cloud Backup can copy.
+    For a social/trust app like Echoproof we exclude everything sensitive.
+    Auth tokens, session data, and Hive boxes must never be backed up —
+    they contain JWTs and user state that should not transfer to other devices.
+
+    Referenced in AndroidManifest.xml via:
+      android:dataExtractionRules="@xml/data_extraction_rules"
+
+    This file applies to Android 12+ (API 31+).
+    For older Android versions, backup_rules.xml handles this.
+-->
+<data-extraction-rules>
+
+    <cloud-backup>
+        <!-- Disable cloud backup entirely for security -->
+        <!-- Auth sessions, Supabase tokens, Hive DB should never be synced -->
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+
+    <device-transfer>
+        <!-- Disable device-to-device transfer too -->
+        <!-- User must log in fresh on a new device -->
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </device-transfer>
+
+</data-extraction-rules>

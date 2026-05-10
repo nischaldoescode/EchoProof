@@ -1,0 +1,10 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.echoproof.app",
+    "sha256_cert_fingerprints": [
+      "FD:09:EB:B0:39:48:DB:84:7E:3A:72:00:10:C0:F9:5B:FA:42:66:0F:61:3F:EE:B4:B4:FA:09:DF:D5:39:45:A9"
+    ]
+  }
+}]

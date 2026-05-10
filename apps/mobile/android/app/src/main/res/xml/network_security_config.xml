@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    network_security_config.xml
+    Defines which network connections the app trusts.
+
+    Referenced in AndroidManifest.xml via adding to <application>: android:networkSecurityConfig="@xml/network_security_config"
+
+    IMPORTANT: In production (release builds) you should remove or
+    restrict the debug-overrides section. The cleartext domains listed
+    here are only for local Supabase development (192.168.x.x).
+    In production, all traffic goes to supabase.co via HTTPS.
+-->
+<network-security-config>
+
+    <!--
+        Production: only trust system CA certificates.
+        All connections to supabase.co, lh3.googleusercontent.com,
+        firebase, admob, etc. use HTTPS and system CAs.
+    -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!--
+        Development only: allow cleartext HTTP to local Supabase.
+        Local Supabase runs on http:// at your machine's LAN IP.
+        This block is ignored in release builds when you set android:debuggable="false" (which Gradle does automatically
+        for release builds).
+
+        192.168.x.x = your local machine running supabase start
+        10.0.2.2    = Android emulator loopback to host machine
+        127.0.0.1   = localhost (emulator)
+        localhost   = same as above
+    -->
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="system" />
+            <!-- Allow user-installed certs in debug for Charles/mitmproxy -->
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
+
+    <!-- Allow cleartext to local dev Supabase -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">192.168.1.2</domain>
+        <domain includeSubdomains="true">192.168.1.13</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <!-- Supabase Studio local -->
+        <domain includeSubdomains="true">kong</domain>
+    </domain-config>
+
+    <!--
+        Explicitly trust HTTPS for production domains.
+        Not strictly required since base-config handles this,
+        but listed here for documentation clarity.
+    -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">supabase.co</domain>
+        <domain includeSubdomains="true">supabase.com</domain>
+        <domain includeSubdomains="true">googleapis.com</domain>
+        <domain includeSubdomains="true">google.com</domain>
+        <domain includeSubdomains="true">firebase.google.com</domain>
+        <domain includeSubdomains="true">googleusercontent.com</domain>
+        <domain includeSubdomains="true">admob.com</domain>
+        <domain includeSubdomains="true">doubleclick.net</domain>
+        <domain includeSubdomains="true">echoproof.online</domain>
+    </domain-config>
+
+</network-security-config>

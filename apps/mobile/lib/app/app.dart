@@ -1,0 +1,114 @@
+// root app widget — handles back button behavior
+// double-tap back to exit only from root screens
+// prevents accidental back to login when logged in
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import 'theme/app_theme.dart';
+import '../shared/widgets/connectivity_wrapper.dart';
+import '../features/onboarding/presentation/services/onboarding_service.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import '../../../../core/utils/snack.dart';
+import 'package:flutter_quill/flutter_quill.dart';
+
+final GlobalKey<ScaffoldMessengerState> appScaffoldMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
+
+class EchoProofApp extends StatelessWidget {
+  const EchoProofApp({super.key, required this.router});
+  final GoRouter router;
+
+  static const _localeMap = {
+    'en': Locale('en'),
+    'hi': Locale('hi'),
+    'ta': Locale('ta'),
+    'te': Locale('te'),
+    'kn': Locale('kn'),
+    'mr': Locale('mr'),
+    'bn': Locale('bn'),
+    'es': Locale('es'),
+    'fr': Locale('fr'),
+    'de': Locale('de'),
+    'ar': Locale('ar'),
+    'zh': Locale('zh'),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final langCode = context.watch<OnboardingService>().language;
+    final locale = _localeMap[langCode] ?? const Locale('en');
+
+    // Do NOT wrap MaterialApp.router in AnimatedSwitcher — it creates
+    // duplicate GlobalKeys during the cross-fade because GoRouter uses
+    // GlobalObjectKey internally. Instead let MaterialApp.router react
+    // to locale changes directly. The locale prop itself is reactive since
+    // build() is called whenever OnboardingService notifies.
+    return MaterialApp.router(
+      title: 'Echoproof',
+      debugShowCheckedModeBanner: false,
+      theme: buildAppTheme(),
+      locale: locale,
+      supportedLocales: _localeMap.values.toList(),
+      scaffoldMessengerKey: appScaffoldMessengerKey,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        FlutterQuillLocalizations.delegate,
+      ],
+      routerConfig: router,
+      builder: (context, child) => ConnectivityWrapper(
+        child: child ?? const SizedBox.shrink(),
+      ),
+    );
+  }
+}
+
+// wrap root screens with this to handle double-tap back to exit
+class ExitConfirmWrapper extends StatefulWidget {
+  const ExitConfirmWrapper({
+    super.key,
+    required this.child,
+    this.enabled = true,
+  });
+
+  final Widget child;
+  final bool enabled;
+
+  @override
+  State<ExitConfirmWrapper> createState() => _ExitConfirmWrapperState();
+}
+
+class _ExitConfirmWrapperState extends State<ExitConfirmWrapper> {
+  DateTime? _lastBackPress;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: !widget.enabled,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop || !widget.enabled) return;
+
+        final now = DateTime.now();
+        final isDoubleTap = _lastBackPress != null &&
+            now.difference(_lastBackPress!) < const Duration(seconds: 2);
+
+        if (isDoubleTap) {
+          // exit the app
+          await SystemNavigator.pop();
+        } else {
+          _lastBackPress = now;
+          if (mounted) {
+            showInfoSnack(
+              context,
+              'Press back again to exit',
+            );
+          }
+        }
+      },
+      child: widget.child,
+    );
+  }
+}

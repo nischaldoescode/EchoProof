@@ -1,0 +1,227 @@
+// create echo service
+// manages form state and echo submission
+// replaces: create_echo_provider.dart (riverpod version)
+
+import 'package:flutter/foundation.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../domain/entities/echo_entity.dart';
+import '../../../../core/utils/logger.dart';
+import 'dart:io';
+import '../../../../core/utils/sanitizer.dart';
+
+const _kDraftKey = 'echo_draft';
+
+class CreateEchoService extends ChangeNotifier {
+  String _title = '';
+  String _content = '';
+  EchoCategory? _category;
+  bool _requiresVerification = true;
+  bool _isSubmitting = false;
+  bool _success = false;
+  String? _error;
+  int _echoesCreatedThisSession = 0;
+
+  String get title => _title;
+  String get content => _content;
+  EchoCategory? get category => _category;
+  bool get requiresVerification => _requiresVerification;
+  bool get isSubmitting => _isSubmitting;
+  bool get success => _success;
+  String? get error => _error;
+  int get echoesCreatedThisSession => _echoesCreatedThisSession;
+  bool _isPro = false;
+
+  // Call this from the screen after subscription status is known.
+  void setProStatus(bool isPro) {
+    _isPro = isPro;
+    notifyListeners();
+  }
+
+  int get contentMaxLength => _isPro ? 5000 : 308;
+  int get titleMaxLength => _isPro ? 200 : 120;
+
+  bool get canSubmit =>
+      _title.trim().isNotEmpty &&
+      _content.trim().isNotEmpty &&
+      _category != null &&
+      !_isSubmitting &&
+      _content.length <= contentMaxLength &&
+      _title.length <= titleMaxLength;
+
+  final List<String> _mediaUrls = [];
+  List<String> get mediaUrls => List.unmodifiable(_mediaUrls);
+
+  // Local file paths for preview before upload.
+  final List<String> _localPaths = [];
+  List<String> get localMediaPaths => List.unmodifiable(_localPaths);
+
+  Future<void> addMedia(String localPath, bool isVideo) async {
+    // upload to supabase storage
+    try {
+      final client = Supabase.instance.client;
+      final userId = client.auth.currentUser?.id;
+      if (userId == null) return;
+
+      final ext = localPath.split('.').last.toLowerCase();
+      // Rename to UUID to strip original filename metadata
+      final uuid = DateTime.now().millisecondsSinceEpoch.toRadixString(16);
+      final name = '$uuid.$ext';
+      final path = '$userId/$name';
+      final file = File(localPath);
+
+      await client.storage.from('media').uploadBinary(
+            path,
+            await file.readAsBytes(),
+            fileOptions: FileOptions(
+              contentType: isVideo ? 'video/mp4' : 'image/jpeg',
+              upsert: false,
+            ),
+          );
+
+      final url = client.storage.from('media').getPublicUrl(path);
+      _mediaUrls.add(url);
+      notifyListeners();
+
+      AppLogger.info('echo: media uploaded $url');
+    } catch (e) {
+      AppLogger.error('echo: media upload failed $e');
+    }
+  }
+
+  void addLocalMedia(String path) {
+    if (_localPaths.length < 2) {
+      _localPaths.add(path);
+      notifyListeners();
+    }
+  }
+
+  void removeLocalMedia(int index) {
+    if (index < _localPaths.length) {
+      _localPaths.removeAt(index);
+      notifyListeners();
+    }
+  }
+
+  void removeMedia(int index) {
+    if (index < _mediaUrls.length) {
+      _mediaUrls.removeAt(index);
+    }
+    if (index < _localPaths.length) {
+      _localPaths.removeAt(index);
+    }
+    notifyListeners();
+  }
+
+  CreateEchoService() {
+    _restoreDraft();
+  }
+
+  void setTitle(String v) {
+    _title = v;
+    _saveDraft();
+    notifyListeners();
+  }
+
+  void setContent(String v) {
+    _content = v;
+    _saveDraft();
+    notifyListeners();
+  }
+
+  bool _isVideoPath(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.mp4') || lower.endsWith('.mov');
+  }
+
+  void setCategory(EchoCategory c) {
+    _category = c;
+    notifyListeners();
+  }
+
+  void toggleVerification() {
+    _requiresVerification = !_requiresVerification;
+    notifyListeners();
+  }
+
+  void resetSuccess() {
+    reset();
+    notifyListeners();
+  }
+
+  void reset() {
+    _title = '';
+    _content = '';
+    _category = null;
+    _mediaUrls.clear();
+    _localPaths.clear();
+    _error = null;
+    _isSubmitting = false;
+    _success = false;
+
+    notifyListeners();
+  }
+
+  Future<void> submit() async {
+    if (!canSubmit) return;
+
+    _isSubmitting = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final client = Supabase.instance.client;
+      final userId = client.auth.currentUser?.id;
+      if (userId == null) throw Exception('not authenticated');
+
+      for (final path in List<String>.from(_localPaths)) {
+        if (_mediaUrls.length >= _localPaths.length) break;
+        await addMedia(path, _isVideoPath(path));
+      }
+
+      await client.from('echoes').insert({
+        'user_id': userId,
+        'title': Sanitizer.text(_title),
+        'content': Sanitizer.text(_content),
+        'category': _category!.dbValue,
+        'verification_required': _requiresVerification,
+        'status': 'pending_verification',
+        'media_urls': _mediaUrls,
+      });
+
+      _echoesCreatedThisSession++;
+
+      await Hive.box('app_settings').delete(_kDraftKey);
+
+      _title = '';
+      _content = '';
+      _mediaUrls.clear();
+      _localPaths.clear();
+      _category = null;
+      _success = true;
+
+      AppLogger.info('echo: created successfully');
+    } catch (e) {
+      _error = 'failed to create echo, try again';
+      AppLogger.error('echo: create failed', e);
+    }
+
+    _isSubmitting = false;
+    notifyListeners();
+  }
+
+  void _saveDraft() {
+    Hive.box('app_settings').put(_kDraftKey, {
+      'title': _title,
+      'content': _content,
+    });
+  }
+
+  void _restoreDraft() {
+    final draft = Hive.box('app_settings').get(_kDraftKey) as Map?;
+    if (draft != null) {
+      _title = draft['title'] as String? ?? '';
+      _content = draft['content'] as String? ?? '';
+    }
+  }
+}

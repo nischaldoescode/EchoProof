@@ -1,0 +1,128 @@
+name: echoproof
+description: trust-layer social platform — verified opinions, community validation
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.1.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  video_player: ^2.11.1
+  flutter_mentions: ^2.0.1
+  flutter_portal: ^0.4.0
+  solana: ^0.32.0+1
+  bs58: ^1.0.2
+  didit_sdk: ^3.6.0
+  path_provider: ^2.1.5
+  in_app_purchase_android: ^0.4.0+10
+  in_app_purchase_storekit: ^0.4.8+1
+  flutter_svg: ^2.2.4
+  http: ^1.6.0
+  # supabase
+  supabase_flutter: ^2.12.4
+  cupertino_icons: ^1.0.9
+  open_filex: ^4.7.0
+
+  # networking
+  dio: ^5.9.2
+
+  # local storage
+  hive_flutter: ^1.1.0
+  flutter_secure_storage: ^10.0.0
+
+  google_mobile_ads: ^8.0.0
+  in_app_purchase: ^3.2.3
+  app_links: ^7.0.0
+  # animations
+  lottie: ^3.3.3
+  shimmer: ^3.0.0
+
+  # navigation
+  go_router: ^17.2.2
+
+  # ui utilities
+  cached_network_image: ^3.3.1
+  image_picker: ^1.2.1
+  file_picker: ^11.0.2
+  url_launcher: ^6.3.2
+
+  # utilities
+  uuid: ^4.5.3
+  intl: ^0.20.2
+  equatable: ^2.0.8
+  dartz: ^0.10.1
+  freezed_annotation: ^3.1.0
+  json_annotation: ^4.11.0
+  crypto: ^3.0.7
+  provider: ^6.1.5+1
+  google_fonts: ^8.0.2
+  share_plus: ^12.0.2
+
+  flutter_quill: ^11.5.0
+  tflite_flutter: ^0.12.1
+
+  visibility_detector: ^0.4.0+2
+  # permissions
+  permission_handler: ^12.0.1
+  package_info_plus: 9.0.1
+  # notifications
+  flutter_local_notifications: ^21.0.0
+  firebase_core: ^4.7.0
+  firebase_messaging: ^16.2.0
+  connectivity_plus: ^7.1.1
+  in_app_review: ^2.0.11
+
+  #hyper snackbar package
+  hyper_snackbar: ^0.11.0
+  firebase_analytics: ^12.3.0
+  # google sign in native
+  google_sign_in: ^6.2.1
+  pdf: ^3.12.0
+  printing: ^5.14.3
+  flutter_launcher_icons: ^0.13.1
+  # pin/otp input
+  pin_code_fields: ^9.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  
+  in_app_purchase_platform_interface: ^1.4.0
+  flutter_lints: ^6.0.0
+  build_runner: ^2.14.1
+  # riverpod_generator: ^4.0.0+1
+  freezed: ^3.2.5
+  json_serializable: ^6.13.1
+  mockito: ^5.6.4
+  mocktail: ^1.0.5
+  flutter_native_splash: ^2.4.7
+  flutter_windowmanager_plus: ^1.0.1
+  integration_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/icons/google.svg
+
+flutter_native_splash:
+  color: "#E8F5EE"
+  image: assets/images/logo.png
+  android: true
+  ios: true
+  android_12:
+    image: assets/images/logo.png
+    color: "#E8F5EE"
+    icon_background_color: "#E8F5EE"
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/images/logo.png
