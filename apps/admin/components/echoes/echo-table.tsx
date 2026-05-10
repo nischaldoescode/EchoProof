@@ -46,10 +46,11 @@ export function EchoTable({ echoes }: EchoTableProps) {
         ))}
       </div>
 
-      <div className="flex gap-4">
+      <div className="flex flex-col gap-4 xl:flex-row">
         {/* table */}
-        <div className="flex-1 bg-white rounded-xl border border-border-subtle overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="flex-1 overflow-hidden rounded-xl border border-border-subtle bg-white">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-sm">
             <thead>
               <tr className="border-b border-border-subtle">
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-400">User</th>
@@ -60,13 +61,17 @@ export function EchoTable({ echoes }: EchoTableProps) {
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle">
-              {filtered.map(echo => (
+              {filtered.map((echo, index) => (
                 <tr
                   key={echo.id}
                   onClick={() => setSelected(selected?.id === echo.id ? null : echo)}
                   className={`cursor-pointer hover:bg-soft-sand transition-colors ${
                     selected?.id === echo.id ? "bg-soft-sand" : ""
                   }`}
+                  style={{
+                    animation: "echoRowIn 180ms ease-out both",
+                    animationDelay: `${Math.min(index * 18, 180)}ms`,
+                  }}
                 >
                   <td className="px-4 py-3">
                     <p className="font-medium text-charcoal text-xs">
@@ -113,15 +118,29 @@ export function EchoTable({ echoes }: EchoTableProps) {
               )}
             </tbody>
           </table>
+          </div>
         </div>
 
         {/* detail panel */}
         {selected && (
-          <div className="w-80 flex-shrink-0">
+          <div className="w-full flex-shrink-0 xl:w-80">
             <ModerationActions echo={selected} onClose={() => setSelected(null)} />
           </div>
         )}
       </div>
+
+      <style jsx global>{`
+        @keyframes echoRowIn {
+          from {
+            opacity: 0;
+            transform: translateY(4px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </div>
   );
 }

@@ -2,7 +2,6 @@
 // shows trending signals by country or globally
 // uses plain StatefulWidget with supabase queries — no riverpod
 
-import 'package:echoproof/core/utils/snack.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
@@ -10,8 +9,8 @@ import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../shared/widgets/app_bottom_nav.dart';
-import 'package:http/http.dart' as http;
-
+import '../../../../app/app.dart';
+import '../../../../core/utils/snack.dart';
 class TrendingSignal {
   const TrendingSignal({
     required this.signal,
@@ -77,20 +76,22 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   }
 
   Future<void> _detectCountryAndLoad() async {
-    try {
-      // Use ipapi.co (free, no key needed) to detect user's country.
-      final res = await http.get(Uri.parse('https://ipapi.co/country/'));
-      if (res.statusCode == 200) {
-        final code = res.body.trim().toUpperCase();
-        // Only set if it's one of our supported countries.
-        final supported =
-            _countries.map((c) => c.code).whereType<String>().toSet();
-        if (supported.contains(code)) {
-          setState(() => _selectedCountry = code);
-        }
-      }
-    } catch (_) {}
-    _loadSignals();
+    final code = _supportedCountryCode(
+      WidgetsBinding.instance.platformDispatcher.locale.countryCode,
+    );
+    if (code != null) {
+      setState(() => _selectedCountry = code);
+    }
+
+    await _loadSignals();
+  }
+
+  String? _supportedCountryCode(String? code) {
+    if (code == null || code.isEmpty) return null;
+
+    final normalized = code.trim().toUpperCase();
+    final supported = _countries.map((c) => c.code).whereType<String>().toSet();
+    return supported.contains(normalized) ? normalized : null;
   }
 
   @override
@@ -150,7 +151,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   Widget build(BuildContext context) {
     return SwipeNavigationWrapper(
         currentLocation: '/discover',
-        child: Scaffold(
+        child: ExitConfirmWrapper(
+            child: Scaffold(
           backgroundColor: AppColors.white,
           appBar: AppBar(
             title: Text('Discover', style: AppTypography.textTheme.titleLarge),
@@ -293,7 +295,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
               ),
             ],
           ),
-        ));
+        )));
   }
 
   void _openSignalFeed(String signal) {

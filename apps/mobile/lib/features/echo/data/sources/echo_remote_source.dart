@@ -10,7 +10,8 @@ class EchoRemoteSource {
   const EchoRemoteSource(this._client);
   final SupabaseClient _client;
 
-  Future<List<EchoEntity>> fetchFeed({required int offset, required int limit}) async {
+  Future<List<EchoEntity>> fetchFeed(
+      {required int offset, required int limit}) async {
     AppLogger.debug('remote: fetch feed offset=$offset limit=$limit');
 
     final response = await _client
@@ -19,7 +20,7 @@ class EchoRemoteSource {
           id, title, content, category, status,
           trust_score, confidence_score, controversy_score,
           support_count, challenge_count, created_at,
-          users_public!inner(username, avatar_url, trust_tier, is_identity_verified)
+          users_public!inner(username, avatar_url, trust_tier, is_pro)
         ''')
         .not('status', 'in', '("hidden","rejected")')
         .order('trust_score', ascending: false)
@@ -32,16 +33,12 @@ class EchoRemoteSource {
   }
 
   Future<EchoEntity> fetchById(String id) async {
-    final row = await _client
-        .from('echoes')
-        .select('''
+    final row = await _client.from('echoes').select('''
           id, title, content, category, status,
           trust_score, confidence_score, controversy_score,
           support_count, challenge_count, created_at,
-          users_public!inner(username, avatar_url, trust_tier, is_identity_verified)
-        ''')
-        .eq('id', id)
-        .single();
+          users_public!inner(username, avatar_url, trust_tier, is_pro)
+        ''').eq('id', id).single();
 
     final user = row['users_public'] as Map<String, dynamic>;
     return EchoModel.fromRow(row, user);
@@ -57,17 +54,17 @@ class EchoRemoteSource {
     if (userId == null) throw Exception('not authenticated');
 
     final inserted = await _client.from('echoes').insert({
-      'user_id':              userId,
-      'title':                title.trim(),
-      'content':              content.trim(),
-      'category':             category.name,
+      'user_id': userId,
+      'title': title.trim(),
+      'content': content.trim(),
+      'category': category.name,
       'verification_required': verificationRequired,
-      'status':               'pending_verification',
+      'status': 'pending_verification',
     }).select('''
       id, title, content, category, status,
       trust_score, confidence_score, controversy_score,
       support_count, challenge_count, created_at,
-      users_public!inner(username, avatar_url, trust_tier, is_identity_verified)
+      users_public!inner(username, avatar_url, trust_tier, is_pro)
     ''').single();
 
     final user = inserted['users_public'] as Map<String, dynamic>;
@@ -81,7 +78,7 @@ class EchoRemoteSource {
     await _client.from('echo_interactions').upsert({
       'echo_id': echoId,
       'user_id': userId,
-      'type':    type,
+      'type': type,
     }, onConflict: 'echo_id,user_id');
   }
 
@@ -94,9 +91,9 @@ class EchoRemoteSource {
     if (userId == null) throw Exception('not authenticated');
 
     await _client.from('echo_reports').insert({
-      'echo_id':     echoId,
+      'echo_id': echoId,
       'reporter_id': userId,
-      'reason':      reason,
+      'reason': reason,
       'description': description,
     });
   }

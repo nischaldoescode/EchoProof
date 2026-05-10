@@ -49,7 +49,7 @@ export default function DeleteAccountPage() {
     script.onload = () => {
       if (window.turnstile && turnstileRef.current) {
         window.turnstile.render(turnstileRef.current, {
-          sitekey: process.env.TURNSTILE_SITE_KEY!,
+          sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!,
           callback: (token: string) => {
             tokenRef.current = token;
           },

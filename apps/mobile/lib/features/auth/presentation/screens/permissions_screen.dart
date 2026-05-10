@@ -13,6 +13,7 @@ import '../../../../core/services/push_notification_service.dart';
 import '../../../auth/presentation/services/auth_service.dart';
 import '../../../onboarding/presentation/services/onboarding_service.dart';
 import 'package:provider/provider.dart';
+import 'permission_sheet.dart';
 
 class PermissionsScreen extends StatefulWidget {
   const PermissionsScreen({super.key});
@@ -71,8 +72,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
   void _updateAllGranted() {
     _allGranted = _permissions.every((p) {
       final status = _statuses[p.permission];
-      return status == PermissionStatus.granted ||
-          status == PermissionStatus.limited;
+      return status != null && PermissionsSheet.isAllowed(status);
     });
   }
 
@@ -84,6 +84,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
     _updateAllGranted();
     if (mounted) setState(() {});
     await PushNotificationService.instance.initialize();
+    if (_allGranted) await PermissionsSheet.markPromptSeen();
   }
 
   Future<void> _requestSingle(Permission p) async {
@@ -94,10 +95,14 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
       _statuses[p] = await p.request();
       _updateAllGranted();
       if (mounted) setState(() {});
+      if (_allGranted) await PermissionsSheet.markPromptSeen();
     }
   }
 
-  void _proceed(BuildContext context) {
+  Future<void> _proceed(BuildContext context) async {
+    await PermissionsSheet.markPromptSeen();
+    if (!context.mounted) return;
+
     final auth = context.read<AuthService>();
     // If user already has a username (returning user who went through permissions again),
     // mark done and go to feed.
@@ -149,8 +154,8 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
               // permission cards
               ..._permissions.map((info) {
                 final status = _statuses[info.permission];
-                final granted = status == PermissionStatus.granted ||
-                    status == PermissionStatus.limited;
+                final granted =
+                    status != null && PermissionsSheet.isAllowed(status);
                 final denied = status == PermissionStatus.permanentlyDenied;
 
                 return _PermissionCard(
@@ -171,7 +176,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                       ? () async {
                           await PushNotificationService.instance.initialize();
                           if (!context.mounted) return;
-                          _proceed(context);
+                          await _proceed(context);
                         }
                       : _requestAll,
                   style: ElevatedButton.styleFrom(

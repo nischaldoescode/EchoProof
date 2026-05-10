@@ -45,9 +45,19 @@ class InteractionButtons extends StatelessWidget {
           ),
           const Spacer(),
           GestureDetector(
-            onTap: () => context.push(
-              '/echo/${echo.id}/replies?author=${echo.username}&content=${Uri.encodeComponent(echo.content)}',
-            ),
+            onTap: () {
+              final avatarParam = echo.userAvatarUrl == null
+                  ? ''
+                  : '&avatar=${Uri.encodeComponent(echo.userAvatarUrl!)}';
+
+              context.push(
+                '/echo/${echo.id}/replies'
+                '?author=${Uri.encodeComponent(echo.username)}'
+                '&content=${Uri.encodeComponent(echo.content)}'
+                '&authorId=${Uri.encodeComponent(echo.userId)}'
+                '$avatarParam',
+              );
+            },
             child: Row(
               children: [
                 const Icon(
@@ -78,6 +88,12 @@ class InteractionButtons extends StatelessWidget {
   }
 
   Future<void> _interact(BuildContext context, String type) async {
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    if (echo.userId.isNotEmpty && echo.userId == currentUserId) {
+      showInfoSnack(context, 'You cannot support or challenge your own echo.');
+      return;
+    }
+
     HapticFeedback.selectionClick();
 
     final feed = context.read<EchoFeedService>();

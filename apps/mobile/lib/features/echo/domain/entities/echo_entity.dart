@@ -17,7 +17,6 @@ enum EchoCategory {
   education,
   other;
 
-  /// display name shown in ui chips and cards
   String get displayName => switch (this) {
         EchoCategory.tech => 'Tech',
         EchoCategory.finance => 'Finance',
@@ -28,6 +27,11 @@ enum EchoCategory {
         EchoCategory.gaming => 'Gaming',
         EchoCategory.education => 'Education',
         EchoCategory.other => 'Other',
+      };
+
+  String get dbValue => switch (this) {
+        EchoCategory.socialIssues => 'social_issues',
+        _ => name,
       };
 
   /// maps db string value to enum
@@ -102,6 +106,8 @@ class EchoEntity extends Equatable {
     this.requiresVerification = true,
     this.version = 1,
     this.replyCount = 0,
+    this.mediaUrls = const [],
+    this.userId = '',
   });
 
   final String id;
@@ -114,8 +120,10 @@ class EchoEntity extends Equatable {
   final EchoCategory category;
   final EchoStatus status;
   final bool userIsPro;
+
   /// 0.0 to 100.0 — percentage of weighted support
   final double confidenceScore;
+  final List<String> mediaUrls;
 
   /// net weighted score = support_weight - challenge_weight
   final int trustScore;
@@ -127,6 +135,7 @@ class EchoEntity extends Equatable {
   final int supportCount;
   final int challengeCount;
   final int replyCount;
+  final String userId;
 
   /// pre-formatted relative time string, e.g. "2h ago"
   final String timeAgo;
@@ -155,6 +164,9 @@ class EchoEntity extends Equatable {
       requiresVerification: (json['requires_verification'] as bool?) ?? true,
       version: (json['version'] as num?)?.toInt() ?? 1,
       userIsPro: (json['user_is_pro'] as bool?) ?? false,
+      mediaUrls: (json['media_urls'] as List?)?.cast<String>() ?? const [],
+      replyCount: (json['reply_count'] as int?) ?? 0,
+      userId: json['user_id'] as String? ?? '',
     );
   }
 
@@ -179,6 +191,8 @@ class EchoEntity extends Equatable {
     int? version,
     int? replyCount,
     bool? userIsPro,
+    List<String>? mediaUrls,
+    String? userId,
   }) {
     return EchoEntity(
       id: id ?? this.id,
@@ -201,6 +215,8 @@ class EchoEntity extends Equatable {
       requiresVerification: requiresVerification ?? this.requiresVerification,
       version: version ?? this.version,
       userIsPro: userIsPro ?? this.userIsPro,
+      mediaUrls: mediaUrls ?? this.mediaUrls,
+      userId: userId ?? this.userId,
     );
   }
 
@@ -224,5 +240,10 @@ class EchoEntity extends Equatable {
         proofCount,
         requiresVerification,
         version,
+        replyCount,
+        userId,
+        replyCount,
+        userIsPro,
+        mediaUrls,
       ];
 }

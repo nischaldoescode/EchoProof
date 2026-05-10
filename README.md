@@ -75,6 +75,71 @@ Hugging Face — free AI spam detection
 DiceBear — avatar generation (called once per user, cached in storage)
 Solana — proof staking, reputation anchoring, verified echo records
 
+
+## Feed Ranking Algorithm
+
+Echoproof uses a six-layer blended ranking pipeline designed to balance quality,
+fairness, and discovery.
+
+### Layers (in order)
+
+1. **Candidate Pull** — All eligible echoes from the last 30 days
+2. **Base Score** — Tier-agnostic quality signal (40% trust + 30% affinity + 20% recency + 10% confidence)
+3. **Engagement Decay** — Posts older than 24h decay to prevent stale viral content dominating
+4. **Tier Soft Boost** — Pro/Verified authors get max 1.25x multiplier (not a head start, better shoes)
+5. **Creator Diversity** — Second post from same creator gets 30% penalty; third+ gets 60%
+6. **Exploration Injection** — 10% of each page is random, enabling discovery of new creators
+
+### Fairness Constraints
+
+- Free user posts are never excluded by design
+- Pro posts capped at 40% of any given page
+- A free user with better content always beats a Pro user with worse content
+
+### Trust Tiers and Voting Weight
+
+| Tier       | Vote Weight | Feed Boost |
+|------------|-------------|------------|
+| Unverified | 1x          | None       |
+| Low        | 2x          | None       |
+| Medium     | 3x          | 1.05x      |
+| High       | 4x          | 1.10x      |
+| Elite      | 5x          | 1.10x      |
+| Pro        | —           | +1.15x     |
+| Pro+High   | —           | +1.25x     |
+
+## Content Moderation Pipeline
+
+All user-generated content goes through a three-stage pipeline:
+
+1. **Client pre-check** (TFLite heuristics) — runs locally before submission, warns user
+2. **Server moderation** (SightEngine rule-based + ML) — text checked on every echo creation
+3. **Media AI detection** (SightEngine genai) — images and videos checked for AI-generated content
+
+Content that fails moderation is hidden automatically and the user receives an in-app
+and push notification explaining why.
+
+## Identity Verification
+
+Identity verification via Didit includes:
+
+- Document must be at least 2 months old (server-enforced via webhook)
+- Max 2 attempts per account per 30-day window
+- Max 3 attempts per IP per 30-day window (prevents account farming)
+- 30-day cooldown after rejection
+
+## Security Model
+
+The client-side security (root detection, certificate pinning) is a deterrent layer.
+The real security is:
+
+1. **Supabase RLS** — every table has row-level security; clients cannot read/write
+   data they don't own
+2. **Edge functions** — all sensitive operations (purchase verification, identity
+   verification, content moderation) run server-side with service role
+3. **No secrets in app** — service role key never ships in the Flutter app
+
+
 ## Trust scoring
 
 Every echo has four computed scores updated by the trust engine:
@@ -120,4 +185,4 @@ In the UI this appears as "Bond this truth" on verified echoes and
 > I myself Don't advise to run this app locally it will be a piss of kinda headache for a developer. So just enjoy what i am building.
 
 Regards,
-I code therefore, I am.
+Nischal

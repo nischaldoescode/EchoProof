@@ -23,6 +23,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../services/create_echo_service.dart';
 import '../../../../shared/widgets/birthday_celebration.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../../core/constants/storage_keys.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
@@ -93,8 +94,14 @@ class _FeedScreenState extends State<FeedScreen> {
       await Hive.openBox('app_settings');
     }
     final box = Hive.box('app_settings');
-    final shown = box.get('permissions_shown', defaultValue: false) as bool;
+    final shown = box.get(StorageKeys.permissionsPromptShown,
+        defaultValue: false) as bool;
     if (shown) return;
+
+    if (await PermissionsSheet.corePermissionsGranted()) {
+      await PermissionsSheet.markPromptSeen();
+      return;
+    }
 
     await Future.delayed(const Duration(milliseconds: 800));
     if (!mounted) return;
@@ -110,7 +117,7 @@ class _FeedScreenState extends State<FeedScreen> {
       builder: (_) => const PermissionsSheet(),
     );
 
-    await box.put('permissions_shown', true);
+    await PermissionsSheet.markPromptSeen();
   }
 
   @override
@@ -154,11 +161,11 @@ class _FeedScreenState extends State<FeedScreen> {
         child: ExitConfirmWrapper(
           child: Scaffold(
             backgroundColor: AppColors.white,
-appBar: _FeedAppBar(
-  filterActive: _filter.isActive,
-  onFilterTap: _openFilter,
-  onRefreshTap: () => context.read<EchoFeedService>().refresh(),
-),
+            appBar: _FeedAppBar(
+              filterActive: _filter.isActive,
+              onFilterTap: _openFilter,
+              onRefreshTap: () => context.read<EchoFeedService>().refresh(),
+            ),
             floatingActionButton: const _CreateFab(),
             bottomNavigationBar: const AppBottomNav(currentLocation: '/feed'),
             body: _buildBody(feed, isTablet),
@@ -235,7 +242,8 @@ appBar: _FeedAppBar(
 
                 return _AnimatedCard(
                   key: ValueKey(filtered[echoIndex].id),
-                  echo: filtered[echoIndex],
+                  echoId: filtered[echoIndex].id,
+                  initialEcho: filtered[echoIndex],
                   index: echoIndex,
                 );
               },
@@ -310,8 +318,15 @@ class _ActiveFilterBar extends StatelessWidget {
 }
 
 class _AnimatedCard extends StatefulWidget {
-  const _AnimatedCard({super.key, required this.echo, required this.index});
-  final EchoEntity echo;
+  const _AnimatedCard({
+    super.key,
+    required this.echoId,
+    required this.initialEcho,
+    required this.index,
+  });
+
+  final String echoId;
+  final EchoEntity initialEcho;
   final int index;
 
   @override
@@ -366,9 +381,20 @@ class _AnimatedCardState extends State<_AnimatedCard>
           child: child,
         ),
       ),
-      child: EchoCard(
-        echo: widget.echo,
-        onTap: () => context.push('/feed/echo/${widget.echo.id}'),
+      child: Selector<EchoFeedService, EchoEntity>(
+        selector: (_, feed) => feed.echoes.firstWhere(
+          (e) => e.id == widget.echoId,
+          orElse: () => widget.initialEcho,
+        ),
+        shouldRebuild: (previous, next) => previous != next,
+        builder: (context, echo, _) {
+          return RepaintBoundary(
+            child: EchoCard(
+              echo: echo,
+              onTap: () => context.push('/feed/echo/${echo.id}'),
+            ),
+          );
+        },
       ),
     );
   }

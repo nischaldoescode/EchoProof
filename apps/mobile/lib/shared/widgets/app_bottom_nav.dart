@@ -44,7 +44,8 @@ class AppBottomNav extends StatelessWidget {
     if (location.startsWith('/discover')) return '/discover';
     if (location.startsWith('/search')) return '/discover';
     if (location.startsWith('/notifications')) return '/notifications';
-    if (location.startsWith('/profile')) return '/profile';
+    if (location == '/profile') return '/profile';
+    if (location.startsWith('/profile/')) return '/feed';
     return '/feed';
   }
 
@@ -52,109 +53,117 @@ class AppBottomNav extends StatelessWidget {
   Widget build(BuildContext context) {
     final activePath = _activePathFor(currentLocation);
 
-    return Column(mainAxisSize: MainAxisSize.min, children: [
-      // Interstitial prompt banner — above nav, dismissible
-      const BottomAdBanner(),
+    return SafeArea(
+      top: false,
+      left: false,
+      right: false,
+      bottom: true,
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        // Interstitial prompt banner — above nav, dismissible
+        const BottomAdBanner(),
 
-      Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          border: Border(
-            top: BorderSide(color: AppColors.borderSubtle, width: 0.5),
+        Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(
+              top: BorderSide(color: AppColors.borderSubtle, width: 0.5),
+            ),
           ),
-        ),
-        child: SafeArea(
-          top: false,
-          child: SizedBox(
-            height: 60,
-            child: Row(
-              children: _items.map((item) {
-                final isActive = activePath == item.path;
-                return Expanded(
-                    child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () {
-                    if (!isActive) {
-                      context.go(item.path);
-                    }
-                  },
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-                        curve: Curves.easeOutCubic,
-                        padding: EdgeInsets.symmetric(
-                          horizontal: isActive ? 16 : 0,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isActive
-                              ? AppColors.charcoal.withValues(alpha: 0.08)
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 200),
-                              child: Icon(
-                                isActive ? item.activeIcon : item.icon,
-                                key: ValueKey('${item.path}_$isActive'),
-                                size: 22,
-                                color: isActive
-                                    ? AppColors.charcoal
-                                    : AppColors.textTertiary,
+          child: SafeArea(
+            top: false,
+            child: SizedBox(
+              height: 55,
+              child: Row(
+                children: _items.map((item) {
+                  final isActive = activePath == item.path;
+                  return Expanded(
+                      child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      if (currentLocation != item.path) {
+                        context.go(item.path);
+                      }
+                    },
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 250),
+                          curve: Curves.easeOutCubic,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isActive ? 16 : 0,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isActive
+                                ? AppColors.charcoal.withValues(alpha: 0.08)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 200),
+                                child: Icon(
+                                  isActive ? item.activeIcon : item.icon,
+                                  key: ValueKey('${item.path}_$isActive'),
+                                  size: 22,
+                                  color: isActive
+                                      ? AppColors.charcoal
+                                      : AppColors.textTertiary,
+                                ),
                               ),
-                            ),
-                            // Unread badge for notifications tab.
-                            if (item.path == '/notifications')
-                              Consumer<NotificationService>(
-                                builder: (_, notif, __) {
-                                  final count = notif.unreadCount;
-                                  if (count == 0)
-                                    return const SizedBox.shrink();
-                                  return Positioned(
-                                    top: -4,
-                                    right: -6,
-                                    child: Container(
-                                      padding: const EdgeInsets.all(2),
-                                      decoration: const BoxDecoration(
-                                        color: AppColors.sunsetCoral,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      constraints: const BoxConstraints(
-                                          minWidth: 14, minHeight: 14),
-                                      child: Text(
-                                        count > 9 ? '9+' : '$count',
-                                        style: const TextStyle(
-                                          fontSize: 8,
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w700,
+                              // Unread badge for notifications tab.
+                              if (item.path == '/notifications')
+                                Consumer<NotificationService>(
+                                  builder: (_, notif, __) {
+                                    final count = notif.unreadCount;
+                                    if (count == 0)
+                                      return const SizedBox.shrink();
+                                    return Positioned(
+                                      top: -4,
+                                      right: -6,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(2),
+                                        decoration: const BoxDecoration(
+                                          color: AppColors.sunsetCoral,
+                                          shape: BoxShape.circle,
                                         ),
-                                        textAlign: TextAlign.center,
+                                        constraints: const BoxConstraints(
+                                            minWidth: 14, minHeight: 14),
+                                        child: Text(
+                                          count > 9 ? '9+' : '$count',
+                                          style: const TextStyle(
+                                            fontSize: 8,
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
                                       ),
-                                    ),
-                                  );
-                                },
-                              ),
-                          ],
-                        ),
-                      )
-                    ],
-                  ),
-                ));
-              }).toList(),
+                                    );
+                                  },
+                                ),
+                            ],
+                          ),
+                        )
+                      ],
+                    ),
+                  ));
+                }).toList(),
+              ),
             ),
           ),
         ),
-      ),
-      const SizedBox(
-        width: double.infinity,
-        child: AppBannerAd(),
-      ),
-    ]);
+        // const SizedBox(
+        //   width: double.infinity,
+        //   child: AppBannerAd(),
+        // ),
+        const SizedBox(height: 5),
+        const AppBannerAd(),
+      ]),
+    );
   }
 }
 

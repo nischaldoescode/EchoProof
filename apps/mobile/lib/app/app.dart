@@ -12,6 +12,10 @@ import '../features/onboarding/presentation/services/onboarding_service.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import '../../../../core/utils/snack.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+
+final GlobalKey<ScaffoldMessengerState> appScaffoldMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
+
 class EchoProofApp extends StatelessWidget {
   const EchoProofApp({super.key, required this.router});
   final GoRouter router;
@@ -47,6 +51,7 @@ class EchoProofApp extends StatelessWidget {
       theme: buildAppTheme(),
       locale: locale,
       supportedLocales: _localeMap.values.toList(),
+      scaffoldMessengerKey: appScaffoldMessengerKey,
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
@@ -63,8 +68,14 @@ class EchoProofApp extends StatelessWidget {
 
 // wrap root screens with this to handle double-tap back to exit
 class ExitConfirmWrapper extends StatefulWidget {
-  const ExitConfirmWrapper({super.key, required this.child});
+  const ExitConfirmWrapper({
+    super.key,
+    required this.child,
+    this.enabled = true,
+  });
+
   final Widget child;
+  final bool enabled;
 
   @override
   State<ExitConfirmWrapper> createState() => _ExitConfirmWrapperState();
@@ -76,9 +87,9 @@ class _ExitConfirmWrapperState extends State<ExitConfirmWrapper> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: false,
+      canPop: !widget.enabled,
       onPopInvokedWithResult: (didPop, _) async {
-        if (didPop) return;
+        if (didPop || !widget.enabled) return;
 
         final now = DateTime.now();
         final isDoubleTap = _lastBackPress != null &&
@@ -90,12 +101,10 @@ class _ExitConfirmWrapperState extends State<ExitConfirmWrapper> {
         } else {
           _lastBackPress = now;
           if (mounted) {
-            if (mounted) {
-              showInfoSnack(
-                context,
-                'Press back again to exit',
-              );
-            }
+            showInfoSnack(
+              context,
+              'Press back again to exit',
+            );
           }
         }
       },
