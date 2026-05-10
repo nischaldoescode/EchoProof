@@ -3,6 +3,7 @@
 // uses plain StatefulWidget with supabase realtime — no riverpod
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
@@ -17,6 +18,7 @@ import '../widgets/truth_bond_button.dart';
 import '../../../../shared/widgets/shimmer_loader.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/logger.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class EchoDetailScreen extends StatefulWidget {
   const EchoDetailScreen({super.key, required this.echoId});
@@ -70,13 +72,13 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
     try {
       final client = Supabase.instance.client;
       final row = await client.from('echoes').select('''
-            id, title, content, category, status,
-            trust_score, confidence_score, controversy_score,
-            support_count, challenge_count, created_at,
-            verified_record_tx, verified_record_at, bond_count, response_count,
-            users_public!inner(
-              username, avatar_url, trust_tier
-            )
+              id, user_id, title, content, category, status, media_urls, reply_count,
+              trust_score, confidence_score, controversy_score,
+              support_count, challenge_count, created_at,
+              verified_record_tx, verified_record_at, bond_count, response_count,
+              users_public!inner(
+                username, avatar_url, trust_tier, is_pro
+              )
           ''').eq('id', widget.echoId).single();
 
       setState(() {
@@ -89,6 +91,19 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
         _error = 'could not load echo';
         _isLoading = false;
       });
+    }
+  }
+
+  void _openAuthorProfile(EchoEntity echo) {
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+
+    if (echo.userId.isNotEmpty && echo.userId == currentUserId) {
+      context.push('/profile');
+      return;
+    }
+
+    if (echo.username.isNotEmpty) {
+      context.push('/profile/${Uri.encodeComponent(echo.username)}');
     }
   }
 
@@ -153,6 +168,7 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
       userIsVerified: false,
       userIsPro: user['is_pro'] as bool? ?? false,
       userAvatarUrl: user['avatar_url'] as String?,
+      userId: row['user_id'] as String? ?? '',
       category: EchoCategory.fromString(row['category'] as String),
       status: _parseStatus(row['status'] as String),
       confidenceScore: (row['confidence_score'] as num?)?.toDouble() ?? 0.0,
@@ -160,6 +176,8 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
       controversyScore: (row['controversy_score'] as num?)?.toDouble() ?? 0.0,
       supportCount: (row['support_count'] as num?)?.toInt() ?? 0,
       challengeCount: (row['challenge_count'] as num?)?.toInt() ?? 0,
+      replyCount: (row['reply_count'] as num?)?.toInt() ?? 0,
+      mediaUrls: (row['media_urls'] as List?)?.cast<String>() ?? const [],
       timeAgo: Formatters.timeAgo(created),
     );
   }
@@ -197,35 +215,12 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
         slivers: [
           SliverAppBar(
             pinned: true,
-            expandedHeight: 120,
             backgroundColor: AppColors.white,
             foregroundColor: AppColors.charcoal,
             elevation: 0,
             scrolledUnderElevation: 0.5,
             shadowColor: AppColors.borderSubtle,
-            flexibleSpace: FlexibleSpaceBar(
-              collapseMode: CollapseMode.parallax,
-              background: Transform.translate(
-                offset: Offset(0, _headerParallax),
-                child: Container(
-                  color: AppColors.softSand,
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.xl,
-                    60,
-                    AppSpacing.xl,
-                    AppSpacing.lg,
-                  ),
-                  child: Text(
-                    displayed.title.isNotEmpty
-                        ? displayed.title
-                        : displayed.category.displayName,
-                    style: AppTypography.textTheme.headlineSmall,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ),
-            ),
+            title: Text('Echo', style: AppTypography.textTheme.titleMedium),
           ),
           SliverToBoxAdapter(
             child: Padding(
@@ -236,24 +231,35 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                   // author row
                   Row(
                     children: [
-                      _VerifiedAvatar(
-                        avatarUrl: displayed.userAvatarUrl,
-                        isVerified: displayed.userIsVerified,
-                      ),
-                      const SizedBox(width: AppSpacing.sm),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '@${displayed.username}',
-                              style: AppTypography.textTheme.titleSmall,
-                            ),
-                            Text(
-                              displayed.timeAgo,
-                              style: AppTypography.textTheme.labelMedium,
-                            ),
-                          ],
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => _openAuthorProfile(displayed),
+                          child: Row(
+                            children: [
+                              _VerifiedAvatar(
+                                avatarUrl: displayed.userAvatarUrl,
+                                isVerified: displayed.userIsVerified,
+                              ),
+                              const SizedBox(width: AppSpacing.sm),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '@${displayed.username}',
+                                      style: AppTypography.textTheme.titleSmall,
+                                    ),
+                                    Text(
+                                      displayed.timeAgo,
+                                      style:
+                                          AppTypography.textTheme.labelMedium,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                       TrustBadge(tier: displayed.userTrustTier),
@@ -262,10 +268,26 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
 
                   const SizedBox(height: AppSpacing.xl),
 
+                  if (displayed.title.isNotEmpty) ...[
+                    Text(
+                      displayed.title,
+                      style: AppTypography.textTheme.headlineSmall?.copyWith(
+                        height: 1.15,
+                        color: AppColors.charcoal,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                  ],
+
                   Text(
                     displayed.content,
                     style: AppTypography.textTheme.bodyLarge,
                   ),
+
+                  if (displayed.mediaUrls.isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.lg),
+                    _EchoDetailMediaGallery(urls: displayed.mediaUrls),
+                  ],
 
                   const SizedBox(height: AppSpacing.xl),
                   const Divider(),
@@ -298,6 +320,83 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _EchoDetailMediaGallery extends StatelessWidget {
+  const _EchoDetailMediaGallery({required this.urls});
+
+  final List<String> urls;
+
+  bool _isVideo(String url) {
+    final lower = url.toLowerCase();
+    return lower.endsWith('.mp4') || lower.endsWith('.mov');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = urls.take(2).toList();
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+      child: SizedBox(
+        height: visible.length == 1 ? 260 : 180,
+        child: Row(
+          children: [
+            for (int i = 0; i < visible.length; i++) ...[
+              Expanded(
+                child: _EchoDetailMediaTile(
+                  url: visible[i],
+                  isVideo: _isVideo(visible[i]),
+                ),
+              ),
+              if (i != visible.length - 1) const SizedBox(width: 2),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EchoDetailMediaTile extends StatelessWidget {
+  const _EchoDetailMediaTile({
+    required this.url,
+    required this.isVideo,
+  });
+
+  final String url;
+  final bool isVideo;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isVideo) {
+      return Container(
+        color: AppColors.charcoal,
+        child: const Center(
+          child: Icon(
+            Icons.play_circle_fill_rounded,
+            color: AppColors.white,
+            size: 44,
+          ),
+        ),
+      );
+    }
+
+    return CachedNetworkImage(
+      imageUrl: url,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
+      placeholder: (_, __) => Container(color: AppColors.softSand),
+      errorWidget: (_, __, ___) => Container(
+        color: AppColors.softSand,
+        child: const Icon(
+          Icons.broken_image_outlined,
+          color: AppColors.textTertiary,
+        ),
       ),
     );
   }

@@ -3,6 +3,8 @@
 
 import { createServerClient } from "@/lib/supabase/client";
 import { notFound } from "next/navigation";
+import { Sidebar } from "@/components/layout/sidebar";
+import { Topbar } from "@/components/layout/topbar";
 import {
   Badge,
   Card,
@@ -12,6 +14,8 @@ import {
   Box,
   Button,
 } from "@radix-ui/themes";
+
+export const dynamic = "force-dynamic";
 
 interface Props {
   params: { id: string };
@@ -36,7 +40,11 @@ export default async function EchoDetailPage({ params }: Props) {
   if (error || !echo) return notFound();
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
+    <div className="flex min-h-screen">
+      <Sidebar />
+      <main className="flex-1 min-w-0 flex flex-col">
+        <Topbar title="Echo detail" subtitle="Full content, reports, proofs, and moderation actions" />
+        <div className="p-4 pb-24 sm:p-6 sm:pb-24 md:pb-6 max-w-4xl w-full mx-auto space-y-6">
       <Heading size="6">Echo detail</Heading>
 
       {/* main card */}
@@ -206,6 +214,8 @@ export default async function EchoDetailPage({ params }: Props) {
           </Box>
         </Card>
       )}
+        </div>
+      </main>
     </div>
   );
 }
@@ -224,7 +234,7 @@ function tierColor(tier?: string): "gray" | "green" | "blue" | "gold" {
 
 function statusColor(
   status?: string,
-): "gray" | "green" | "red" | "yellow" | "orange" {
+): "gray" | "green" | "red" | "yellow" | "orange" | "blue" {
   return (
     ({
       pending_verification: "gray",

@@ -36,7 +36,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  await supabase
+    .from('users_public')
+    .update({
+      is_pro: true,
+      pro_plan: 'pro',
+      pro_expires_at: expiresAt.toISOString(),
+    })
+    .eq('id', user.id);
+
   return NextResponse.redirect(
-    new URL('/subscriptions', req.url),
+    new URL('/subscription', req.url),
   );
 }

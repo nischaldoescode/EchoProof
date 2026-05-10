@@ -9,6 +9,7 @@ import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/logger.dart';
+import 'package:go_router/go_router.dart';
 
 class EchoRepliesScreen extends StatefulWidget {
   const EchoRepliesScreen({
@@ -16,11 +17,15 @@ class EchoRepliesScreen extends StatefulWidget {
     required this.echoId,
     required this.echoAuthorUsername,
     required this.echoContent,
+    this.echoAuthorAvatarUrl,
+    this.echoAuthorId,
   });
 
   final String echoId;
   final String echoAuthorUsername;
   final String echoContent;
+  final String? echoAuthorAvatarUrl;
+  final String? echoAuthorId;
 
   @override
   State<EchoRepliesScreen> createState() => _EchoRepliesScreenState();
@@ -48,6 +53,19 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
   void dispose() {
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _openProfile(String username, {String? userId}) {
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+
+    if (userId != null && userId == currentUserId) {
+      context.push('/profile');
+      return;
+    }
+
+    if (username.trim().isNotEmpty) {
+      context.push('/profile/${Uri.encodeComponent(username)}');
+    }
   }
 
   Future<void> _loadMentionableUsers() async {
@@ -83,7 +101,7 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
           .from('echo_replies')
           .select('''
             id, content, parent_reply_id, created_at, mentioned_users,
-            users_public!inner(id, username, avatar_url, trust_tier, is_identity_verified)
+            users_public!inner(id, username, avatar_url, trust_tier)
           ''')
           .eq('echo_id', widget.echoId)
           .order('created_at', ascending: true);
@@ -169,7 +187,8 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
   @override
   Widget build(BuildContext context) {
     // Group replies into threads: top-level and their children
-    final topLevel = _replies.where((r) => r['parent_reply_id'] == null).toList();
+    final topLevel =
+        _replies.where((r) => r['parent_reply_id'] == null).toList();
 
     return Scaffold(
       backgroundColor: AppColors.white,
@@ -199,7 +218,11 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
                       if (index == 0) {
                         return _OriginalEchoHeader(
                           authorUsername: widget.echoAuthorUsername,
+                          authorAvatarUrl: widget.echoAuthorAvatarUrl,
+                          authorId: widget.echoAuthorId,
                           content: widget.echoContent,
+                          onAuthorTap: (username, userId) =>
+                              _openProfile(username, userId: userId),
                         );
                       }
                       final reply = topLevel[index - 1];
@@ -211,6 +234,8 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
                         reply: reply,
                         children: children,
                         onReply: (id, username) => _setReplyingTo(id, username),
+                        onAuthorTap: (username, userId) =>
+                            _openProfile(username, userId: userId),
                         isLastTop: index == topLevel.length,
                       );
                     },
@@ -233,11 +258,17 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
 class _OriginalEchoHeader extends StatelessWidget {
   const _OriginalEchoHeader({
     required this.authorUsername,
+    required this.authorAvatarUrl,
+    required this.authorId,
     required this.content,
+    required this.onAuthorTap,
   });
 
   final String authorUsername;
+  final String? authorAvatarUrl;
+  final String? authorId;
   final String content;
+  final void Function(String username, String? userId) onAuthorTap;
 
   @override
   Widget build(BuildContext context) {
@@ -253,15 +284,21 @@ class _OriginalEchoHeader extends StatelessWidget {
         children: [
           Row(
             children: [
-              const CircleAvatar(
-                radius: 20,
-                backgroundColor: AppColors.softSand,
-                child: Icon(Icons.person_outline, size: 20, color: AppColors.textTertiary),
+              GestureDetector(
+                onTap: () => onAuthorTap(authorUsername, authorId),
+                child: _VerifiedAvatar(
+                  avatarUrl: authorAvatarUrl,
+                  isVerified: false,
+                  size: 40,
+                ),
               ),
               const SizedBox(width: AppSpacing.sm),
-              Text(
-                '@$authorUsername',
-                style: AppTypography.textTheme.titleSmall,
+              GestureDetector(
+                onTap: () => onAuthorTap(authorUsername, authorId),
+                child: Text(
+                  '@$authorUsername',
+                  style: AppTypography.textTheme.titleSmall,
+                ),
               ),
             ],
           ),
@@ -286,12 +323,15 @@ class _ReplyThread extends StatelessWidget {
     required this.reply,
     required this.children,
     required this.onReply,
+    required this.onAuthorTap,
     required this.isLastTop,
   });
 
   final Map<String, dynamic> reply;
   final List<Map<String, dynamic>> children;
   final void Function(String replyId, String username) onReply;
+  final void Function(String username, String? userId) onAuthorTap;
+
   final bool isLastTop;
 
   @override
@@ -299,8 +339,10 @@ class _ReplyThread extends StatelessWidget {
     final user = reply['users_public'] as Map<String, dynamic>;
     final username = user['username'] as String;
     final avatarUrl = user['avatar_url'] as String?;
-    final isVerified = user['is_identity_verified'] as bool? ?? false;
-    final created = DateTime.tryParse(reply['created_at'] as String? ?? '') ?? DateTime.now();
+    final isVerified = false;
+    final created = DateTime.tryParse(reply['created_at'] as String? ?? '') ??
+        DateTime.now();
+    final userId = user['id'] as String?;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -315,7 +357,14 @@ class _ReplyThread extends StatelessWidget {
                 child: Column(
                   children: [
                     const SizedBox(height: AppSpacing.lg),
-                    _VerifiedAvatar(avatarUrl: avatarUrl, isVerified: isVerified, size: 36),
+                    GestureDetector(
+                      onTap: () => onAuthorTap(username, userId),
+                      child: _VerifiedAvatar(
+                        avatarUrl: avatarUrl,
+                        isVerified: isVerified,
+                        size: 36,
+                      ),
+                    ),
                     if (children.isNotEmpty)
                       Expanded(
                         child: Container(
@@ -340,9 +389,12 @@ class _ReplyThread extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Text(
-                            '@$username',
-                            style: AppTypography.textTheme.titleSmall,
+                          GestureDetector(
+                            onTap: () => onAuthorTap(username, userId),
+                            child: Text(
+                              '@$username',
+                              style: AppTypography.textTheme.titleSmall,
+                            ),
                           ),
                           const SizedBox(width: AppSpacing.sm),
                           Text(
@@ -374,11 +426,11 @@ class _ReplyThread extends StatelessWidget {
         ),
         // Nested children
         ...children.map((child) => _NestedReply(
-          reply: child,
-          onReply: onReply,
-        )),
-        if (!isLastTop)
-          const Divider(height: 1, indent: 56),
+              reply: child,
+              onReply: onReply,
+              onAuthorTap: onAuthorTap,
+            )),
+        if (!isLastTop) const Divider(height: 1, indent: 56),
       ],
     );
   }
@@ -388,18 +440,22 @@ class _NestedReply extends StatelessWidget {
   const _NestedReply({
     required this.reply,
     required this.onReply,
+    required this.onAuthorTap,
   });
 
   final Map<String, dynamic> reply;
   final void Function(String replyId, String username) onReply;
+  final void Function(String username, String? userId) onAuthorTap;
 
   @override
   Widget build(BuildContext context) {
     final user = reply['users_public'] as Map<String, dynamic>;
     final username = user['username'] as String;
     final avatarUrl = user['avatar_url'] as String?;
-    final isVerified = user['is_identity_verified'] as bool? ?? false;
-    final created = DateTime.tryParse(reply['created_at'] as String? ?? '') ?? DateTime.now();
+    final isVerified = false;
+    final userId = user['id'] as String?;
+    final created = DateTime.tryParse(reply['created_at'] as String? ?? '') ??
+        DateTime.now();
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -427,7 +483,15 @@ class _NestedReply extends StatelessWidget {
           ),
         ),
         const SizedBox(width: AppSpacing.xs),
-        _VerifiedAvatar(avatarUrl: avatarUrl, isVerified: isVerified, size: 28),
+        GestureDetector(
+          onTap: () => onAuthorTap(username, userId),
+          child: _VerifiedAvatar(
+            avatarUrl: avatarUrl,
+            isVerified: isVerified,
+            size: 36,
+          ),
+        ),
+
         const SizedBox(width: AppSpacing.sm),
         Expanded(
           child: Padding(
@@ -441,9 +505,12 @@ class _NestedReply extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Text(
-                      '@$username',
-                      style: AppTypography.textTheme.titleSmall,
+                    GestureDetector(
+                      onTap: () => onAuthorTap(username, userId),
+                      child: Text(
+                        '@$username',
+                        style: AppTypography.textTheme.titleSmall,
+                      ),
                     ),
                     const SizedBox(width: AppSpacing.sm),
                     Text(
@@ -612,7 +679,8 @@ class _ReplyInput extends StatelessWidget {
                           ),
                           border: InputBorder.none,
                           isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 8),
                         ),
                         suggestionListDecoration: BoxDecoration(
                           color: AppColors.white,
@@ -711,7 +779,8 @@ class _MentionSuggestionTile extends StatelessWidget {
                 ? NetworkImage(avatarUrl)
                 : null,
             child: (avatarUrl == null || avatarUrl.isEmpty)
-                ? const Icon(Icons.person_outline, size: 16, color: AppColors.textTertiary)
+                ? const Icon(Icons.person_outline,
+                    size: 16, color: AppColors.textTertiary)
                 : null,
           ),
           const SizedBox(width: AppSpacing.sm),
@@ -757,7 +826,8 @@ class _VerifiedAvatar extends StatelessWidget {
               ? NetworkImage(avatarUrl!)
               : null,
           child: (avatarUrl == null || avatarUrl!.isEmpty)
-              ? Icon(Icons.person_outline, size: size * 0.5, color: AppColors.textTertiary)
+              ? Icon(Icons.person_outline,
+                  size: size * 0.5, color: AppColors.textTertiary)
               : null,
         ),
       ),

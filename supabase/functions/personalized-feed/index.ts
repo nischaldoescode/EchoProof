@@ -177,11 +177,12 @@ serve(async (req: Request): Promise<Response> => {
     const { data: echoes, error: echoError } = await serviceClient
       .from("echoes")
       .select(`
-        id, title, content, category, status, version,
-        trust_score, confidence_score, controversy_score, report_score,
-        support_count, challenge_count, bond_count, response_count, created_at,
-        verified_record_tx,
-        users_public(username, avatar_url, trust_tier)
+          id, title, content, category, status, version,
+          media_urls, reply_count,
+          trust_score, confidence_score, controversy_score, report_score,
+          support_count, challenge_count, bond_count, response_count, created_at,
+          verified_record_tx,
+          users_public(username, avatar_url, trust_tier, is_pro)
       `)
       .in("id", echoIds);
 

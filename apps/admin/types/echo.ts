@@ -38,6 +38,26 @@ export interface EchoRecord {
   updated_at: string;
 }
 
+export type Echo = EchoRecord & {
+  users_public: {
+    username: string;
+    trust_tier: string;
+    avatar_url?: string | null;
+  };
+  echo_reports?: Array<{
+    id: string;
+    reason: string;
+    reporter_id: string;
+    created_at: string;
+  }>;
+  echo_proofs?: Array<{
+    id: string;
+    proof_type: string;
+    proof_url: string;
+    description: string | null;
+  }>;
+};
+
 export interface AiMetadata {
   spam_score: number;
   clarity_score: number;

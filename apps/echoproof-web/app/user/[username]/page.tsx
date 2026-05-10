@@ -3,11 +3,11 @@
 
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/supabase-js";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 
-const supabase = createClient(
+const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );

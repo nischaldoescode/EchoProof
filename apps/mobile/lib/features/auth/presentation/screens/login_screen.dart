@@ -7,6 +7,7 @@ import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../services/auth_service.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -29,6 +30,7 @@ class _LoginScreenState extends State<LoginScreen>
   late final Animation<Offset> _cardSlide;
   late final Animation<double> _titleFade;
   late final Animation<Offset> _titleSlide;
+  bool _agreedToTerms = false;
 
   final List<_Particle> _particles = [];
 
@@ -80,6 +82,22 @@ class _LoginScreenState extends State<LoginScreen>
     final rng = math.Random();
     _particles.addAll(List.generate(18, (_) => _Particle.random(rng)));
     _cardCtrl.forward();
+  }
+
+  void _showAgreementSnack() {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(
+          'Please accept the Privacy Policy and Terms of Service to continue.',
+          style: GoogleFonts.josefinSans(fontSize: 13),
+        ),
+        backgroundColor: AppColors.sunsetCoral,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 3),
+      ));
   }
 
   @override
@@ -305,9 +323,19 @@ class _LoginScreenState extends State<LoginScreen>
                                     const SizedBox(height: 22),
                                     _EmailField(ctrl: _emailCtrl),
                                     const SizedBox(height: 18),
+                                    // Agreement checkbox  required before either sign-in method.
+                                    _AgreementCheckbox(
+                                      agreed: _agreedToTerms,
+                                      onChanged: (v) =>
+                                          setState(() => _agreedToTerms = v),
+                                    ),
+                                    const SizedBox(height: 18),
                                     _ContinueButton(
                                       isLoading: isLoading,
-                                      onTap: _submit,
+                                      agreed: _agreedToTerms,
+                                      onTap: _agreedToTerms
+                                          ? _submit
+                                          : _showAgreementSnack,
                                     ),
                                     const SizedBox(height: 18),
                                     Row(children: [
@@ -318,9 +346,8 @@ class _LoginScreenState extends State<LoginScreen>
                                         child: Text(
                                           'or',
                                           style: GoogleFonts.josefinSans(
-                                            fontSize: 12,
-                                            color: AppColors.textTertiary,
-                                          ),
+                                              fontSize: 12,
+                                              color: AppColors.textTertiary),
                                         ),
                                       ),
                                       const Expanded(child: Divider()),
@@ -328,7 +355,10 @@ class _LoginScreenState extends State<LoginScreen>
                                     const SizedBox(height: 18),
                                     _GoogleButton(
                                       isLoading: isLoading,
-                                      onTap: _googleSignIn,
+                                      agreed: _agreedToTerms,
+                                      onTap: _agreedToTerms
+                                          ? _googleSignIn
+                                          : _showAgreementSnack,
                                     ),
                                   ],
                                 ),
@@ -485,9 +515,14 @@ class _EmailFieldState extends State<_EmailField> {
 }
 
 class _ContinueButton extends StatefulWidget {
-  const _ContinueButton({required this.isLoading, required this.onTap});
+  const _ContinueButton({
+    required this.isLoading,
+    required this.onTap,
+    required this.agreed,
+  });
   final bool isLoading;
   final VoidCallback onTap;
+  final bool agreed;
 
   @override
   State<_ContinueButton> createState() => _ContinueButtonState();
@@ -532,34 +567,38 @@ class _ContinueButtonState extends State<_ContinueButton>
             ),
           ],
         ),
-        child: ElevatedButton(
-          onPressed: widget.isLoading ? null : widget.onTap,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.charcoal,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 15),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
+        child: AnimatedOpacity(
+          opacity: widget.agreed ? 1.0 : 0.5,
+          duration: const Duration(milliseconds: 200),
+          child: ElevatedButton(
+            onPressed: widget.isLoading ? null : widget.onTap,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.charcoal,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              elevation: 0,
             ),
-            elevation: 0,
+            child: widget.isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : Text(
+                    'Continue with email',
+                    style: GoogleFonts.josefinSans(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
           ),
-          child: widget.isLoading
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : Text(
-                  'Continue with email',
-                  style: GoogleFonts.josefinSans(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.4,
-                  ),
-                ),
         ),
       ),
     );
@@ -570,16 +609,20 @@ class _ContinueButtonState extends State<_ContinueButton>
 // this prevents jitter caused by the old StatefulWidget conflicting
 // with parent rebuild cycles
 class _GoogleButton extends StatelessWidget {
-  const _GoogleButton({required this.isLoading, required this.onTap});
+  const _GoogleButton({
+    required this.isLoading,
+    required this.onTap,
+    required this.agreed,
+  });
   final bool isLoading;
   final VoidCallback onTap;
-
+  final bool agreed;
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: isLoading ? null : onTap,
+      onTap: onTap,
       child: AnimatedOpacity(
-        opacity: isLoading ? 0.55 : 1.0,
+        opacity: isLoading ? 0.55 : (agreed ? 1.0 : 0.5),
         duration: const Duration(milliseconds: 150),
         child: Container(
           width: double.infinity,
@@ -620,6 +663,105 @@ class _GoogleButton extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _AgreementCheckbox extends StatelessWidget {
+  const _AgreementCheckbox({
+    required this.agreed,
+    required this.onChanged,
+  });
+  final bool agreed;
+  final void Function(bool) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 24,
+          height: 24,
+          child: Checkbox(
+            value: agreed,
+            onChanged: (v) => onChanged(v ?? false),
+            activeColor: AppColors.fernGreen,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(4),
+            ),
+            side: const BorderSide(color: AppColors.borderMedium),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text.rich(
+            TextSpan(
+              style: GoogleFonts.josefinSans(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+                height: 1.5,
+              ),
+              children: [
+                const TextSpan(text: 'I agree to the '),
+                WidgetSpan(
+                  child: GestureDetector(
+                    onTap: () => _openInApp(
+                      context,
+                      'https://echoproof.online/terms',
+                      'Terms of Service',
+                    ),
+                    child: Text(
+                      'Terms of Service',
+                      style: GoogleFonts.josefinSans(
+                        fontSize: 12,
+                        color: AppColors.fernGreen,
+                        fontWeight: FontWeight.w600,
+                        decoration: TextDecoration.underline,
+                        decorationColor: AppColors.fernGreen,
+                      ),
+                    ),
+                  ),
+                ),
+                const TextSpan(text: ' and '),
+                WidgetSpan(
+                  child: GestureDetector(
+                    onTap: () => _openInApp(
+                      context,
+                      'https://echoproof.online/privacy',
+                      'Privacy Policy',
+                    ),
+                    child: Text(
+                      'Privacy Policy',
+                      style: GoogleFonts.josefinSans(
+                        fontSize: 12,
+                        color: AppColors.fernGreen,
+                        fontWeight: FontWeight.w600,
+                        decoration: TextDecoration.underline,
+                        decorationColor: AppColors.fernGreen,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Opens the URL in a WebView-like in-app browser with slide-up animation.
+  // Uses url_launcher's in-app web view mode which shows an animated sheet
+  // instead of jumping to the external browser — Instagram-style.
+  Future<void> _openInApp(
+    BuildContext context,
+    String url,
+    String title,
+  ) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.inAppWebView);
+    }
   }
 }
 

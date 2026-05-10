@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/utils/snack.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../services/subscription_service.dart';
@@ -27,7 +28,7 @@ class SubscribeScreen extends StatelessWidget {
             backgroundColor: AppColors.charcoal,
             foregroundColor: Colors.white,
             flexibleSpace: FlexibleSpaceBar(
-              background: _ProHeader(),
+              background: const _ProHeader(),
             ),
             title: Text(
               'Echoproof Pro',
@@ -39,23 +40,68 @@ class SubscribeScreen extends StatelessWidget {
               padding: const EdgeInsets.all(AppSpacing.xl),
               child: Column(
                 children: [
-                  if (sub.isPro)
-                    _ActiveSubscriptionCard()
-                  else
-                    _PricingSection(service: sub),
+                  _Entrance(
+                    delay: const Duration(milliseconds: 80),
+                    child: sub.isPro
+                        ? _ActiveSubscriptionCard()
+                        : _PricingSection(service: sub),
+                  ),
 
                   const SizedBox(height: AppSpacing.xl),
 
                   // feature comparison
-                  _FeatureComparison(),
+                  const _Entrance(
+                    delay: Duration(milliseconds: 170),
+                    child: _FeatureComparison(),
+                  ),
 
                   const SizedBox(height: AppSpacing.xxl),
 
                   // restore purchases
-                  TextButton(
-                    onPressed: () => sub.restorePurchases(),
-                    child: Text(
-                      'Restore purchases',
+                  TextButton.icon(
+                    onPressed: sub.isLoading
+                        ? null
+                        : () async {
+                            await sub.restorePurchases();
+                            if (!context.mounted) return;
+
+                            final error = sub.error;
+                            if (error != null) {
+                              if (error.startsWith('No previous')) {
+                                showInfoSnack(context, error);
+                              } else {
+                                showErrorSnack(context, error);
+                              }
+                              return;
+                            }
+
+                            if (sub.isPro) {
+                              showSuccessSnack(
+                                context,
+                                'Your Pro purchase was restored.',
+                              );
+                            } else {
+                              showInfoSnack(
+                                context,
+                                'Restore finished. No active Pro purchase found.',
+                              );
+                            }
+                          },
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.textTertiary,
+                    ),
+                    icon: sub.isRestoring
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.textTertiary,
+                            ),
+                          )
+                        : const Icon(Icons.restore_rounded, size: 16),
+                    label: Text(
+                      sub.isRestoring ? 'Restoring...' : 'Restore purchases',
                       style: GoogleFonts.josefinSans(
                         color: AppColors.textTertiary,
                       ),
@@ -73,7 +119,66 @@ class SubscribeScreen extends StatelessWidget {
   }
 }
 
+class _Entrance extends StatefulWidget {
+  const _Entrance({
+    required this.child,
+    required this.delay,
+  });
+
+  final Widget child;
+  final Duration delay;
+
+  @override
+  State<_Entrance> createState() => _EntranceState();
+}
+
+class _EntranceState extends State<_Entrance>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _fade;
+  late final Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    );
+    _fade = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
+    _slide = Tween<Offset>(
+      begin: const Offset(0, 0.04),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+    );
+
+    Future<void>.delayed(widget.delay, () {
+      if (mounted) _controller.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fade,
+      child: SlideTransition(
+        position: _slide,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
 class _ProHeader extends StatefulWidget {
+  const _ProHeader();
+
   @override
   State<_ProHeader> createState() => _ProHeaderState();
 }
@@ -102,6 +207,8 @@ class _ProHeaderState extends State<_ProHeader>
     return AnimatedBuilder(
       animation: _c,
       builder: (_, __) {
+        final pulse = 0.98 + (_c.value * 0.04);
+
         return Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -126,12 +233,26 @@ class _ProHeaderState extends State<_ProHeader>
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const SizedBox(height: 48),
-                const Icon(
-                  Icons.star_rounded,
-                  color: Color(0xFF4CAF6E),
-                  size: 48,
+                Transform.scale(
+                  scale: pulse,
+                  child: Container(
+                    width: 58,
+                    height: 58,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withValues(alpha: 0.08),
+                      border: Border.all(
+                        color: const Color(0xFF4CAF6E).withValues(alpha: 0.45),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.star_rounded,
+                      color: Color(0xFF4CAF6E),
+                      size: 34,
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 Text(
                   'Pro',
                   style: GoogleFonts.josefinSans(
@@ -172,100 +293,153 @@ class _PricingSectionState extends State<_PricingSection> {
   Widget build(BuildContext context) {
     final monthly = widget.service.monthlyProduct;
     final yearly = widget.service.yearlyProduct;
+    final selectedPrice = _yearlySelected
+        ? yearly?.price ?? '\$39.99'
+        : monthly?.price ?? '\$4.99';
+    final busyLabel = widget.service.isRestoring
+        ? 'Restoring purchases...'
+        : 'Preparing checkout...';
 
     return Column(
       children: [
-        // plan toggle
         Container(
-          height: 82, // Fixed height prevents layout jitter during animation
+          padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
-            color: const Color(0xFFF0F4F2),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          padding: const EdgeInsets.all(3),
-          child: Row(
-            children: [
-              _PlanTab(
-                label: 'Monthly',
-                price: monthly?.price ?? '\$4.99',
-                selected: !_yearlySelected,
-                onTap: () => setState(() => _yearlySelected = false),
-              ),
-              _PlanTab(
-                label: 'Yearly',
-                price: yearly?.price ?? '\$39.99',
-                badge: 'Save 33%',
-                selected: _yearlySelected,
-                onTap: () => setState(() => _yearlySelected = true),
+            color: AppColors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.borderSubtle),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
               ),
             ],
           ),
-        ),
-
-        const SizedBox(height: AppSpacing.lg),
-
-        // purchase button
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: widget.service.isLoading
-                ? null
-                : () {
-                    final product = _yearlySelected
-                        ? widget.service.yearlyProduct
-                        : widget.service.monthlyProduct;
-                    if (product != null) {
-                      widget.service.purchase(product);
-                    }
-                  },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.charcoal,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-            ),
-            child: Text(
-              widget.service.isLoading
-                  ? 'Loading...'
-                  : 'Start Pro — ${_yearlySelected ? yearly?.price ?? '\$39.99' : monthly?.price ?? '\$4.99'}',
-              style: GoogleFonts.josefinSans(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ),
-
-        const SizedBox(height: AppSpacing.sm),
-
-        const SizedBox(height: AppSpacing.sm),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: AppColors.fernGreenLight,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Column(
             children: [
-              const Icon(Icons.info_outline,
-                  size: 13, color: AppColors.fernGreen),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  'For maximum feed priority, verify your identity in Settings after subscribing. Verified Pro users get the highest trust weight.',
-                  style: GoogleFonts.josefinSans(
-                    fontSize: 11,
-                    color: AppColors.fernGreenDark,
-                    height: 1.5,
+              // Stable height: enough room for label, price, and the yearly badge.
+              Container(
+                height: 96,
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F4F2),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    _PlanTab(
+                      label: 'Monthly',
+                      price: monthly?.price ?? '\$4.99',
+                      selected: !_yearlySelected,
+                      onTap: () => setState(() => _yearlySelected = false),
+                    ),
+                    const SizedBox(width: 4),
+                    _PlanTab(
+                      label: 'Yearly',
+                      price: yearly?.price ?? '\$39.99',
+                      badge: 'Save 33%',
+                      selected: _yearlySelected,
+                      onTap: () => setState(() => _yearlySelected = true),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: AppSpacing.md),
+
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: widget.service.isLoading
+                      ? null
+                      : () {
+                          final product = _yearlySelected
+                              ? widget.service.yearlyProduct
+                              : widget.service.monthlyProduct;
+                          if (product != null) {
+                            widget.service.purchase(product);
+                          }
+                        },
+                  icon: widget.service.isLoading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.white,
+                          ),
+                        )
+                      : const Icon(Icons.star_rounded, size: 18),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.charcoal,
+                    disabledBackgroundColor:
+                        AppColors.charcoal.withValues(alpha: 0.55),
+                    foregroundColor: AppColors.white,
+                    minimumSize: const Size.fromHeight(50),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  label: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 180),
+                    child: Text(
+                      widget.service.isLoading
+                          ? busyLabel
+                          : 'Start Pro — $selectedPrice',
+                      key: ValueKey(
+                        '${widget.service.isLoading}-$selectedPrice',
+                      ),
+                      style: GoogleFonts.josefinSans(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ),
               ),
+
+              const SizedBox(height: AppSpacing.md),
+              const _PriorityNote(),
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+class _PriorityNote extends StatelessWidget {
+  const _PriorityNote();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.fernGreenLight,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.fernGreen.withValues(alpha: 0.16)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.verified_user_outlined,
+              size: 14, color: AppColors.fernGreen),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'For maximum feed priority, verify your identity in Settings after subscribing. Verified Pro users get the highest trust weight.',
+              style: GoogleFonts.josefinSans(
+                fontSize: 11,
+                color: AppColors.fernGreenDark,
+                height: 1.45,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -287,62 +461,103 @@ class _PlanTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          decoration: BoxDecoration(
-            color: selected ? Colors.white : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: selected
-                ? [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.06),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    )
-                  ]
-                : [],
-          ),
-          child: Column(
-            children: [
-              Text(
-                label,
-                style: GoogleFonts.josefinSans(
-                  fontSize: 13,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                  color: selected ? AppColors.charcoal : AppColors.textTertiary,
+      child: Semantics(
+        button: true,
+        selected: selected,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: AnimatedScale(
+            scale: selected ? 1 : 0.985,
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              height: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+              decoration: BoxDecoration(
+                color: selected ? Colors.white : Colors.transparent,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: selected
+                      ? AppColors.fernGreen.withValues(alpha: 0.18)
+                      : Colors.transparent,
                 ),
+                boxShadow: selected
+                    ? [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.06),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        )
+                      ]
+                    : [],
               ),
-              Text(
-                price,
-                style: GoogleFonts.josefinSans(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: selected ? AppColors.charcoal : AppColors.textTertiary,
-                ),
-              ),
-              if (badge != null)
-                Container(
-                  margin: const EdgeInsets.only(top: 2),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: AppColors.fernGreenLight,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    badge!,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.josefinSans(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.fernGreenDark,
+                      fontSize: 13,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                      color: selected
+                          ? AppColors.charcoal
+                          : AppColors.textTertiary,
                     ),
                   ),
-                ),
-            ],
+                  Text(
+                    price,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.josefinSans(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: selected
+                          ? AppColors.charcoal
+                          : AppColors.textTertiary,
+                    ),
+                  ),
+                  SizedBox(
+                    height: 20,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      child: badge == null
+                          ? const SizedBox.shrink(key: ValueKey('empty-badge'))
+                          : Align(
+                              key: ValueKey(badge),
+                              alignment: Alignment.topCenter,
+                              child: Container(
+                                margin: const EdgeInsets.only(top: 3),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 7,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.fernGreenLight,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  badge!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.josefinSans(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.fernGreenDark,
+                                  ),
+                                ),
+                              ),
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -437,6 +652,8 @@ class FeatureItem {
 }
 
 class _FeatureComparison extends StatelessWidget {
+  const _FeatureComparison();
+
   static const List<FeatureItem> _features = [
     FeatureItem(label: 'Post echoes', free: true, pro: true),
     FeatureItem(label: 'Support & challenge echoes', free: true, pro: true),
@@ -461,57 +678,78 @@ class _FeatureComparison extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'What you get',
-          style: GoogleFonts.josefinSans(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: AppColors.charcoal,
-          ),
-        ),
-
-        const SizedBox(height: AppSpacing.md),
-
-        // header
         Row(
           children: [
-            const Expanded(flex: 3, child: SizedBox()),
-            Expanded(
-              child: Center(
-                child: Text(
-                  'Free',
-                  style: GoogleFonts.josefinSans(
-                    fontSize: 12,
-                    color: AppColors.textTertiary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-            Expanded(
-              child: Center(
-                child: Text(
-                  'Pro',
-                  style: GoogleFonts.josefinSans(
-                    fontSize: 12,
-                    color: AppColors.fernGreen,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+            const Icon(Icons.auto_awesome_rounded,
+                size: 18, color: AppColors.fernGreen),
+            const SizedBox(width: 8),
+            Text(
+              'What you get',
+              style: GoogleFonts.josefinSans(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppColors.charcoal,
               ),
             ),
           ],
         ),
-
-        const SizedBox(height: AppSpacing.sm),
-
-        ..._features.map((f) => _FeatureRow(
-              label: f.label,
-              freeNote: f.freeNote,
-              proNote: f.proNote,
-              hasFree: f.free,
-              hasPro: f.pro,
-            )),
+        const SizedBox(height: AppSpacing.md),
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.borderSubtle),
+          ),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md,
+                  AppSpacing.md,
+                  AppSpacing.md,
+                  AppSpacing.xs,
+                ),
+                child: Row(
+                  children: [
+                    const Expanded(flex: 3, child: SizedBox()),
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          'Free',
+                          style: GoogleFonts.josefinSans(
+                            fontSize: 12,
+                            color: AppColors.textTertiary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          'Pro',
+                          style: GoogleFonts.josefinSans(
+                            fontSize: 12,
+                            color: AppColors.fernGreen,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ..._features.map((f) => _FeatureRow(
+                    label: f.label,
+                    freeNote: f.freeNote,
+                    proNote: f.proNote,
+                    hasFree: f.free,
+                    hasPro: f.pro,
+                  )),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -547,6 +785,8 @@ class _FeatureRow extends StatelessWidget {
             flex: 3,
             child: Text(
               label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: GoogleFonts.josefinSans(
                 fontSize: 13,
                 color: AppColors.charcoal,
@@ -557,6 +797,7 @@ class _FeatureRow extends StatelessWidget {
             child: Center(
               child: hasFree
                   ? Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         const Icon(
                           Icons.check_rounded,
@@ -566,6 +807,8 @@ class _FeatureRow extends StatelessWidget {
                         if (freeNote != null)
                           Text(
                             freeNote!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.josefinSans(
                               fontSize: 9,
                               color: AppColors.textTertiary,
@@ -584,6 +827,7 @@ class _FeatureRow extends StatelessWidget {
             child: Center(
               child: hasPro
                   ? Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         const Icon(
                           Icons.check_rounded,
@@ -593,6 +837,8 @@ class _FeatureRow extends StatelessWidget {
                         if (proNote != null)
                           Text(
                             proNote!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: GoogleFonts.josefinSans(
                               fontSize: 9,
                               color: AppColors.fernGreen,

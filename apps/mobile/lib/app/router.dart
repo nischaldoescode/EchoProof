@@ -24,6 +24,8 @@ import '../features/search/presentation/screens/search_screen.dart';
 import '../features/echo/presentation/screens/echo_replies_screen.dart';
 import '../core/utils/logger.dart';
 import '../features/subscription/presentation/screens/purchase_history_screen.dart';
+import 'package:hyper_snackbar/hyper_snackbar.dart';
+import '../core/utils/snack.dart';
 
 CustomTransitionPage<void> _slidePage(Widget child) {
   return CustomTransitionPage<void>(
@@ -87,6 +89,7 @@ GoRouter createRouter({
   required SubscriptionService subscriptionService,
 }) {
   return GoRouter(
+    navigatorKey: HyperSnackbar.navigatorKey,
     initialLocation: '/splash',
     refreshListenable: _RouterRefreshStream([authService, onboardingService]),
     redirect: (context, state) async {
@@ -157,16 +160,14 @@ GoRouter createRouter({
 
       // If they're already on an onboarding route, let them stay there.
       // Never redirect someone mid-onboarding back to the start.
+      if (needsAgeGender && location != '/age-gender') {
+        AppLogger.info('router: new user needs age-gender');
+        return '/age-gender';
+      }
+
       if (_isOnboardingRoute(location)) {
         AppLogger.info('router: on onboarding route, staying put');
         return null;
-      }
-
-      // They're a new user not yet on any onboarding route.
-      // Send to age-gender first if they haven't done it yet.
-      if (needsAgeGender) {
-        AppLogger.info('router: new user → age-gender');
-        return '/age-gender';
       }
 
       // Age/gender done but no username yet → onboarding flow.
@@ -226,6 +227,8 @@ GoRouter createRouter({
             echoId: s.pathParameters['id']!,
             echoAuthorUsername: s.uri.queryParameters['author'] ?? '',
             echoContent: s.uri.queryParameters['content'] ?? '',
+            echoAuthorAvatarUrl: s.uri.queryParameters['avatar'],
+            echoAuthorId: s.uri.queryParameters['authorId'],
           ),
         ),
       ),

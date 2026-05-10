@@ -1,15 +1,15 @@
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/supabase-js";
 
 const supabaseUrl        = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey    = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 // client for browser (anon key — subject to RLS)
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
 
 // server-side client (service role — bypasses RLS)
 // only import this in getServerSideProps or API routes
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+export const supabaseAdmin = createBrowserClient(supabaseUrl, supabaseServiceKey);
 
 // types for echo and profile data
 export interface Echo {

@@ -87,6 +87,7 @@ Future<void> main() async {
   // pre-load notification count for badge
   if (authService.isLoggedIn) {
     notificationService.loadNotifications();
+    notificationService.startRealtime();
   }
 
   final router = createRouter(
@@ -99,8 +100,11 @@ Future<void> main() async {
   authService.addListener(() {
     if (authService.isLoggedIn) {
       adService.onUserLoggedIn();
+      notificationService.loadNotifications();
+      notificationService.startRealtime();
     } else {
       adService.onUserLoggedOut();
+      notificationService.stopRealtime();
     }
   });
 
@@ -108,10 +112,20 @@ Future<void> main() async {
   FirebaseMessaging.onMessageOpenedApp.listen((message) {
     final route = message.data['route'] as String?;
     final type = message.data['type'] as String?;
+
     if (type == 'identity_verified') {
-      // reload auth state so trust tier updates in ui
       authService.checkUsername();
     }
+
+    // If account was deleted by admin, sign out immediately.
+    if (type == 'account_deleted' ||
+        message.notification?.title == 'Account deleted') {
+      authService.signOut().then((_) {
+        router.go('/login');
+      });
+      return;
+    }
+
     if (route != null && route.isNotEmpty) {
       router.push(route);
     }
@@ -133,9 +147,30 @@ Future<void> main() async {
   FirebaseMessaging.instance.getInitialMessage().then((message) {
     if (message == null) return;
     final route = message.data['route'] as String?;
+    final type = message.data['type'] as String?;
+
+    // Account deleted by admin — sign out on cold start.
+    if (type == 'account_deleted') {
+      Future.delayed(const Duration(milliseconds: 300), () {
+        authService.signOut().then((_) => router.go('/login'));
+      });
+      return;
+    }
+
     if (route != null && route.isNotEmpty) {
       Future.delayed(const Duration(milliseconds: 500), () {
         router.push(route);
+      });
+    }
+  });
+
+// Handle foreground messages (app is open when deletion notification arrives).
+  FirebaseMessaging.onMessage.listen((message) {
+    final type = message.data['type'] as String?;
+    if (type == 'account_deleted') {
+      // Sign out immediately without waiting for user action.
+      authService.signOut().then((_) {
+        router.go('/login');
       });
     }
   });

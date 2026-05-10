@@ -3,6 +3,8 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { TrustEnginePanel } from "@/components/trust-engine/trust-engine-panel";
 
+export const dynamic = "force-dynamic";
+
 export default async function TrustEnginePage() {
   const supabase = await createClient();
 
@@ -16,9 +18,9 @@ export default async function TrustEnginePage() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="flex-1 flex flex-col">
+      <main className="flex-1 min-w-0 flex flex-col">
         <Topbar title="Trust engine" subtitle="Trigger runs and monitor scoring" />
-        <div className="p-6">
+        <div className="p-4 pb-24 sm:p-6 sm:pb-24 md:pb-6">
           <TrustEnginePanel pendingEchoes={pendingEchoes ?? []} />
         </div>
       </main>

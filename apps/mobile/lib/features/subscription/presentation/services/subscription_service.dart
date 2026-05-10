@@ -33,11 +33,14 @@ class SubscriptionService extends ChangeNotifier {
 
   bool _isPro = false;
   bool _isLoading = false;
+  bool _isRestoring = false;
   bool _isAvailable = false;
   String? _error;
   String? _currentPlan; // 'pro_monthly' | 'pro_yearly'
   DateTime? _expiresAt;
   int _upgradeBonusDays = 0;
+  Completer<void>? _restoreCompleter;
+  bool _restoreSawPurchase = false;
 
   // Product details from Play Store
   ProductDetails? _monthlyProduct;
@@ -49,6 +52,7 @@ class SubscriptionService extends ChangeNotifier {
 
   bool get isPro => _isPro;
   bool get isLoading => _isLoading;
+  bool get isRestoring => _isRestoring;
   bool get isAvailable => _isAvailable;
   String? get error => _error;
   String? get currentPlan => _currentPlan;
@@ -185,11 +189,9 @@ class SubscriptionService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // -------------------------------------------------------------------------
   // Initiate purchase
   // Sends obfuscatedAccountId for fraud prevention and purchase attribution.
   // Google Play returns this in the purchase token verification response.
-  // -------------------------------------------------------------------------
   Future<void> purchase(ProductDetails product) async {
     if (_isLoading) return;
 
@@ -239,6 +241,16 @@ class SubscriptionService extends ChangeNotifier {
   // Handle purchase stream updates
   // This is called for new purchases AND restored purchases.
   // -------------------------------------------------------------------------
+  void _completeRestoreWait({required bool sawPurchase}) {
+    final completer = _restoreCompleter;
+    if (completer == null) return;
+
+    _restoreSawPurchase = _restoreSawPurchase || sawPurchase;
+    if (!completer.isCompleted) {
+      completer.complete();
+    }
+  }
+
   Future<void> _onPurchaseUpdate(List<PurchaseDetails> purchases) async {
     for (final purchase in purchases) {
       switch (purchase.status) {
@@ -254,6 +266,7 @@ class SubscriptionService extends ChangeNotifier {
         case PurchaseStatus.restored:
           // Send to server for validation — never grant entitlement locally
           await _serverValidatePurchase(purchase);
+          _completeRestoreWait(sawPurchase: true);
           break;
 
         case PurchaseStatus.error:
@@ -263,12 +276,14 @@ class SubscriptionService extends ChangeNotifier {
 
           // Record failed attempt in history
           await _recordFailedPurchase(purchase);
+          _completeRestoreWait(sawPurchase: false);
           notifyListeners();
           break;
 
         case PurchaseStatus.canceled:
           _isLoading = false;
           AppLogger.info('subscription: purchase canceled by user');
+          _completeRestoreWait(sawPurchase: false);
           notifyListeners();
           break;
       }
@@ -350,17 +365,44 @@ class SubscriptionService extends ChangeNotifier {
   // Restore purchases (Google Play)
   // -------------------------------------------------------------------------
   Future<void> restorePurchases() async {
+    if (_isLoading) return;
+
+    if (!_isAvailable) {
+      _error = 'Google Play Billing is not available on this device yet.';
+      notifyListeners();
+      return;
+    }
+
+    final restoreCompleter = Completer<void>();
+    _restoreCompleter = restoreCompleter;
+    _restoreSawPurchase = false;
+    _isRestoring = true;
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
       await _iap.restorePurchases();
-      // Results arrive via _onPurchaseUpdate
+      // Google Play emits restored purchases through purchaseStream. If there
+      // are no previous purchases, no event may arrive, so do not wait forever.
+      await restoreCompleter.future.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {},
+      );
+
+      if (!_restoreSawPurchase) {
+        _error = 'No previous Pro purchase found to restore.';
+      }
     } catch (e) {
       _error = 'Could not restore purchases. Try again.';
-      _isLoading = false;
       AppLogger.error('subscription: restore failed $e');
+    } finally {
+      if (identical(_restoreCompleter, restoreCompleter)) {
+        _restoreCompleter = null;
+        _restoreSawPurchase = false;
+      }
+      _isRestoring = false;
+      _isLoading = false;
       notifyListeners();
     }
   }

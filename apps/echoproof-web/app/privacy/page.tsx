@@ -96,6 +96,11 @@ const sections = [
     body: "You have the right to access the data we hold about you, request a correction of inaccurate data, request deletion of your account and associated personal data, and withdraw consent at any time. To exercise any of these rights, contact us at privacy@echoproof.online.",
   },
   {
+    title: "Internal operations",
+    body: "Echoproof staff may access account data as necessary to provide support, investigate abuse reports, enforce these terms, or comply with legal obligations. Access is logged and restricted to authorised personnel only. We do not access your private messages or sensitive personal information except as required to investigate specific reports of abuse.",
+  },
+
+  {
     title: "Cookies",
     body: "The Echoproof mobile app does not use cookies. Our website (echoproof.online) may use minimal, strictly necessary cookies for security purposes only. We do not use tracking or advertising cookies.",
   },

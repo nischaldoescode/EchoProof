@@ -4,14 +4,15 @@
 abstract final class StorageKeys {
   // hive box: app_settings
   static const String onboardingComplete = 'onboarding_complete';
-  static const String echoDraft          = 'echo_draft';
+  static const String echoDraft = 'echo_draft';
   static const String selectedCategories = 'selected_categories';
+  static const String permissionsPromptShown = 'permissions_shown';
 
   // hive box: echo_cache
-  static const String feedCache          = 'feed_cache';
+  static const String feedCache = 'feed_cache';
   static const String feedCacheTimestamp = 'feed_cache_ts';
 
   // flutter_secure_storage
-  static const String solanaKeypair      = 'solana_wallet_private_key';
-  static const String supabaseSession    = 'supabase_session';
+  static const String solanaKeypair = 'solana_wallet_private_key';
+  static const String supabaseSession = 'supabase_session';
 }

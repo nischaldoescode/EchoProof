@@ -5,7 +5,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/utils/logger.dart';
-import 'package:flutter/painting.dart' show Color;
+
 class NotificationItem {
   const NotificationItem({
     required this.id,
@@ -17,23 +17,23 @@ class NotificationItem {
     this.data,
   });
 
-  final String              id;
-  final String              type;
-  final String              title;
-  final String              body;
-  final bool                read;
-  final DateTime            createdAt;
+  final String id;
+  final String type;
+  final String title;
+  final String body;
+  final bool read;
+  final DateTime createdAt;
   final Map<String, dynamic>? data;
 
   NotificationItem copyWith({bool? read}) {
     return NotificationItem(
-      id:        id,
-      type:      type,
-      title:     title,
-      body:      body,
-      read:      read ?? this.read,
+      id: id,
+      type: type,
+      title: title,
+      body: body,
+      read: read ?? this.read,
       createdAt: createdAt,
-      data:      data,
+      data: data,
     );
   }
 }
@@ -44,6 +44,9 @@ class NotificationService extends ChangeNotifier {
 
   bool _isLoading = false;
   bool get isLoading => _isLoading;
+
+  RealtimeChannel? _channel;
+  String? _subscribedUserId;
 
   int get unreadCount => _notifications.where((n) => !n.read).length;
 
@@ -63,15 +66,10 @@ class NotificationService extends ChangeNotifier {
           .order('created_at', ascending: false)
           .limit(50);
 
-      _notifications = (rows as List).map((row) => NotificationItem(
-        id:        row['id'] as String,
-        type:      row['type'] as String,
-        title:     row['title'] as String,
-        body:      row['body'] as String,
-        read:      row['read'] as bool? ?? false,
-        createdAt: DateTime.tryParse(row['created_at'] as String? ?? '') ?? DateTime.now(),
-        data:      row['data'] as Map<String, dynamic>?,
-      )).toList();
+      _notifications = (rows as List)
+          .map((row) => _mapRow(row as Map<String, dynamic>))
+          .toList();
+      startRealtime();
 
       AppLogger.info('notifications: loaded ${_notifications.length}');
     } catch (e) {
@@ -95,5 +93,80 @@ class NotificationService extends ChangeNotifier {
 
     _notifications = _notifications.map((n) => n.copyWith(read: true)).toList();
     notifyListeners();
+  }
+
+  void startRealtime() {
+    final client = Supabase.instance.client;
+    final userId = client.auth.currentUser?.id;
+    if (userId == null) return;
+    if (_subscribedUserId == userId && _channel != null) return;
+
+    stopRealtime();
+    _subscribedUserId = userId;
+
+    _channel = client
+        .channel('notifications_$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'notifications',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: userId,
+          ),
+          callback: (payload) {
+            final item = _mapRow(payload.newRecord);
+            if (_notifications.any((n) => n.id == item.id)) return;
+            _notifications = [item, ..._notifications].take(50).toList();
+            notifyListeners();
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'notifications',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: userId,
+          ),
+          callback: (payload) {
+            final updated = _mapRow(payload.newRecord);
+            _notifications = _notifications
+                .map((n) => n.id == updated.id ? updated : n)
+                .toList();
+            notifyListeners();
+          },
+        )
+        .subscribe();
+  }
+
+  void stopRealtime() {
+    final channel = _channel;
+    if (channel != null) {
+      Supabase.instance.client.removeChannel(channel);
+    }
+    _channel = null;
+    _subscribedUserId = null;
+  }
+
+  NotificationItem _mapRow(Map<String, dynamic> row) {
+    return NotificationItem(
+      id: row['id'] as String,
+      type: row['type'] as String,
+      title: row['title'] as String,
+      body: row['body'] as String,
+      read: row['read'] as bool? ?? false,
+      createdAt: DateTime.tryParse(row['created_at'] as String? ?? '') ??
+          DateTime.now(),
+      data: row['data'] as Map<String, dynamic>?,
+    );
+  }
+
+  @override
+  void dispose() {
+    stopRealtime();
+    super.dispose();
   }
 }

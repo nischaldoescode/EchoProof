@@ -21,7 +21,12 @@ export async function getEchoes(status?: string): Promise<Echo[]> {
   }
 
   const { data } = await query;
-  return (data as Echo[]) ?? [];
+  return ((data ?? []).map((echo: any) => ({
+    ...echo,
+    users_public: Array.isArray(echo.users_public)
+      ? echo.users_public[0]
+      : echo.users_public,
+  })) as unknown as Echo[]) ?? [];
 }
 
 export async function updateEchoStatus(

@@ -73,20 +73,24 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // prevents concurrent profile checks during router refresh bursts
-  bool _checkingUsername = false;
+  Future<void>? _usernameCheckFuture;
 
-  Future<void> checkUsername() async {
-    if (_checkingUsername) return;
-    _checkingUsername = true;
+  Future<void> checkUsername() {
+    final running = _usernameCheckFuture;
+    if (running != null) return running;
 
+    final future = _checkUsernameInternal();
+    _usernameCheckFuture = future;
+    return future.whenComplete(() => _usernameCheckFuture = null);
+  }
+
+  Future<void> _checkUsernameInternal() async {
     try {
       final userId = _client.auth.currentUser?.id;
       if (userId == null) {
         _hasUsername = false;
         _hasUsernameChecked = true;
         _needsAgeGender = false;
-        _checkingUsername = false;
         notifyListeners();
         return;
       }
@@ -161,7 +165,6 @@ class AuthService extends ChangeNotifier {
       AppLogger.error('auth: profile check failed $e');
     }
 
-    _checkingUsername = false;
     notifyListeners(); // Single notify after all retries complete.
   }
 

@@ -97,7 +97,7 @@ serve(async (req: Request): Promise<Response> => {
 
     const { data: echo, error: echoError } = await serviceClient
       .from("echoes")
-      .select("id, user_id, status")
+      .select("id, user_id, status, admin_verified, title, content")
       .eq("id", echo_id)
       .single();
 
@@ -109,8 +109,8 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     // already hidden — reporting has no further effect
-    if (echo.status === "hidden") {
-      return errorResponse(400, "echo is already hidden");
+    if (echo.status === "hidden" || echo.status === "rejected") {
+      return errorResponse(400, "echo is no longer reportable");
     }
 
     // --------------------------------------------------
@@ -170,7 +170,23 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     // --------------------------------------------------
-    // 8. fetch updated echo to return new status
+    // 8. run fair automated moderation checks
+    // --------------------------------------------------
+
+    const { data: afterScoreUpdate } = await serviceClient
+      .from("echoes")
+      .select("id, user_id, status, admin_verified, title, content, report_score")
+      .eq("id", echo_id)
+      .single();
+
+    const moderation = await maybeAutoModerateReport(
+      serviceClient,
+      afterScoreUpdate ?? echo,
+      echo_id,
+    );
+
+    // --------------------------------------------------
+    // 9. fetch updated echo to return new status
     // --------------------------------------------------
 
     const { data: updated } = await serviceClient
@@ -184,6 +200,7 @@ serve(async (req: Request): Promise<Response> => {
         success:      true,
         new_status:   updated?.status ?? echo.status,
         report_score: updated?.report_score ?? 0,
+        moderation,
       }),
       {
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
@@ -205,6 +222,171 @@ function tierToWeight(tier: string): number {
     case "low":        return 2;
     case "unverified": return 1;
     default:           return 1;
+  }
+}
+
+async function maybeAutoModerateReport(
+  serviceClient: any,
+  echo: any,
+  echoId: string,
+) {
+  if (!echo || echo.admin_verified !== null) {
+    return { action: "none", reason: "admin override is present" };
+  }
+
+  if (["hidden", "rejected", "verified"].includes(echo.status)) {
+    return { action: "none", reason: `terminal status: ${echo.status}` };
+  }
+
+  const { data: reports, error } = await serviceClient
+    .from("echo_reports")
+    .select("reporter_id, reason, reporter_weight, created_at")
+    .eq("echo_id", echoId)
+    .eq("resolved", false);
+
+  if (error || !reports || reports.length === 0) {
+    return { action: "none", reason: "no unresolved reports" };
+  }
+
+  const reporterIds = new Set(reports.map((r: any) => r.reporter_id));
+  const reasons = new Set(reports.map((r: any) => r.reason));
+  const totalWeight = reports.reduce(
+    (sum: number, report: any) => sum + Number(report.reporter_weight ?? 1),
+    0,
+  );
+  const severeReports = reports.filter((r: any) =>
+    ["harassment", "misinformation", "fake_proof"].includes(r.reason),
+  ).length;
+  const maxReporterWeight = reports.reduce(
+    (max: number, report: any) =>
+      Math.max(max, Number(report.reporter_weight ?? 1)),
+    0,
+  );
+
+  const uniqueReporters = reporterIds.size;
+  const reasonDiversity = reasons.size;
+
+  // Hide only when several independent signals agree. A single trusted report
+  // can move content to review, but it cannot remove content by itself.
+  const shouldHide =
+    (uniqueReporters >= 5 &&
+      totalWeight >= 14 &&
+      reasonDiversity >= 2 &&
+      severeReports >= 2) ||
+    (uniqueReporters >= 7 && totalWeight >= 12 && reasonDiversity >= 2) ||
+    (uniqueReporters >= 4 &&
+      totalWeight >= 20 &&
+      reasonDiversity >= 2 &&
+      maxReporterWeight <= 5);
+
+  const shouldReview =
+    shouldHide ||
+    (uniqueReporters >= 2 && totalWeight >= 5) ||
+    Number(echo.report_score ?? 0) >= 20;
+
+  if (shouldHide) {
+    await serviceClient
+      .from("echoes")
+      .update({
+        status: "hidden",
+        admin_note:
+          "Automatically hidden after multiple independent weighted reports.",
+      })
+      .eq("id", echoId)
+      .is("admin_verified", null);
+
+    await sendModerationNotice(serviceClient, {
+      userId: echo.user_id,
+      echoId,
+      status: "hidden",
+      title: echo.title || String(echo.content ?? "").slice(0, 60),
+    });
+
+    return {
+      action: "hidden",
+      unique_reporters: uniqueReporters,
+      total_weight: totalWeight,
+      reason_diversity: reasonDiversity,
+      severe_reports: severeReports,
+    };
+  }
+
+  if (shouldReview && echo.status !== "under_review") {
+    await serviceClient
+      .from("echoes")
+      .update({
+        status: "under_review",
+        admin_note:
+          "Automatically moved to review after weighted community reports.",
+      })
+      .eq("id", echoId)
+      .is("admin_verified", null);
+
+    await sendModerationNotice(serviceClient, {
+      userId: echo.user_id,
+      echoId,
+      status: "under_review",
+      title: echo.title || String(echo.content ?? "").slice(0, 60),
+    });
+
+    return {
+      action: "under_review",
+      unique_reporters: uniqueReporters,
+      total_weight: totalWeight,
+      reason_diversity: reasonDiversity,
+      severe_reports: severeReports,
+    };
+  }
+
+  return {
+    action: "none",
+    unique_reporters: uniqueReporters,
+    total_weight: totalWeight,
+    reason_diversity: reasonDiversity,
+    severe_reports: severeReports,
+  };
+}
+
+async function sendModerationNotice(
+  serviceClient: any,
+  {
+    userId,
+    echoId,
+    status,
+    title,
+  }: { userId: string; echoId: string; status: string; title: string },
+) {
+  const copy =
+    status === "hidden"
+      ? {
+          title: "Your echo is under moderation",
+          body: `"${title}" was temporarily hidden while reports are reviewed.`,
+        }
+      : {
+          title: "Your echo is being reviewed",
+          body: `"${title}" received reports and is now in review.`,
+        };
+
+  await serviceClient.from("notifications").insert({
+    user_id: userId,
+    type: "echo_moderation",
+    title: copy.title,
+    body: copy.body,
+    data: { echo_id: echoId, status, route: `/echo/${echoId}` },
+  });
+
+  try {
+    await serviceClient.functions.invoke("send-notification", {
+      body: {
+        user_id: userId,
+        title: copy.title,
+        body: copy.body,
+        data: { echo_id: echoId, status },
+        route: `/echo/${echoId}`,
+      },
+    });
+  } catch (err) {
+    console.warn("on-report: push notification skipped", err);
   }
 }
 

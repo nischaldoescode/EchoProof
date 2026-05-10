@@ -15,10 +15,12 @@ import '../../../../shared/widgets/verified_badges.dart';
 import '../../../../shared/widgets/rich_text_display.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../../../shared/widgets/rich_text_display.dart';
 import 'dart:convert';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'dart:async' show unawaited;
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class EchoCard extends StatefulWidget {
   const EchoCard({
@@ -45,6 +47,15 @@ class _EchoCardState extends State<EchoCard> {
 
   EchoEntity get echo => widget.echo;
   VoidCallback? get onTap => widget.onTap;
+
+  void _openAuthorProfile() {
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    if (echo.userId.isNotEmpty && echo.userId == currentUserId) {
+      context.push('/profile');
+      return;
+    }
+    context.push('/profile/${Uri.encodeComponent(echo.username)}');
+  }
 
   Future<void> _translate() async {
     if (_isTranslating) return;
@@ -136,7 +147,7 @@ class _EchoCardState extends State<EchoCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _CardHeader(echo: echo),
+              _CardHeader(echo: echo, onAuthorTap: _openAuthorProfile),
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: AppSpacing.lg,
@@ -164,6 +175,11 @@ class _EchoCardState extends State<EchoCard> {
                       maxLines: 4,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    if (echo.mediaUrls.isNotEmpty) ...[
+                      const SizedBox(height: AppSpacing.md),
+                      _EchoMediaPreview(urls: echo.mediaUrls),
+                    ],
+
                     const SizedBox(height: AppSpacing.xs),
                     // Translation toggle button.
                     GestureDetector(
@@ -242,9 +258,76 @@ class _EchoCardState extends State<EchoCard> {
   }
 }
 
+class _EchoMediaPreview extends StatelessWidget {
+  const _EchoMediaPreview({required this.urls});
+
+  final List<String> urls;
+
+  bool _isVideo(String url) {
+    final lower = url.toLowerCase();
+    return lower.endsWith('.mp4') || lower.endsWith('.mov');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = urls.take(2).toList();
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+      child: SizedBox(
+        height: visible.length == 1 ? 210 : 160,
+        child: Row(
+          children: [
+            for (int i = 0; i < visible.length; i++) ...[
+              Expanded(
+                  child: _MediaTile(
+                      url: visible[i], isVideo: _isVideo(visible[i]))),
+              if (i != visible.length - 1) const SizedBox(width: 2),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MediaTile extends StatelessWidget {
+  const _MediaTile({required this.url, required this.isVideo});
+
+  final String url;
+  final bool isVideo;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isVideo) {
+      return Container(
+        color: AppColors.charcoal,
+        child: const Center(
+          child: Icon(Icons.play_circle_fill_rounded,
+              color: AppColors.white, size: 38),
+        ),
+      );
+    }
+
+    return CachedNetworkImage(
+      imageUrl: url,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
+      placeholder: (_, __) => Container(color: AppColors.softSand),
+      errorWidget: (_, __, ___) => Container(
+        color: AppColors.softSand,
+        child: const Icon(Icons.broken_image_outlined,
+            color: AppColors.textTertiary),
+      ),
+    );
+  }
+}
+
 class _CardHeader extends StatelessWidget {
-  const _CardHeader({required this.echo});
+  const _CardHeader({required this.echo, required this.onAuthorTap});
   final EchoEntity echo;
+  final VoidCallback onAuthorTap;
 
   @override
   Widget build(BuildContext context) {
@@ -256,47 +339,72 @@ class _CardHeader extends StatelessWidget {
         AppSpacing.xs,
       ),
       child: Row(
-        children: [
-          _AvatarWithRing(
-            avatarUrl: echo.userAvatarUrl,
-            isVerified: echo.userIsVerified,
-            isPro: echo.userIsPro,
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  echo.username,
-                  style: AppTypography.textTheme.titleSmall,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  echo.category.displayName,
-                  style: AppTypography.textTheme.labelMedium,
-                ),
-              ],
+  children: [
+    GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onAuthorTap,
+      child: _AvatarWithRing(
+        avatarUrl: echo.userAvatarUrl,
+        userIsVerified: echo.userIsVerified,
+        userIsPro: echo.userIsPro,
+      ),
+    ),
+    const SizedBox(width: AppSpacing.sm),
+    Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onAuthorTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              echo.username,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.josefinSans(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppColors.charcoal,
+              ),
             ),
-          ),
-          TrustBadge(tier: echo.userTrustTier),
-          const SizedBox(width: AppSpacing.sm),
-          Text(echo.timeAgo, style: AppTypography.textTheme.labelMedium),
+            Text(
+              echo.category.displayName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.josefinSans(
+                fontSize: 11,
+                color: AppColors.textTertiary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+    TrustBadge(tier: echo.userTrustTier),
+    const SizedBox(width: AppSpacing.sm),
+    Text(
+      echo.timeAgo,
+      style: GoogleFonts.josefinSans(
+        fontSize: 11,
+        color: AppColors.textTertiary,
+      ),
+    ),
         ],
       ),
     );
   }
 }
 
+
 class _AvatarWithRing extends StatelessWidget {
   const _AvatarWithRing({
     required this.avatarUrl,
-    required this.isVerified,
-    required this.isPro,
+    required this.userIsVerified,
+    required this.userIsPro,
   });
   final String? avatarUrl;
-  final bool isVerified;
-  final bool isPro;
+  final bool userIsVerified;
+  final bool userIsPro;
 
   @override
   Widget build(BuildContext context) {
@@ -306,7 +414,7 @@ class _AvatarWithRing extends StatelessWidget {
     // Total size = diameter + ring on each side + gap on each side.
     const double totalSize = radius * 2 + (ringWidth + gap) * 2;
 
-    if (!isVerified) {
+    if (!userIsVerified) {
       // No ring — simple avatar.
       return CircleAvatar(
         radius: radius,
@@ -320,8 +428,8 @@ class _AvatarWithRing extends StatelessWidget {
     }
 
     final badgeType = resolveBadgeType(
-      isVerified: isVerified,
-      isPro: isPro,
+      isVerified: userIsVerified,
+      isPro: userIsPro,
     );
 
     final ringColor = switch (badgeType) {

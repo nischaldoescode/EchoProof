@@ -333,7 +333,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                     child: ElevatedButton(
                       onPressed: () {
                         Navigator.pop(ctx);
-                        context.push('/subscribe');
+
+                        showInfoSnack(context, 'Coming soon! Stay tuned.');
+                        // context.push('/subscribe');
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.charcoal,
@@ -498,25 +500,32 @@ class _SettingsScreenState extends State<SettingsScreen>
                   ? () {} // Disabled — show nothing or a snack
                   : () => context.push('/verify-identity'),
             ),
-            _Tile(
-              icon: Icons.receipt_long_outlined,
-              label: 'Purchase history',
-              onTap: () {
-                final sub = context.read<SubscriptionService>();
-                if (!sub.hasEverAttemptedPurchase && !sub.isPro) {
-                  showInfoSnack(context, 'No purchase history yet.');
-                  return;
-                }
-                context.push('/purchase-history');
-              },
-            ),
+            // _Tile(
+            //   icon: Icons.receipt_long_outlined,
+            //   label: 'Purchase history',
+            //   onTap: () {
+            //     final sub = context.read<SubscriptionService>();
+            //     if (!sub.hasEverAttemptedPurchase && !sub.isPro) {
+            //       showInfoSnack(context, 'No purchase history yet.');
+            //       return;
+            //     }
+            //     context.push('/purchase-history');
+            //   },
+            // ),
           ]),
           _Section(title: 'Subscription', tiles: [
             _Tile(
               icon: Icons.star_outline_rounded,
               label: 'Echoproof Pro',
               trailing: const _ProBadge(),
-              onTap: () => context.push('/subscribe'),
+              onTap: () => {
+                showInfoSnack(
+                  context,
+                  'Echoproof Pro is coming soon! In the meantime,\n you can support us by sharing the app with friends.',
+                )
+              }
+
+              // context.push('/subscribe'),
             ),
           ]),
           _Section(title: 'Notifications', tiles: [

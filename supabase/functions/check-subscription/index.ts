@@ -56,7 +56,7 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     // Grace period: still has access despite payment failure
-    const activeStatuses = ["active", "grace_period"];
+    const activeStatuses = ["active", "grace_period", "canceled", "cancelled"];
     if (!activeStatuses.includes(sub.status as string)) {
       // Ensure users_public is also updated (sync safety)
       await serviceClient

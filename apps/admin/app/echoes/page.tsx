@@ -4,6 +4,8 @@ import { Topbar } from "@/components/layout/topbar";
 import { EchoTable } from "@/components/echoes/echo-table";
 import type { Echo } from "@/types/echo";
 
+export const dynamic = "force-dynamic";
+
 export default async function EchoesPage() {
   const supabase = await createClient();
 
@@ -19,13 +21,20 @@ export default async function EchoesPage() {
     .order("report_score", { ascending: false })
     .limit(100);
 
+  const normalizedEchoes = (echoes ?? []).map((echo: any) => ({
+    ...echo,
+    users_public: Array.isArray(echo.users_public)
+      ? echo.users_public[0]
+      : echo.users_public,
+  })) as unknown as Echo[];
+
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="flex-1 flex flex-col">
+      <main className="flex-1 min-w-0 flex flex-col">
         <Topbar title="Echo moderation" subtitle="Review, verify, or remove echoes" />
-        <div className="p-6">
-          <EchoTable echoes={(echoes as Echo[]) ?? []} />
+        <div className="p-4 pb-24 sm:p-6 sm:pb-24 md:pb-6">
+          <EchoTable echoes={normalizedEchoes} />
         </div>
       </main>
     </div>

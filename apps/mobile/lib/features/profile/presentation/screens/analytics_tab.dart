@@ -50,7 +50,7 @@ class _AnalyticsTabState extends State<AnalyticsTab>
           .from('echoes')
           .select(
             'id, title, trust_score, confidence_score, support_count, '
-            'challenge_count, reply_count, bond_count, status, created_at',
+            'challenge_count, reply_count, bond_count, status, created_at, media_urls,',
           )
           .eq('user_id', widget.userId)
           .order('trust_score', ascending: false)

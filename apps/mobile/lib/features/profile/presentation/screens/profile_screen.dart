@@ -53,13 +53,12 @@ class _ProfileScreenState extends State<ProfileScreen>
   late final AnimationController _entranceCtrl;
   late final Animation<double> _fade;
   late final Animation<Offset> _slide;
-  late final TabController _tabCtrl;
 
   @override
   void initState() {
     super.initState();
+    _isOwnProfile = widget.username == null;
     // Pro users get analytics tab; length depends on isPro and isOwnProfile.
-    _tabCtrl = TabController(length: userIsPro ? 3 : 2, vsync: this);
     _entranceCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
@@ -77,7 +76,6 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   @override
   void dispose() {
-    _tabCtrl.dispose();
     _entranceCtrl.dispose();
     _debounce?.cancel();
     super.dispose();
@@ -812,7 +810,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             .select(
               'id, title, content, category, status, trust_score, '
               'confidence_score, controversy_score, support_count, '
-              'challenge_count, created_at',
+              'challenge_count, reply_count, created_at, media_urls',
             )
             .eq('user_id', targetId)
             .not('status', 'in', '("hidden","rejected")')
@@ -858,11 +856,23 @@ class _ProfileScreenState extends State<ProfileScreen>
           challengeCount: (r['challenge_count'] as num?)?.toInt() ?? 0,
           timeAgo: Formatters.timeAgo(created),
           userIsPro: profile['is_pro'] as bool? ?? false,
+          mediaUrls: (r['media_urls'] as List?)?.cast<String>() ?? const [],
+          replyCount: (r['reply_count'] as num?)?.toInt() ?? 0,
+          userId: targetId,
         );
       }).toList();
 
+      final storedEchoCount = (profile['echo_count'] as num?)?.toInt() ?? 0;
+      final loadedEchoCount = echoEntities.length;
+      final displayEchoCount =
+          storedEchoCount > loadedEchoCount ? storedEchoCount : loadedEchoCount;
+      final displayProfile = {
+        ...profile,
+        'echo_count': displayEchoCount,
+      };
+
       setState(() {
-        _profile = profile;
+        _profile = displayProfile;
         _echoes = echoEntities;
         _settledBonds =
             bonds.where((b) => b['bond_status'] == 'settled').length;
@@ -1085,91 +1095,107 @@ class _ProfileScreenState extends State<ProfileScreen>
       );
     }
 
-    return FadeTransition(
-      opacity: _fade,
-      child: SlideTransition(
-        position: _slide,
-        child: RefreshIndicator(
-          color: AppColors.fernGreen,
-          onRefresh: _loadProfile,
-          child: NestedScrollView(
-            headerSliverBuilder: (context, innerBoxIsScrolled) => [
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.xl),
-                  child: Column(
-                    children: [
-                      _AvatarCard(
-                        profile: _profile!,
-                        isIdentityVerified: _isIdentityVerified,
-                        isOwnProfile: _isOwnProfile,
-                        onEditBio: _showEditBioSheet,
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      if (_isOwnProfile)
-                        _VisibilityToggle(
-                          isPublic: _isPublic,
-                          onToggle: _setPublic,
+    final tabs = <Widget>[
+      const Tab(text: 'Echoes'),
+      const Tab(text: 'Replies'),
+      const Tab(text: 'Media'),
+      if (_isOwnProfile && userIsPro) const Tab(text: 'Analytics'),
+    ];
+
+    final tabViews = <Widget>[
+      _EchoesTab(echoes: _echoes),
+      _RepliesTab(userId: _profile!['id']),
+      _MediaTab(userId: _profile!['id']),
+      if (_isOwnProfile && userIsPro) AnalyticsTab(userId: _profile!['id']),
+    ];
+
+    return DefaultTabController(
+      length: tabs.length,
+      child: FadeTransition(
+        opacity: _fade,
+        child: SlideTransition(
+          position: _slide,
+          child: SlideTransition(
+            position: _slide,
+            child: RefreshIndicator(
+              color: AppColors.fernGreen,
+              onRefresh: _loadProfile,
+              child: NestedScrollView(
+                  headerSliverBuilder: (context, innerBoxIsScrolled) => [
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.all(AppSpacing.xl),
+                            child: Column(
+                              children: [
+                                _AvatarCard(
+                                  profile: _profile!,
+                                  isIdentityVerified: _isIdentityVerified,
+                                  isOwnProfile: _isOwnProfile,
+                                  onEditBio: _showEditBioSheet,
+                                ),
+                                if (!_isOwnProfile) ...[
+                                  const SizedBox(height: AppSpacing.md),
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: _ProfileFollowButton(
+                                      isFollowing: _isFollowing,
+                                      onPressed: _toggleFollow,
+                                    ),
+                                  ),
+                                ],
+                                const SizedBox(height: AppSpacing.md),
+                                if (_isOwnProfile)
+                                  _VisibilityToggle(
+                                    isPublic: _isPublic,
+                                    onToggle: _setPublic,
+                                  ),
+                                if (!_isOwnProfile && !_isPublic)
+                                  _PrivateProfileNotice(
+                                    username: _profile!['username'] as String,
+                                  ),
+                                const SizedBox(height: AppSpacing.md),
+                                ReputationCard(
+                                  username:
+                                      _profile!['username'] as String? ?? '',
+                                  trustTier:
+                                      _profile!['trust_tier'] as String? ??
+                                          'unverified',
+                                  trustScore: (_profile!['trust_score'] as num?)
+                                          ?.toInt() ??
+                                      0,
+                                  echoCount: (_profile!['echo_count'] as num?)
+                                          ?.toInt() ??
+                                      0,
+                                  proofCount: (_profile!['proof_count'] as num?)
+                                          ?.toInt() ??
+                                      0,
+                                  isIdentityVerified: _isIdentityVerified,
+                                  settledBonds: _settledBonds,
+                                  contestedBonds: _contestedBonds,
+                                  activeBonds: _activeBonds,
+                                  avatarUrl: _profile!['avatar_url'] as String?,
+                                  walletAddress:
+                                      _profile!['wallet_address'] as String?,
+                                ),
+                                const SizedBox(height: AppSpacing.lg),
+                                if (_isOwnProfile && !_isIdentityVerified)
+                                  _VerifyPrompt(
+                                      isPending: _isVerificationPending),
+                                const SizedBox(height: AppSpacing.lg),
+                                if (_isOwnProfile) ...[
+                                  const SolanaInfoCard(),
+                                  const SizedBox(height: AppSpacing.lg),
+                                ],
+                              ],
+                            ),
+                          ),
                         ),
-                      if (!_isOwnProfile && !_isPublic)
-                        _PrivateProfileNotice(
-                          username: _profile!['username'] as String,
+                        SliverPersistentHeader(
+                          pinned: true,
+                          delegate: _TabBarDelegate(TabBar(tabs: tabs)),
                         ),
-                      const SizedBox(height: AppSpacing.md),
-                      ReputationCard(
-                        username: _profile!['username'] as String? ?? '',
-                        trustTier:
-                            _profile!['trust_tier'] as String? ?? 'unverified',
-                        trustScore:
-                            (_profile!['trust_score'] as num?)?.toInt() ?? 0,
-                        echoCount:
-                            (_profile!['echo_count'] as num?)?.toInt() ?? 0,
-                        proofCount:
-                            (_profile!['proof_count'] as num?)?.toInt() ?? 0,
-                        isIdentityVerified: _isIdentityVerified,
-                        settledBonds: _settledBonds,
-                        contestedBonds: _contestedBonds,
-                        activeBonds: _activeBonds,
-                        avatarUrl: _profile!['avatar_url'] as String?,
-                        walletAddress: _profile!['wallet_address'] as String?,
-                      ),
-                      const SizedBox(height: AppSpacing.lg),
-                      if (_isOwnProfile && !_isIdentityVerified)
-                        _VerifyPrompt(isPending: _isVerificationPending),
-                      const SizedBox(height: AppSpacing.lg),
-                      if (_isOwnProfile) ...[
-                        const SolanaInfoCard(),
-                        const SizedBox(height: AppSpacing.lg),
                       ],
-                    ],
-                  ),
-                ),
-              ),
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: _TabBarDelegate(
-                  TabBar(
-                    controller: _tabCtrl,
-                    tabs: [
-                      const Tab(text: 'Echoes'),
-                      const Tab(text: 'Replies'),
-                      const Tab(text: 'Media'),
-                      if (_isOwnProfile && userIsPro)
-                        const Tab(text: 'Analytics'),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-            body: TabBarView(
-              controller: _tabCtrl,
-              children: [
-                _EchoesTab(echoes: _echoes),
-                _RepliesTab(userId: _profile!['id']),
-                _MediaTab(userId: _profile!['id']),
-                if (_isOwnProfile && userIsPro)
-                  AnalyticsTab(userId: _profile!['id']),
-              ],
+                  body: TabBarView(children: tabViews)),
             ),
           ),
         ),
@@ -1190,93 +1216,72 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   @override
   Widget build(BuildContext context) {
+    final swipeLocation = _isOwnProfile ? '/profile' : '/feed';
+    final bottomNavLocation = _isOwnProfile
+        ? '/profile'
+        : '/profile/${Uri.encodeComponent(widget.username ?? '')}';
+
     return SwipeNavigationWrapper(
-        currentLocation: '/profile',
+        currentLocation: swipeLocation,
         child: ExitConfirmWrapper(
+            enabled: _isOwnProfile,
             child: Scaffold(
-          backgroundColor: const Color(0xFFF5FAF7),
-          appBar: AppBar(
-            backgroundColor: Colors.white,
-            elevation: 0,
-            scrolledUnderElevation: 0.5,
-            shadowColor: AppColors.borderSubtle,
-            title: Text(
-              _profile != null ? '@${_profile!['username']}' : 'Profile',
-              style: AppTypography.textTheme.titleLarge,
-            ),
-            actions: [
-              if (_isOwnProfile) ...[
-                IconButton(
-                  icon: const Icon(Icons.edit_outlined, size: 20),
-                  onPressed: () => _showEditProfileSheet(),
-                  color: AppColors.charcoal,
-                  tooltip: 'Edit profile',
+              backgroundColor: const Color(0xFFF5FAF7),
+              appBar: AppBar(
+                backgroundColor: Colors.white,
+                elevation: 0,
+                scrolledUnderElevation: 0.5,
+                shadowColor: AppColors.borderSubtle,
+                title: Text(
+                  _profile != null ? '@${_profile!['username']}' : 'Profile',
+                  style: AppTypography.textTheme.titleLarge,
                 ),
-                IconButton(
-                  icon: const Icon(Icons.settings_outlined, size: 22),
-                  onPressed: () => context.push('/settings'),
-                  color: AppColors.charcoal,
-                  tooltip: 'Settings',
-                ),
-              ] else if (_profile != null) ...[
-                // Follow/unfollow button for other profiles.
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  child: TextButton(
-                    key: ValueKey(_isFollowing),
-                    onPressed: _toggleFollow,
-                    style: TextButton.styleFrom(
-                      foregroundColor: _isFollowing
-                          ? AppColors.textSecondary
-                          : AppColors.fernGreen,
-                      side: BorderSide(
-                        color: _isFollowing
-                            ? AppColors.borderMedium
-                            : AppColors.fernGreen,
-                      ),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20)),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 6),
+                actions: [
+                  if (_isOwnProfile) ...[
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined, size: 20),
+                      onPressed: () => _showEditProfileSheet(),
+                      color: AppColors.charcoal,
+                      tooltip: 'Edit profile',
                     ),
-                    child: Text(
-                      _isFollowing ? 'Following' : 'Follow',
-                      style: GoogleFonts.josefinSans(
-                          fontWeight: FontWeight.w600, fontSize: 13),
+                    IconButton(
+                      icon: const Icon(Icons.settings_outlined, size: 22),
+                      onPressed: () => context.push('/settings'),
+                      color: AppColors.charcoal,
+                      tooltip: 'Settings',
                     ),
-                  ),
-                ),
-              ],
-              const SizedBox(width: 4),
-            ],
-          ),
-          bottomNavigationBar: const AppBottomNav(currentLocation: '/profile'),
-          body: Stack(
-            children: [
-              _isOwnProfile
-                  ? _buildBody()
-                  : kReleaseMode
-                      ? SecureScreen(child: _buildBody())
-                      : _buildBody(),
-              if (_isSavingProfile)
-                Positioned.fill(
-                  child: AnimatedOpacity(
-                    opacity: _isSavingProfile ? 1.0 : 0.0,
-                    duration: const Duration(milliseconds: 200),
-                    child: Container(
-                      color: Colors.black.withValues(alpha: 0.25),
-                      child: const Center(
-                        child: CircularProgressIndicator(
-                          color: AppColors.fernGreen,
-                          strokeWidth: 2.5,
+                  ],
+                  const SizedBox(width: 4),
+                ],
+              ),
+              bottomNavigationBar:
+                  AppBottomNav(currentLocation: bottomNavLocation),
+              body: Stack(
+                children: [
+                  _isOwnProfile
+                      ? _buildBody()
+                      : kReleaseMode
+                          ? SecureScreen(child: _buildBody())
+                          : _buildBody(),
+                  if (_isSavingProfile)
+                    Positioned.fill(
+                      child: AnimatedOpacity(
+                        opacity: _isSavingProfile ? 1.0 : 0.0,
+                        duration: const Duration(milliseconds: 200),
+                        child: Container(
+                          color: Colors.black.withValues(alpha: 0.25),
+                          child: const Center(
+                            child: CircularProgressIndicator(
+                              color: AppColors.fernGreen,
+                              strokeWidth: 2.5,
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
-            ],
-          ),
-        )));
+                ],
+              ),
+            )));
   }
 }
 
@@ -1303,6 +1308,51 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
   @override
   bool shouldRebuild(_TabBarDelegate oldDelegate) {
     return false;
+  }
+}
+
+class _ProfileFollowButton extends StatelessWidget {
+  const _ProfileFollowButton({
+    required this.isFollowing,
+    required this.onPressed,
+  });
+
+  final bool isFollowing;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      child: TextButton.icon(
+        key: ValueKey(isFollowing),
+        onPressed: onPressed,
+        icon: Icon(
+          isFollowing ? Icons.check_rounded : Icons.person_add_alt_1_rounded,
+          size: 16,
+        ),
+        label: Text(
+          isFollowing ? 'Following' : 'Follow',
+          style: GoogleFonts.josefinSans(
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+          ),
+        ),
+        style: TextButton.styleFrom(
+          foregroundColor:
+              isFollowing ? AppColors.textSecondary : AppColors.fernGreen,
+          side: BorderSide(
+            color: isFollowing ? AppColors.borderMedium : AppColors.fernGreen,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          backgroundColor:
+              isFollowing ? AppColors.white : AppColors.fernGreenLight,
+        ),
+      ),
+    );
   }
 }
 
@@ -1839,25 +1889,10 @@ class _EchoesTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (echoes.isEmpty) {
-      return SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        child: SizedBox(
-          height: 300,
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.record_voice_over_outlined,
-                    size: 48, color: AppColors.textTertiary),
-                const SizedBox(height: AppSpacing.md),
-                Text('No echoes yet.',
-                    style: AppTypography.textTheme.bodyMedium
-                        ?.copyWith(color: AppColors.textSecondary)),
-              ],
-            ),
-          ),
-        ),
+      return const _ProfileEmptyTab(
+        icon: Icons.record_voice_over_outlined,
+        title: 'No echoes yet.',
+        message: 'Published echoes will appear here.',
       );
     }
 
@@ -1930,21 +1965,10 @@ class _RepliesTabState extends State<_RepliesTab>
     }
 
     if (_replies.isEmpty) {
-      return SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xxl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.chat_bubble_outline_rounded,
-                  size: 48, color: AppColors.textTertiary),
-              const SizedBox(height: AppSpacing.md),
-              Text('No replies yet.',
-                  style: AppTypography.textTheme.bodyMedium
-                      ?.copyWith(color: AppColors.textSecondary)),
-            ],
-          ),
-        ),
+      return const _ProfileEmptyTab(
+        icon: Icons.chat_bubble_outline_rounded,
+        title: 'No replies yet.',
+        message: 'Replies to other echoes will appear here.',
       );
     }
 
@@ -2011,6 +2035,91 @@ class _RepliesTabState extends State<_RepliesTab>
   }
 }
 
+class _ProfileEmptyTab extends StatelessWidget {
+  const _ProfileEmptyTab({
+    required this.icon,
+    required this.title,
+    required this.message,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: SafeArea(
+            top: false,
+            minimum: const EdgeInsets.only(bottom: 96),
+            child: Center(
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: 1),
+                duration: const Duration(milliseconds: 320),
+                curve: Curves.easeOutCubic,
+                builder: (context, value, child) {
+                  return Opacity(
+                    opacity: value,
+                    child: Transform.translate(
+                      offset: Offset(0, (1 - value) * 12),
+                      child: Transform.scale(
+                        scale: 0.97 + (value * 0.03),
+                        child: child,
+                      ),
+                    ),
+                  );
+                },
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.xxl),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 68,
+                        height: 68,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color:
+                              AppColors.fernGreenLight.withValues(alpha: 0.7),
+                          border: Border.all(
+                            color: AppColors.fernGreen.withValues(alpha: 0.16),
+                          ),
+                        ),
+                        child: Icon(
+                          icon,
+                          size: 32,
+                          color: AppColors.fernGreen,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      Text(
+                        title,
+                        textAlign: TextAlign.center,
+                        style: AppTypography.textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        message,
+                        textAlign: TextAlign.center,
+                        style: AppTypography.textTheme.bodySmall
+                            ?.copyWith(color: AppColors.textTertiary),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _MediaTab extends StatefulWidget {
   const _MediaTab({required this.userId});
   final String userId;
@@ -2067,27 +2176,16 @@ class _MediaTabState extends State<_MediaTab>
     }
 
     if (_mediaEchoes.isEmpty) {
-      return SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xxl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.photo_library_outlined,
-                  size: 48, color: AppColors.textTertiary),
-              const SizedBox(height: AppSpacing.md),
-              Text('No media yet.',
-                  style: AppTypography.textTheme.bodyMedium
-                      ?.copyWith(color: AppColors.textSecondary)),
-            ],
-          ),
-        ),
+      return const _ProfileEmptyTab(
+        icon: Icons.photo_library_outlined,
+        title: 'No media yet.',
+        message: 'Echoes with photos or videos will appear here.',
       );
     }
 
     // Twitter-style 3-column grid
     return GridView.builder(
-      padding: const EdgeInsets.all(2),
+      padding: const EdgeInsets.fromLTRB(2, 2, 2, 96),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
         crossAxisSpacing: 2,

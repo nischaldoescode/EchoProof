@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap");
 
 * {
   box-sizing: border-box;
@@ -11,12 +11,32 @@
 }
 
 body {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: "Inter", system-ui, sans-serif;
 }
 
 :root {
-  --charcoal: #1A1A1A;
-  --fern: #4CAF6E;
-  --coral: #FF7759;
-  --sand: #EAE7DF;
+  --charcoal: #1a1a1a;
+  --fern: #4caf6e;
+  --coral: #ff7759;
+  --sand: #eae7df;
+}
+
+/* ensure all buttons and links have pointer cursor */
+button:not(:disabled),
+[role="button"],
+a[href] {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* smooth transitions for interactive elements */
+button,
+a {
+  transition-property:
+    background-color, border-color, color, opacity, transform, box-shadow;
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }

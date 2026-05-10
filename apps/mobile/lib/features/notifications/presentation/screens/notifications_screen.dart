@@ -10,6 +10,7 @@ import '../../../../app/theme/typography.dart';
 import '../services/notification_service.dart';
 import '../../../../shared/widgets/app_bottom_nav.dart';
 import '../../../../app/app.dart';
+
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
 
@@ -23,93 +24,124 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final service = context.read<NotificationService>();
-      service.loadNotifications().then((_) => service.markAllRead());
+      service.loadNotifications();
     });
   }
 
-@override
-Widget build(BuildContext context) {
-  final service = context.watch<NotificationService>();
+  @override
+  Widget build(BuildContext context) {
+    final service = context.watch<NotificationService>();
 
-  return SwipeNavigationWrapper(
-    currentLocation: '/notifications',
-    child: ExitConfirmWrapper(
-      child: Scaffold(
-        backgroundColor: AppColors.white,
-        appBar: AppBar(
-          title: Text('Notifications', style: AppTypography.textTheme.titleLarge),
-          automaticallyImplyLeading: false,
-        ),
-        bottomNavigationBar: const AppBottomNav(currentLocation: '/notifications'),
-        body: service.isLoading
-          ? const Center(
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: AppColors.fernGreen,
+    return SwipeNavigationWrapper(
+      currentLocation: '/notifications',
+      child: ExitConfirmWrapper(
+        child: Scaffold(
+          backgroundColor: AppColors.white,
+          appBar: AppBar(
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.done_all_rounded),
+                tooltip: 'Mark all read',
+                onPressed:
+                    service.unreadCount == 0 ? null : service.markAllRead,
               ),
-            )
-          : service.notifications.isEmpty
-              ? _EmptyNotifications()
-              : ListView.separated(
-                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-                  itemCount: service.notifications.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (context, i) {
-                    final n = service.notifications[i];
-                    return AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      color: n.read
-                          ? AppColors.white
-                          : AppColors.fernGreenLight.withValues(alpha: 0.4),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.xl,
-                          vertical: AppSpacing.md,
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _NotificationIcon(type: n.type),
-                            const SizedBox(width: AppSpacing.md),
-                            Expanded(
-                              child: Column(
+            ],
+            title: Text('Notifications',
+                style: AppTypography.textTheme.titleLarge),
+            automaticallyImplyLeading: false,
+          ),
+          bottomNavigationBar:
+              const AppBottomNav(currentLocation: '/notifications'),
+          body: service.isLoading
+              ? const Center(
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.fernGreen,
+                  ),
+                )
+              : service.notifications.isEmpty
+                  ? RefreshIndicator(
+                      color: AppColors.fernGreen,
+                      onRefresh: service.loadNotifications,
+                      child: ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          const SizedBox(height: 200),
+                          _EmptyNotifications(),
+                        ],
+                      ),
+                    )
+                  : RefreshIndicator(
+                      color: AppColors.fernGreen,
+                      onRefresh: service.loadNotifications,
+                      child: ListView.separated(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding:
+                            const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                        itemCount: service.notifications.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (context, i) {
+                          final n = service.notifications[i];
+                          return AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
+                            color: n.read
+                                ? AppColors.white
+                                : AppColors.fernGreenLight
+                                    .withValues(alpha: 0.4),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.xl,
+                                vertical: AppSpacing.md,
+                              ),
+                              child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    n.title,
-                                    style: AppTypography.textTheme.titleSmall,
+                                  _NotificationIcon(type: n.type),
+                                  const SizedBox(width: AppSpacing.md),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          n.title,
+                                          style: AppTypography
+                                              .textTheme.titleSmall,
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          n.body,
+                                          style:
+                                              AppTypography.textTheme.bodySmall,
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          _timeAgo(n.createdAt),
+                                          style: AppTypography
+                                              .textTheme.labelMedium,
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    n.body,
-                                    style: AppTypography.textTheme.bodySmall,
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    _timeAgo(n.createdAt),
-                                    style: AppTypography.textTheme.labelMedium,
-                                  ),
+                                  if (!n.read)
+                                    Container(
+                                      width: 7,
+                                      height: 7,
+                                      margin: const EdgeInsets.only(top: 4),
+                                      decoration: const BoxDecoration(
+                                        color: AppColors.fernGreen,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),
-                            if (!n.read)
-                              Container(
-                                width: 7,
-                                height: 7,
-                                margin: const EdgeInsets.only(top: 4),
-                                decoration: const BoxDecoration(
-                                  color: AppColors.fernGreen,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                          ],
-                        ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
-    ),
-    ),
+                    ),
+        ),
+      ),
     );
   }
 
@@ -156,6 +188,11 @@ class _NotificationIcon extends StatelessWidget {
       'echo_verified' => (Icons.verified_outlined, AppColors.fernGreen),
       'trust_update' => (Icons.trending_up_outlined, AppColors.fernGreen),
       'report_resolved' => (Icons.shield_outlined, AppColors.charcoal),
+      'echo_moderation' => (Icons.shield_outlined, AppColors.sunsetCoral),
+      'subscription_update' => (
+          Icons.workspace_premium_outlined,
+          AppColors.fernGreen
+        ),
       'bond_settled' => (Icons.link_outlined, AppColors.fernGreen),
       'bond_contested' => (Icons.link_off_outlined, AppColors.sunsetCoral),
       'content_removed' => (

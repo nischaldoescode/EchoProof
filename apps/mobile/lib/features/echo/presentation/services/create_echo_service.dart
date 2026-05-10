@@ -129,6 +129,11 @@ class CreateEchoService extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _isVideoPath(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.mp4') || lower.endsWith('.mov');
+  }
+
   void setCategory(EchoCategory c) {
     _category = c;
     notifyListeners();
@@ -169,13 +174,19 @@ class CreateEchoService extends ChangeNotifier {
       final userId = client.auth.currentUser?.id;
       if (userId == null) throw Exception('not authenticated');
 
+      for (final path in List<String>.from(_localPaths)) {
+        if (_mediaUrls.length >= _localPaths.length) break;
+        await addMedia(path, _isVideoPath(path));
+      }
+
       await client.from('echoes').insert({
         'user_id': userId,
         'title': Sanitizer.text(_title),
         'content': Sanitizer.text(_content),
-        'category': _category!.name,
+        'category': _category!.dbValue,
         'verification_required': _requiresVerification,
         'status': 'pending_verification',
+        'media_urls': _mediaUrls,
       });
 
       _echoesCreatedThisSession++;

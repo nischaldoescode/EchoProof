@@ -85,12 +85,15 @@ class _AppBannerAdState extends State<AppBannerAd>
       bottom: true,
       child: FadeTransition(
         opacity: _fade,
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          color: Colors.white,
-          width: _bannerAd!.size.width.toDouble(),
-          height: _bannerAd!.size.height.toDouble(),
-          child: AdWidget(ad: _bannerAd!),
+        child: Align(
+          alignment: Alignment.center,
+          child: Container(
+            margin: EdgeInsets.zero,
+            color: Colors.white,
+            width: _bannerAd!.size.width.toDouble(),
+            height: _bannerAd!.size.height.toDouble(),
+            child: AdWidget(ad: _bannerAd!),
+          ),
         ),
       ),
     );

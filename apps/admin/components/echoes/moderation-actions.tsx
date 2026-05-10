@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import type { Echo } from "@/types/echo";
 
 interface ModerationActionsProps {
@@ -17,7 +16,6 @@ export function ModerationActions({ echo, onClose }: ModerationActionsProps) {
 
   async function applyAction(action: "verify" | "reject" | "hide" | "restore") {
     setLoading(true);
-    const supabase = createClient();
 
     const updates: Record<string, unknown> = {};
 
@@ -38,12 +36,17 @@ export function ModerationActions({ echo, onClose }: ModerationActionsProps) {
       updates.admin_note     = note;
     }
 
-    const { error } = await supabase
-      .from("echoes")
-      .update(updates)
-      .eq("id", echo.id);
+    const res = await fetch(`/api/admin/echo/${echo.id}/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...updates,
+        resolve_reports: action === "reject",
+        notify: true,
+      }),
+    });
 
-    if (!error) {
+    if (res.ok) {
       router.refresh();
       onClose();
     }

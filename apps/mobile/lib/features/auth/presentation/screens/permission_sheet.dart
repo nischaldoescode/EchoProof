@@ -1,12 +1,36 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
+import '../../../../core/constants/storage_keys.dart';
+import '../../../../core/services/push_notification_service.dart';
 
 class PermissionsSheet extends StatefulWidget {
   const PermissionsSheet({super.key});
+
+  static Future<void> markPromptSeen() async {
+    if (!Hive.isBoxOpen('app_settings')) {
+      await Hive.openBox('app_settings');
+    }
+    await Hive.box('app_settings')
+        .put(StorageKeys.permissionsPromptShown, true);
+  }
+
+  static Future<bool> corePermissionsGranted() async {
+    final statuses = await Future.wait([
+      Permission.notification.status,
+      Permission.camera.status,
+      Permission.photos.status,
+    ]);
+    return statuses.every(isAllowed);
+  }
+
+  static bool isAllowed(PermissionStatus status) {
+    return status.isGranted || status.isLimited || status.isProvisional;
+  }
 
   @override
   State<PermissionsSheet> createState() => _PermissionsSheetState();
@@ -30,10 +54,21 @@ class _PermissionsSheetState extends State<PermissionsSheet> {
     final photos =
         await (Platform.isAndroid ? Permission.photos : Permission.photos)
             .status;
+    final allGranted = [
+      notif,
+      cam,
+      photos,
+    ].every(PermissionsSheet.isAllowed);
+
+    if (allGranted) {
+      await PermissionsSheet.markPromptSeen();
+    }
+
+    if (!mounted) return;
     setState(() {
-      _notificationsGranted = notif.isGranted;
-      _cameraGranted = cam.isGranted;
-      _photosGranted = photos.isGranted;
+      _notificationsGranted = PermissionsSheet.isAllowed(notif);
+      _cameraGranted = PermissionsSheet.isAllowed(cam);
+      _photosGranted = PermissionsSheet.isAllowed(photos);
     });
   }
 
@@ -54,12 +89,21 @@ class _PermissionsSheetState extends State<PermissionsSheet> {
     final photoStatus = await Permission.photos.request();
     if (photoStatus.isPermanentlyDenied) await openAppSettings();
 
+    await PushNotificationService.instance.initialize();
+    await PermissionsSheet.markPromptSeen();
+
+    if (!mounted) return;
+
     setState(() {
-      _notificationsGranted = notifStatus.isGranted;
-      _cameraGranted = camStatus.isGranted;
-      _photosGranted = photoStatus.isGranted;
+      _notificationsGranted = PermissionsSheet.isAllowed(notifStatus);
+      _cameraGranted = PermissionsSheet.isAllowed(camStatus);
+      _photosGranted = PermissionsSheet.isAllowed(photoStatus);
       _isRequesting = false;
     });
+
+    if (_notificationsGranted && _cameraGranted && _photosGranted) {
+      Navigator.pop(context);
+    }
   }
 
   @override
@@ -154,7 +198,10 @@ class _PermissionsSheetState extends State<PermissionsSheet> {
             ),
             const SizedBox(height: 8),
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () async {
+                await PermissionsSheet.markPromptSeen();
+                if (context.mounted) Navigator.pop(context);
+              },
               child: Text(
                 'Skip for now',
                 style: GoogleFonts.josefinSans(
