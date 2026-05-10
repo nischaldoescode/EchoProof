@@ -182,7 +182,7 @@ In the UI this appears as "Bond this truth" on verified echoes and
 "Your bonds" on the profile screen. The word Solana never appears to users.
 
 ## NOTE
-> I myself Don't advise to run this app locally it will be a piss of kinda headache for a developer. So just enjoy what i am building.
+> I myself Don't advise to run this app locally on a machine by cloning the project as I have not included some internal config files, You need to write those on your own.
 
 Regards,
 Nischal
