@@ -11,6 +11,7 @@ import '../shared/widgets/connectivity_wrapper.dart';
 import '../features/onboarding/presentation/services/onboarding_service.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import '../../../../core/utils/snack.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 class EchoProofApp extends StatelessWidget {
   const EchoProofApp({super.key, required this.router});
   final GoRouter router;
@@ -50,6 +51,7 @@ class EchoProofApp extends StatelessWidget {
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
+        FlutterQuillLocalizations.delegate,
       ],
       routerConfig: router,
       builder: (context, child) => ConnectivityWrapper(

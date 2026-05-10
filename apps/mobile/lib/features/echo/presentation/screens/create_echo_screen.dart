@@ -20,6 +20,8 @@ import '../../../../core/utils/logger.dart';
 import 'package:flutter_mentions/flutter_mentions.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/utils/snack.dart';
+import '../../../../core/services/tflite_spam_checker.dart';
+import '../widgets/link_preview_card.dart';
 
 enum _DraftAction { save, discard }
 
@@ -35,6 +37,8 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
   final _titleController = TextEditingController();
   final _contentKey = GlobalKey<FlutterMentionsState>();
   final _formKey = GlobalKey<FormState>();
+  String? _detectedUrl;
+  bool _showLinkPreview = false;
   List<Map<String, dynamic>> _mentionableUsers = [];
 
   late final AnimationController _entranceController;
@@ -68,6 +72,9 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
       final service = context.read<CreateEchoService>();
       _titleController.text = service.title;
       _loadMentionableUsers();
+      // Sync Pro status so character limits are correct.
+      final isPro = context.read<SubscriptionService>().isPro;
+      service.setProStatus(isPro);
     });
   }
 
@@ -127,7 +134,8 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
     final fileSize = await File(file.path).length();
     if (fileSize > 10 * 1024 * 1024) {
       if (mounted) {
-        showInfoSnack(context, "File is too large, Make sure the file is less than 10MB");
+        showInfoSnack(
+            context, "File is too large, Make sure the file is less than 10MB");
       }
       return;
     }
@@ -135,7 +143,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
     final service = context.read<CreateEchoService>();
 
     if (service.localMediaPaths.length >= 2) {
-        showInfoSnack(context, 'Maximum 2 attachments allowed');
+      showInfoSnack(context, 'Maximum 2 attachments allowed');
       return;
     }
 
@@ -147,7 +155,44 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final content = _contentKey.currentState?.controller?.text ?? '';
     context.read<CreateEchoService>().setContent(content);
-    await context.read<CreateEchoService>().submit();
+
+    final service = context.read<CreateEchoService>();
+
+    // Client-side pre-check — fast, no network.
+    if (TfliteSpamChecker.shouldWarn(service.title, content)) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(
+            'Content warning',
+            style: GoogleFonts.josefinSans(fontWeight: FontWeight.w700),
+          ),
+          content: Text(
+            'Your echo looks like it might be flagged by our community filters. '
+            'Review your content and make sure it follows our guidelines before posting.',
+            style: GoogleFonts.josefinSans(fontSize: 13, height: 1.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Edit', style: GoogleFonts.josefinSans()),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(
+                'Post anyway',
+                style: GoogleFonts.josefinSans(color: AppColors.sunsetCoral),
+              ),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true) return;
+    }
+
+    await service.submit();
   }
 
   Future<_DraftAction?> _showDiscardSheet(BuildContext context) {
@@ -254,7 +299,8 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
           if (!isPro && count % 3 == 0) {
             context.read<AdService>().showRewardedInterstitial(
               onRewarded: () {
-                  showSuccessSnack(context, '🎉 Thanks for supporting Echoproof — 1 hour ad-free!');
+                showSuccessSnack(context,
+                    '🎉 Thanks for supporting Echoproof — 1 hour ad-free!');
               },
             );
           }
@@ -310,6 +356,13 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
               },
             ),
             actions: [
+              if (context.read<SubscriptionService>().isPro)
+                IconButton(
+                  icon: const Icon(Icons.tips_and_updates_outlined, size: 20),
+                  onPressed: _showProGuide,
+                  color: AppColors.fernGreen,
+                  tooltip: 'Pro writing guide',
+                ),
               Padding(
                 padding: const EdgeInsets.only(right: AppSpacing.md),
                 child: _SubmitButton(
@@ -352,14 +405,14 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                               style: AppTypography.textTheme.titleSmall),
                           _CharCounter(
                             current: service.title.length,
-                            max: 120,
+                            max: service.titleMaxLength,
                           ),
                         ],
                       ),
                       const SizedBox(height: AppSpacing.xs),
                       TextFormField(
                         controller: _titleController,
-                        maxLength: 120,
+                        maxLength: service.titleMaxLength,
                         buildCounter: (_,
                                 {required currentLength,
                                 required isFocused,
@@ -382,7 +435,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                               style: AppTypography.textTheme.titleSmall),
                           _CharCounter(
                             current: service.content.length,
-                            max: 308,
+                            max: service.contentMaxLength,
                           ),
                         ],
                       ),
@@ -391,8 +444,23 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                         mentionKey: _contentKey,
                         mentionableUsers: _mentionableUsers,
                         onChanged: context.read<CreateEchoService>().setContent,
-                        maxLength: 308,
+                        maxLength: service.contentMaxLength,
+                        onUrlDetected: (url) {
+                          setState(() {
+                            _detectedUrl = url;
+                            _showLinkPreview = url != null;
+                          });
+                        },
                       ),
+                      if (_showLinkPreview && _detectedUrl != null)
+                        LinkPreviewCard(
+                          url: _detectedUrl!,
+                          onDismiss: () => setState(() {
+                            _showLinkPreview = false;
+                            _detectedUrl = null;
+                          }),
+                          onAttach: () {},
+                        ),
                       const SizedBox(height: AppSpacing.xl),
                       Text('Category',
                           style: AppTypography.textTheme.titleSmall),
@@ -441,6 +509,173 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
           ),
         ));
   }
+
+  void _showProGuide() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.7,
+        maxChildSize: 0.95,
+        builder: (_, ctrl) => ListView(
+          controller: ctrl,
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+                decoration: BoxDecoration(
+                  color: AppColors.borderMedium,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                const Icon(Icons.star_rounded,
+                    color: AppColors.fernGreen, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'Pro Writing Guide',
+                  style: GoogleFonts.josefinSans(
+                      fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            _GuideSection(
+              icon: Icons.format_bold_rounded,
+              title: 'Rich Text Formatting',
+              tips: [
+                '**bold text** wraps words in double asterisks',
+                '_italic text_ wraps words in underscores',
+                '~~strikethrough~~ wraps words in double tildes',
+                'Use the B / I / S toolbar above the text field',
+              ],
+            ),
+            _GuideSection(
+              icon: Icons.link_rounded,
+              title: 'Link Previews',
+              tips: [
+                'Paste any URL and a preview card appears automatically',
+                'Tap "Attach preview" to include the card in your echo',
+                'Click the external link icon to open it first',
+                'Links are validated — only http/https accepted',
+              ],
+            ),
+            _GuideSection(
+              icon: Icons.alternate_email_rounded,
+              title: 'Mentions & Signals',
+              tips: [
+                'Type @username to mention another user',
+                'Type ~topic to add a signal tag to your echo',
+                'Signals help your echo appear in Discover',
+                'Max 5 signals per echo for best reach',
+              ],
+            ),
+            _GuideSection(
+              icon: Icons.photo_library_outlined,
+              title: 'Media Attachments',
+              tips: [
+                'Attach up to 2 images or videos as evidence',
+                'Images are compressed to 1280px max',
+                'Videos must be under 10MB',
+                'AI-generated media is automatically detected and rejected',
+              ],
+            ),
+            _GuideSection(
+              icon: Icons.bar_chart_rounded,
+              title: 'Getting Verified',
+              tips: [
+                'Trust score = support_weight − challenge_weight',
+                'Score ≥ 50 + confidence ≥ 70% = Verified status',
+                'Verified identity users have 4x voting weight',
+                'Pro + Verified = highest feed ranking boost (1.25x)',
+              ],
+            ),
+            const SizedBox(height: 40),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GuideSection extends StatelessWidget {
+  const _GuideSection({
+    required this.icon,
+    required this.title,
+    required this.tips,
+  });
+  final IconData icon;
+  final String title;
+  final List<String> tips;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.xl),
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.softSand,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18, color: AppColors.fernGreen),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: GoogleFonts.josefinSans(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.charcoal),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          ...tips.map((tip) => Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 4,
+                      height: 4,
+                      margin: const EdgeInsets.only(top: 6, right: 8),
+                      decoration: const BoxDecoration(
+                        color: AppColors.fernGreen,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        tip,
+                        style: GoogleFonts.josefinSans(
+                            fontSize: 13,
+                            color: AppColors.textSecondary,
+                            height: 1.5),
+                      ),
+                    ),
+                  ],
+                ),
+              )),
+        ],
+      ),
+    );
+  }
 }
 
 class _ContentMentionField extends StatelessWidget {
@@ -449,12 +684,24 @@ class _ContentMentionField extends StatelessWidget {
     required this.mentionableUsers,
     required this.onChanged,
     required this.maxLength,
+    required this.onUrlDetected,
   });
 
   final GlobalKey<FlutterMentionsState> mentionKey;
   final List<Map<String, dynamic>> mentionableUsers;
   final void Function(String) onChanged;
   final int maxLength;
+  final void Function(String?) onUrlDetected;
+
+  void _extractUrl(String text) {
+    final urlPattern = RegExp(
+      r'https?://[^\s<>"{}|\\^`\[\]]+',
+      caseSensitive: false,
+    );
+
+    final match = urlPattern.firstMatch(text);
+    onUrlDetected(match?.group(0));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -464,6 +711,7 @@ class _ContentMentionField extends StatelessWidget {
         return v.trim().isEmpty ? 'content cannot be empty' : null;
       },
       builder: (field) {
+        final maxLen = context.read<CreateEchoService>().contentMaxLength;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -478,95 +726,111 @@ class _ContentMentionField extends StatelessWidget {
                 ),
               ),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: FlutterMentions(
-                key: mentionKey,
-                maxLines: 8,
-                minLines: 4,
-                suggestionPosition: SuggestionPosition.Top,
-                onChanged: (v) {
-                  onChanged(v);
-                  field.didChange(v);
-                },
-                style: const TextStyle(
-                  fontSize: 15,
-                  color: Color(0xFF1A1A1A),
-                  height: 1.5,
-                ),
-                decoration: InputDecoration(
-                  hintText:
-                      'Explain your opinion or claim.\n\nUse @username to mention, ~signal to tag.',
-                  hintStyle: GoogleFonts.josefinSans(
-                    fontSize: 14,
-                    color: AppColors.textTertiary,
-                    height: 1.5,
-                  ),
-                  border: InputBorder.none,
-                  isDense: true,
-                ),
-                suggestionListDecoration: BoxDecoration(
-                  color: AppColors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.borderSubtle),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08),
-                      blurRadius: 12,
-                      offset: const Offset(0, -4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (context.read<SubscriptionService>().isPro)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: _ProRichToolbar(mentionKey: mentionKey),
                     ),
-                  ],
-                ),
-                mentions: [
-                  Mention(
-                    trigger: '@',
-                    style: GoogleFonts.josefinSans(
-                      color: AppColors.fernGreen,
-                      fontWeight: FontWeight.w600,
+                  FlutterMentions(
+                    key: mentionKey,
+                    maxLines:
+                        context.read<SubscriptionService>().isPro ? 20 : 8,
+                    minLines: 4,
+                    suggestionPosition: SuggestionPosition.Top,
+                    onChanged: (v) {
+                      if (v.length <= maxLen) {
+                        onChanged(v);
+                        field.didChange(v);
+                        _extractUrl(v);
+                      }
+                    },
+                    style: const TextStyle(
+                      fontSize: 15,
+                      color: Color(0xFF1A1A1A),
+                      height: 1.5,
                     ),
-                    data: mentionableUsers,
-                    suggestionBuilder: (data) {
-                      final avatarUrl = data['avatar_url'] as String?;
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
+                    decoration: InputDecoration(
+                      hintText:
+                          'Explain your opinion or claim.\n\nUse @username to mention, ~signal to tag.',
+                      hintStyle: GoogleFonts.josefinSans(
+                        fontSize: 14,
+                        color: AppColors.textTertiary,
+                        height: 1.5,
+                      ),
+                      border: InputBorder.none,
+                      isDense: true,
+                    ),
+                    suggestionListDecoration: BoxDecoration(
+                      color: AppColors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.borderSubtle),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.08),
+                          blurRadius: 12,
+                          offset: const Offset(0, -4),
                         ),
-                        child: Row(
-                          children: [
-                            CircleAvatar(
-                              radius: 16,
-                              backgroundColor: AppColors.softSand,
-                              backgroundImage:
-                                  (avatarUrl != null && avatarUrl.isNotEmpty)
+                      ],
+                    ),
+                    mentions: [
+                      Mention(
+                        trigger: '@',
+                        style: GoogleFonts.josefinSans(
+                          color: AppColors.fernGreen,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        data: mentionableUsers,
+                        suggestionBuilder: (data) {
+                          final avatarUrl = data['avatar_url'] as String?;
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: AppColors.softSand,
+                                  backgroundImage: (avatarUrl != null &&
+                                          avatarUrl.isNotEmpty)
                                       ? NetworkImage(avatarUrl)
                                       : null,
-                              child: (avatarUrl == null || avatarUrl.isEmpty)
-                                  ? const Icon(Icons.person_outline,
-                                      size: 16, color: AppColors.textTertiary)
-                                  : null,
+                                  child:
+                                      (avatarUrl == null || avatarUrl.isEmpty)
+                                          ? const Icon(Icons.person_outline,
+                                              size: 16,
+                                              color: AppColors.textTertiary)
+                                          : null,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '@${data['display']}',
+                                  style: GoogleFonts.josefinSans(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.charcoal,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 8),
-                            Text(
-                              '@${data['display']}',
-                              style: GoogleFonts.josefinSans(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.charcoal,
-                              ),
-                            ),
-                          ],
+                          );
+                        },
+                      ),
+                      Mention(
+                        trigger: '~',
+                        style: GoogleFonts.josefinSans(
+                          color: AppColors.fernGreen,
+                          fontWeight: FontWeight.w500,
                         ),
-                      );
-                    },
-                  ),
-                  Mention(
-                    trigger: '~',
-                    style: GoogleFonts.josefinSans(
-                      color: AppColors.fernGreen,
-                      fontWeight: FontWeight.w500,
-                    ),
-                    data: const [],
-                    matchAll: true,
-                    disableMarkup: true,
+                        data: const [],
+                        matchAll: true,
+                        disableMarkup: true,
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -586,6 +850,87 @@ class _ContentMentionField extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+class _ProRichToolbar extends StatelessWidget {
+  const _ProRichToolbar({super.key, required this.mentionKey});
+  final GlobalKey<FlutterMentionsState> mentionKey;
+
+  void _wrap(String open, String close) {
+    final ctrl = mentionKey.currentState?.controller;
+    if (ctrl == null) return;
+    final sel = ctrl.selection;
+    if (!sel.isValid) return;
+    final text = ctrl.text;
+    final selected = sel.textInside(text);
+    final replacement = '$open$selected$close';
+    final newText = text.replaceRange(sel.start, sel.end, replacement);
+    ctrl.value = TextEditingValue(
+      text: newText,
+      selection:
+          TextSelection.collapsed(offset: sel.start + replacement.length),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _TBtn(label: 'B', bold: true, onTap: () => _wrap('**', '**')),
+        _TBtn(label: 'I', italic: true, onTap: () => _wrap('_', '_')),
+        _TBtn(label: 'S', strikethrough: true, onTap: () => _wrap('~~', '~~')),
+        const SizedBox(width: 8),
+        Text(
+          'Pro rich text',
+          style: GoogleFonts.josefinSans(
+            fontSize: 10,
+            color: AppColors.fernGreen,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TBtn extends StatelessWidget {
+  const _TBtn(
+      {required this.label,
+      required this.onTap,
+      this.bold = false,
+      this.italic = false,
+      this.strikethrough = false});
+  final String label;
+  final VoidCallback onTap;
+  final bool bold, italic, strikethrough;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 28,
+        height: 24,
+        margin: const EdgeInsets.only(right: 4),
+        decoration: BoxDecoration(
+          color: AppColors.softSand,
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(color: AppColors.borderSubtle),
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
+              fontStyle: italic ? FontStyle.italic : FontStyle.normal,
+              decoration: strikethrough ? TextDecoration.lineThrough : null,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -10,7 +10,7 @@ import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../shared/widgets/app_bottom_nav.dart';
-import 'package:hyper_snackbar/hyper_snackbar.dart';
+import 'package:http/http.dart' as http;
 
 class TrendingSignal {
   const TrendingSignal({
@@ -58,6 +58,38 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       vsync: this,
       duration: const Duration(milliseconds: 400),
     );
+    _detectCountryAndLoad();
+    _subscribeRealtime();
+  }
+
+  RealtimeChannel? _channel;
+
+  void _subscribeRealtime() {
+    final client = Supabase.instance.client;
+    // Refresh signals every 2 minutes via realtime-like polling.
+    // (echo_signals table doesn't have a natural realtime trigger, so we poll.)
+    Future.delayed(const Duration(minutes: 2), () {
+      if (mounted) {
+        _loadSignals();
+        _subscribeRealtime();
+      }
+    });
+  }
+
+  Future<void> _detectCountryAndLoad() async {
+    try {
+      // Use ipapi.co (free, no key needed) to detect user's country.
+      final res = await http.get(Uri.parse('https://ipapi.co/country/'));
+      if (res.statusCode == 200) {
+        final code = res.body.trim().toUpperCase();
+        // Only set if it's one of our supported countries.
+        final supported =
+            _countries.map((c) => c.code).whereType<String>().toSet();
+        if (supported.contains(code)) {
+          setState(() => _selectedCountry = code);
+        }
+      }
+    } catch (_) {}
     _loadSignals();
   }
 
@@ -102,6 +134,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
       _entranceController.reset();
       _entranceController.forward();
+      // Realtime-like: also subscribe to postgres changes on echo_signals.
     } catch (e) {
       AppLogger.error('discover: load signals failed', e);
       setState(() => _isLoading = false);

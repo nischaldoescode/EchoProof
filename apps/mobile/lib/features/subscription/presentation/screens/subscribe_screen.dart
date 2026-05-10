@@ -239,7 +239,7 @@ class _PricingSectionState extends State<_PricingSection> {
 
         const SizedBox(height: AppSpacing.sm),
 
-const SizedBox(height: AppSpacing.sm),
+        const SizedBox(height: AppSpacing.sm),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
@@ -249,7 +249,8 @@ const SizedBox(height: AppSpacing.sm),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.info_outline, size: 13, color: AppColors.fernGreen),
+              const Icon(Icons.info_outline,
+                  size: 13, color: AppColors.fernGreen),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(

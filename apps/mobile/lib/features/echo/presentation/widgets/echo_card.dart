@@ -12,8 +12,15 @@ import 'confidence_bar.dart';
 import 'trust_badge.dart';
 import 'interaction_buttons.dart';
 import '../../../../shared/widgets/verified_badges.dart';
+import '../../../../shared/widgets/rich_text_display.dart';
+import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../../shared/widgets/rich_text_display.dart';
+import 'dart:convert';
+import 'package:visibility_detector/visibility_detector.dart';
+import 'dart:async' show unawaited;
 
-class EchoCard extends StatelessWidget {
+class EchoCard extends StatefulWidget {
   const EchoCard({
     super.key,
     required this.echo,
@@ -24,72 +31,195 @@ class EchoCard extends StatelessWidget {
   final VoidCallback? onTap;
 
   @override
+  State<EchoCard> createState() => _EchoCardState();
+}
+
+class _EchoCardState extends State<EchoCard> {
+  String? _translatedContent;
+  String? _translatedTitle;
+  bool _isTranslating = false;
+  bool _showTranslated = false;
+
+  DateTime? _visibleSince;
+  static const _dwellThreshold = Duration(seconds: 3);
+
+  EchoEntity get echo => widget.echo;
+  VoidCallback? get onTap => widget.onTap;
+
+  Future<void> _translate() async {
+    if (_isTranslating) return;
+    if (_translatedContent != null) {
+      setState(() => _showTranslated = !_showTranslated);
+      return;
+    }
+    setState(() => _isTranslating = true);
+    try {
+      // Using Supabase edge function to proxy translation (keeps API keys server-side).
+      final client = Supabase.instance.client;
+      final session = client.auth.currentSession;
+      if (session == null) return;
+      final supabaseUrl = const String.fromEnvironment('SUPABASE_URL');
+      final res = await http.post(
+        Uri.parse('$supabaseUrl/functions/v1/translate'),
+        headers: {
+          'Authorization': 'Bearer ${session.accessToken}',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'title': echo.title,
+          'content': echo.content,
+          'target_lang': 'en',
+        }),
+      );
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        setState(() {
+          _translatedTitle = data['title'] as String?;
+          _translatedContent = data['content'] as String?;
+          _showTranslated = true;
+        });
+      }
+    } catch (_) {}
+    setState(() => _isTranslating = false);
+  }
+
+  Future<void> _recordDwell(int seconds) async {
+    try {
+      final client = Supabase.instance.client;
+      final userId = client.auth.currentUser?.id;
+      if (userId == null) return;
+      // Fire and forget — never block the UI for analytics.
+      unawaited(client.rpc('record_dwell_signal', params: {
+        'p_user_id': userId,
+        'p_echo_id': echo.id,
+        'p_category': echo.category.name,
+        'p_seconds': seconds,
+      }));
+    } catch (_) {}
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-        margin: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg,
-          vertical: AppSpacing.sm,
-        ),
-        decoration: BoxDecoration(
-          color: AppColors.white,
-          borderRadius: BorderRadius.circular(AppSpacing.echoCardRadius),
-          border: Border.all(
-            color: _borderColor(echo.status),
-            width: echo.status == EchoStatus.controversial ? 1.5 : 1.2,
+    return VisibilityDetector(
+      key: Key('echo_card_${echo.id}'),
+      onVisibilityChanged: (info) {
+        if (info.visibleFraction > 0.5) {
+          _visibleSince ??= DateTime.now();
+        } else {
+          final since = _visibleSince;
+          if (since != null) {
+            final dwell = DateTime.now().difference(since);
+            if (dwell >= _dwellThreshold) {
+              _recordDwell(dwell.inSeconds);
+            }
+          }
+          _visibleSince = null;
+        }
+      },
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+          margin: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.sm,
           ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _CardHeader(echo: echo),
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.lg,
-                vertical: AppSpacing.sm,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (echo.title.isNotEmpty) ...[
-                    Text(
-                      echo.title,
-                      style: AppTypography.textTheme.titleMedium,
-                      maxLines: 2,
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.circular(AppSpacing.echoCardRadius),
+            border: Border.all(
+              color: _borderColor(echo.status),
+              width: echo.status == EchoStatus.controversial ? 1.5 : 1.2,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _CardHeader(echo: echo),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.lg,
+                  vertical: AppSpacing.sm,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (echo.title.isNotEmpty) ...[
+                      RichTextDisplay(
+                        text: _showTranslated && _translatedTitle != null
+                            ? _translatedTitle!
+                            : echo.title,
+                        style: AppTypography.textTheme.titleMedium,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                    ],
+                    RichTextDisplay(
+                      text: _showTranslated && _translatedContent != null
+                          ? _translatedContent!
+                          : echo.content,
+                      style: AppTypography.textTheme.bodyMedium,
+                      maxLines: 4,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: AppSpacing.xs),
+                    // Translation toggle button.
+                    GestureDetector(
+                      onTap: _translate,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_isTranslating)
+                            const SizedBox(
+                              width: 10,
+                              height: 10,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 1.5, color: AppColors.fernGreen),
+                            )
+                          else
+                            Icon(
+                              _showTranslated
+                                  ? Icons.language
+                                  : Icons.translate_rounded,
+                              size: 12,
+                              color: AppColors.textTertiary,
+                            ),
+                          const SizedBox(width: 4),
+                          Text(
+                            _showTranslated ? 'Show original' : 'Translate',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textTertiary,
+                              fontFamily: 'Josefin Sans',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
-                  Text(
-                    echo.content,
-                    style: AppTypography.textTheme.bodyMedium,
-                    maxLines: 4,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+                ),
               ),
-            ),
-            _StatusLabel(status: echo.status),
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.lg,
-                vertical: AppSpacing.sm,
+              _StatusLabel(status: echo.status),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.lg,
+                  vertical: AppSpacing.sm,
+                ),
+                child: ConfidenceBar(
+                  confidence: echo.confidenceScore,
+                  status: echo.status,
+                ),
               ),
-              child: ConfidenceBar(
-                confidence: echo.confidenceScore,
-                status: echo.status,
+              const Divider(
+                height: 1,
+                indent: AppSpacing.lg,
+                endIndent: AppSpacing.lg,
               ),
-            ),
-            const Divider(
-              height: 1,
-              indent: AppSpacing.lg,
-              endIndent: AppSpacing.lg,
-            ),
-            InteractionButtons(echo: echo),
-          ],
+              InteractionButtons(echo: echo),
+            ],
+          ),
         ),
       ),
     );

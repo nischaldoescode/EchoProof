@@ -65,6 +65,11 @@ Future<void> main() async {
   await Supabase.initialize(
     url: const String.fromEnvironment('SUPABASE_URL'),
     anonKey: const String.fromEnvironment('SUPABASE_ANON_KEY'),
+    authOptions: const FlutterAuthClientOptions(
+      authFlowType: AuthFlowType.pkce,
+      // The redirect URL that Supabase uses in magic link emails.
+      // This must match what's registered in Supabase Auth → URL Configuration → Redirect URLs.
+    ),
   );
 
   AppLogger.info('main: supabase initialized');
@@ -79,6 +84,10 @@ Future<void> main() async {
   final adService = AdService();
 
   await authService.checkUsername();
+  // pre-load notification count for badge
+  if (authService.isLoggedIn) {
+    notificationService.loadNotifications();
+  }
 
   final router = createRouter(
     authService: authService,
@@ -86,8 +95,7 @@ Future<void> main() async {
     subscriptionService: subscriptionService,
   );
 
-  // handle notification tap  deep link to echo detail
-  // Notify AdService when user logs in/out for interstitial frequency control.
+  // notify ad service when user logs in or out
   authService.addListener(() {
     if (authService.isLoggedIn) {
       adService.onUserLoggedIn();
@@ -96,28 +104,31 @@ Future<void> main() async {
     }
   });
 
-  // handle notification tap — deep link to echo detail
+  // handle notification taps
   FirebaseMessaging.onMessageOpenedApp.listen((message) {
     final route = message.data['route'] as String?;
+    final type = message.data['type'] as String?;
+    if (type == 'identity_verified') {
+      // reload auth state so trust tier updates in ui
+      authService.checkUsername();
+    }
     if (route != null && route.isNotEmpty) {
       router.push(route);
     }
   });
-  // handle custom scheme deep links — echoproof://echo/:id and echoproof://user/:username
-  // covers both cold start (getInitialAppLink) and foreground (uriLinkStream)
+  // handle app links for echo, profile, and auth callbacks
   final appLinks = AppLinks();
 
-  // cold start — app was not running when link was tapped
+  // cold start link
   final initialUri = await appLinks.getInitialLink();
   if (initialUri != null) {
-    _handleDeepLink(initialUri, router);
+    _handleDeepLink(initialUri, router, authService);
   }
 
-  // foreground — app already running when link is received
+  // foreground link
   appLinks.uriLinkStream.listen((uri) {
-    _handleDeepLink(uri, router);
+    _handleDeepLink(uri, router, authService);
   });
-
   // handle notification tap from terminated state
   FirebaseMessaging.instance.getInitialMessage().then((message) {
     if (message == null) return;
@@ -130,7 +141,7 @@ Future<void> main() async {
   });
   final lifecycleObserver = _AppLifecycleObserver(subscriptionService);
   WidgetsBinding.instance.addObserver(lifecycleObserver);
-  
+
   runApp(
     Portal(
       child: MultiProvider(
@@ -155,21 +166,47 @@ Future<void> main() async {
 
 String? _lastHandledLink;
 
-// maps custom scheme uris to internal go_router paths
-// echoproof://echo/:id  → /feed/echo/:id
-// echoproof://user/:username → /profile/:username
-// handles both custom scheme (echoproof://) and https app links (https://echoproof.online/)
-void _handleDeepLink(Uri uri, GoRouter router) {
+// maps supported app links to internal routes
+void _handleDeepLink(Uri uri, GoRouter router, [AuthService? auth]) {
   final link = uri.toString();
 
-  // prevent duplicate handling
   if (_lastHandledLink == link) return;
   _lastHandledLink = link;
 
   final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
 
-  // custom scheme: echoproof://echo/:id and echoproof://user/:username
+  if (uri.host == 'auth-callback') {
+    AppLogger.info('deep link: auth-callback received');
+    Future.delayed(const Duration(milliseconds: 500), () async {
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session != null && auth != null) {
+        await auth.checkUsername();
+      }
+    });
+    return;
+  }
+
   if (uri.scheme == 'echoproof') {
+    // Auth callback from OTP email magic link.
+    // Supabase sends: echoproof://auth-callback#access_token=...&type=signup
+    // or: echoproof://auth-callback?token=...&type=email
+    if (uri.host == 'auth-callback') {
+      // Supabase flutter SDK handles the session restoration automatically
+      // when it detects the fragment. We just need to trigger a router refresh.
+      AppLogger.info(
+          'deep link: auth-callback received, refreshing auth state');
+      // Give Supabase a moment to process the token from the URL fragment.
+      Future.delayed(const Duration(milliseconds: 500), () async {
+        final session = Supabase.instance.client.auth.currentSession;
+        if (session != null) {
+          AppLogger.info('deep link: session restored, checking username');
+          // This notifies the router via authService listeners.
+          await auth?.checkUsername();
+        }
+      });
+      return;
+    }
+
     if (uri.host == 'echo' && segments.isNotEmpty) {
       router.go('/feed/echo/${segments.first}');
       return;
@@ -181,20 +218,32 @@ void _handleDeepLink(Uri uri, GoRouter router) {
     }
   }
 
-  // https app links: https://echoproof.online/echo/:id
-  // pathSegments for /echo/abc-123 = ['echo', 'abc-123']
+  // https app links
   if (uri.scheme == 'https' &&
       (uri.host == 'echoproof.online' || uri.host == 'www.echoproof.online')) {
     if (segments.length >= 2 && segments[0] == 'echo') {
       router.go('/feed/echo/${segments[1]}');
       return;
     }
-
     if (segments.length >= 2 && segments[0] == 'user') {
       router.go('/profile/${segments[1]}');
       return;
     }
   }
+}
+
+bool _isSupabaseAuthLink(Uri uri) {
+  final isCustomAuth = uri.scheme == 'echoproof' && uri.host == 'auth-callback';
+  final isHttpsAuth = uri.scheme == 'https' &&
+      (uri.host == 'echoproof.online' || uri.host == 'www.echoproof.online') &&
+      uri.pathSegments.length >= 2 &&
+      uri.pathSegments[0] == 'auth' &&
+      uri.pathSegments[1] == 'callback';
+  final hasAuthPayload = uri.queryParameters.containsKey('code') ||
+      uri.fragment.contains('access_token') ||
+      uri.fragment.contains('error_description');
+
+  return (isCustomAuth || isHttpsAuth) && hasAuthPayload;
 }
 
 class _AppLifecycleObserver extends WidgetsBindingObserver {

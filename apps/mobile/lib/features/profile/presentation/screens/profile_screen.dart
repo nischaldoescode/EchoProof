@@ -21,6 +21,9 @@ import 'package:flutter/services.dart';
 import '../../../../shared/widgets/verified_badges.dart';
 import '../../../../core/utils/snack.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'analytics_tab.dart';
+import 'dart:async';
+import '../../../../core/utils/sanitizer.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, this.username});
@@ -43,6 +46,10 @@ class _ProfileScreenState extends State<ProfileScreen>
   bool _isOwnProfile = true;
   bool _isLoading = true;
   bool _isVerificationPending = false;
+  bool userIsPro = false;
+  bool _isFollowing = false;
+  Timer? _debounce;
+
   late final AnimationController _entranceCtrl;
   late final Animation<double> _fade;
   late final Animation<Offset> _slide;
@@ -51,7 +58,8 @@ class _ProfileScreenState extends State<ProfileScreen>
   @override
   void initState() {
     super.initState();
-    _tabCtrl = TabController(length: 3, vsync: this);
+    // Pro users get analytics tab; length depends on isPro and isOwnProfile.
+    _tabCtrl = TabController(length: userIsPro ? 3 : 2, vsync: this);
     _entranceCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
@@ -71,6 +79,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   void dispose() {
     _tabCtrl.dispose();
     _entranceCtrl.dispose();
+    _debounce?.cancel();
     super.dispose();
   }
 
@@ -243,79 +252,88 @@ class _ProfileScreenState extends State<ProfileScreen>
                   ),
                   const SizedBox(height: AppSpacing.xs),
                   TextField(
-                    controller: usernameCtrl,
-                    maxLength: 20,
-                    buildCounter: (_,
-                            {required currentLength,
-                            required isFocused,
-                            maxLength}) =>
-                        null,
-                    autocorrect: false,
-                    style: AppTypography.textTheme.bodyMedium,
-                    decoration: InputDecoration(
-                      prefixText: '@',
-                      hintText: 'username',
-                      errorText: usernameError,
-                      suffixIcon: isCheckingUsername
-                          ? const Padding(
-                              padding: EdgeInsets.all(12),
-                              child: SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: AppColors.fernGreen,
+                      controller: usernameCtrl,
+                      maxLength: 20,
+                      buildCounter: (_,
+                              {required currentLength,
+                              required isFocused,
+                              maxLength}) =>
+                          null,
+                      autocorrect: false,
+                      style: AppTypography.textTheme.bodyMedium,
+                      decoration: InputDecoration(
+                        prefixText: '@',
+                        hintText: 'username',
+                        errorText: usernameError,
+                        suffixIcon: isCheckingUsername
+                            ? const Padding(
+                                padding: EdgeInsets.all(12),
+                                child: SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppColors.fernGreen,
+                                  ),
                                 ),
-                              ),
-                            )
-                          : usernameAvailable && usernameCtrl.text.length >= 3
-                              ? const Icon(Icons.check_circle_rounded,
-                                  size: 18, color: AppColors.fernGreen)
-                              : null,
-                      filled: true,
-                      fillColor: AppColors.softSand,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
+                              )
+                            : usernameAvailable && usernameCtrl.text.length >= 3
+                                ? const Icon(Icons.check_circle_rounded,
+                                    size: 18, color: AppColors.fernGreen)
+                                : null,
+                        filled: true,
+                        fillColor: AppColors.softSand,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(
+                              color: AppColors.fernGreen, width: 1.5),
+                        ),
+                        errorBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide:
+                              const BorderSide(color: AppColors.sunsetCoral),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 12),
                       ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(
-                            color: AppColors.fernGreen, width: 1.5),
-                      ),
-                      errorBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide:
-                            const BorderSide(color: AppColors.sunsetCoral),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 12),
-                    ),
-                    onChanged: (v) async {
-                      setSheet(() {
-                        isCheckingUsername = true;
-                        usernameError = null;
-                      });
-                      await Future.delayed(const Duration(milliseconds: 500));
-                      if (!ctx.mounted) return;
-                      if (v.length < 3) {
+                      onChanged: (v) {
+                        _debounce?.cancel();
+
                         setSheet(() {
-                          isCheckingUsername = false;
-                          usernameAvailable = false;
-                          usernameError = 'At least 3 characters';
+                          isCheckingUsername = true;
+                          usernameError = null;
                         });
-                        return;
-                      }
-                      final available =
-                          await checkUsernameAvailability(v.toLowerCase());
-                      setSheet(() {
-                        isCheckingUsername = false;
-                        usernameAvailable = available;
-                        usernameError =
-                            available ? null : 'Username already taken';
-                      });
-                    },
-                  ),
+
+                        _debounce =
+                            Timer(const Duration(milliseconds: 400), () async {
+                          if (!ctx.mounted) return;
+
+                          if (v.length < 3) {
+                            setSheet(() {
+                              isCheckingUsername = false;
+                              usernameAvailable = false;
+                              usernameError = 'At least 3 characters';
+                            });
+                            return;
+                          }
+
+                          final available =
+                              await checkUsernameAvailability(v.toLowerCase());
+
+                          if (!ctx.mounted) return;
+
+                          setSheet(() {
+                            isCheckingUsername = false;
+                            usernameAvailable = available;
+                            usernameError =
+                                available ? null : 'Username already taken';
+                          });
+                        });
+                      }),
                   const SizedBox(height: AppSpacing.lg),
 
                   // date of birth — requires otp to change
@@ -573,12 +591,11 @@ class _ProfileScreenState extends State<ProfileScreen>
 
       // build patch — only include changed fields
       final patch = <String, dynamic>{
-        'display_name':
-            newDisplayName.isNotEmpty ? newDisplayName : newUsername,
+        'display_name': Sanitizer.displayName(
+            newDisplayName.isNotEmpty ? newDisplayName : newUsername),
         'gender': newGender,
       };
-
-      if (usernameChanged) patch['username'] = newUsername;
+      if (usernameChanged) patch['username'] = Sanitizer.username(newUsername);
 
       if (dobChanged && newDob != null) {
         // calculate age from new dob
@@ -746,7 +763,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             .from('users_public')
             .select(
               'id, username, display_name, avatar_url, trust_tier, trust_score, '
-              'echo_count, proof_count, is_public, bio, is_pro',
+              'echo_count, proof_count, is_public, bio, gender, date_of_birth, is_pro, follower_count, following_count',
             )
             .eq('username', widget.username!)
             .maybeSingle();
@@ -762,7 +779,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             .from('users_public')
             .select(
               'id, username, display_name, avatar_url, trust_tier, trust_score, '
-              'echo_count, proof_count, is_public, bio, gender, date_of_birth, is_pro',
+              'echo_count, proof_count, is_public, bio, gender, date_of_birth, is_pro, follower_count, following_count',
             )
             .eq('id', myId!)
             .maybeSingle();
@@ -784,6 +801,8 @@ class _ProfileScreenState extends State<ProfileScreen>
           _isLoading = false;
         });
         _entranceCtrl.forward();
+        if (!_isOwnProfile) await _checkIsFollowing();
+
         return;
       }
 
@@ -866,6 +885,48 @@ class _ProfileScreenState extends State<ProfileScreen>
     } catch (e) {
       AppLogger.error('profile: load failed $e');
       setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _checkIsFollowing() async {
+    if (_isOwnProfile || _profile == null) return;
+    final client = Supabase.instance.client;
+    final myId = client.auth.currentUser?.id;
+    if (myId == null) return;
+    final targetId = _profile!['id'] as String;
+    final row = await client
+        .from('user_follows')
+        .select('id')
+        .eq('follower_id', myId)
+        .eq('following_id', targetId)
+        .maybeSingle();
+    setState(() => _isFollowing = row != null);
+  }
+
+  Future<void> _toggleFollow() async {
+    final client = Supabase.instance.client;
+    final myId = client.auth.currentUser?.id;
+    if (myId == null || _profile == null) return;
+    final targetId = _profile!['id'] as String;
+    setState(() => _isFollowing = !_isFollowing);
+    try {
+      if (_isFollowing) {
+        await client.from('user_follows').insert({
+          'follower_id': myId,
+          'following_id': targetId,
+        });
+      } else {
+        await client
+            .from('user_follows')
+            .delete()
+            .eq('follower_id', myId)
+            .eq('following_id', targetId);
+      }
+      // Refresh follower count on profile.
+      await _loadProfile();
+    } catch (e) {
+      setState(() => _isFollowing = !_isFollowing);
+      if (mounted) showErrorSnack(context, 'Could not update follow status.');
     }
   }
 
@@ -1076,8 +1137,10 @@ class _ProfileScreenState extends State<ProfileScreen>
                       if (_isOwnProfile && !_isIdentityVerified)
                         _VerifyPrompt(isPending: _isVerificationPending),
                       const SizedBox(height: AppSpacing.lg),
-                      const SolanaInfoCard(),
-                      const SizedBox(height: AppSpacing.lg),
+                      if (_isOwnProfile) ...[
+                        const SolanaInfoCard(),
+                        const SizedBox(height: AppSpacing.lg),
+                      ],
                     ],
                   ),
                 ),
@@ -1087,10 +1150,12 @@ class _ProfileScreenState extends State<ProfileScreen>
                 delegate: _TabBarDelegate(
                   TabBar(
                     controller: _tabCtrl,
-                    tabs: const [
-                      Tab(text: 'Echoes'),
-                      Tab(text: 'Replies'),
-                      Tab(text: 'Media'),
+                    tabs: [
+                      const Tab(text: 'Echoes'),
+                      const Tab(text: 'Replies'),
+                      const Tab(text: 'Media'),
+                      if (_isOwnProfile && userIsPro)
+                        const Tab(text: 'Analytics'),
                     ],
                   ),
                 ),
@@ -1102,6 +1167,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                 _EchoesTab(echoes: _echoes),
                 _RepliesTab(userId: _profile!['id']),
                 _MediaTab(userId: _profile!['id']),
+                if (_isOwnProfile && userIsPro)
+                  AnalyticsTab(userId: _profile!['id']),
               ],
             ),
           ),
@@ -1150,6 +1217,34 @@ class _ProfileScreenState extends State<ProfileScreen>
                   onPressed: () => context.push('/settings'),
                   color: AppColors.charcoal,
                   tooltip: 'Settings',
+                ),
+              ] else if (_profile != null) ...[
+                // Follow/unfollow button for other profiles.
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: TextButton(
+                    key: ValueKey(_isFollowing),
+                    onPressed: _toggleFollow,
+                    style: TextButton.styleFrom(
+                      foregroundColor: _isFollowing
+                          ? AppColors.textSecondary
+                          : AppColors.fernGreen,
+                      side: BorderSide(
+                        color: _isFollowing
+                            ? AppColors.borderMedium
+                            : AppColors.fernGreen,
+                      ),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20)),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 6),
+                    ),
+                    child: Text(
+                      _isFollowing ? 'Following' : 'Follow',
+                      style: GoogleFonts.josefinSans(
+                          fontWeight: FontWeight.w600, fontSize: 13),
+                    ),
+                  ),
                 ),
               ],
               const SizedBox(width: 4),
@@ -1231,6 +1326,9 @@ class _AvatarCard extends StatelessWidget {
     final displayName = profile['display_name'] as String? ?? '';
     final bio = profile['bio'] as String?;
     final hasBio = bio != null && bio.isNotEmpty;
+    final echoCount = (profile['echo_count'] as num?)?.toInt() ?? 0;
+    final followerCount = (profile['follower_count'] as num?)?.toInt() ?? 0;
+    final followingCount = (profile['following_count'] as num?)?.toInt() ?? 0;
 
     return Container(
       padding: const EdgeInsets.all(AppSpacing.xl),
@@ -1239,94 +1337,105 @@ class _AvatarCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.borderSubtle),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
         children: [
-// avatar with badge — replaces raw Stack + CircleAvatar
-          GestureDetector(
-            onTap: isOwnProfile || (avatarUrl != null && avatarUrl.isNotEmpty)
-                ? () => _showAvatarZoom(context, avatarUrl)
-                : null,
-            child: _ProfileAvatarWithBadge(
-              avatarUrl: avatarUrl,
-              isIdentityVerified: isIdentityVerified,
-              radius: 36,
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              GestureDetector(
+                onTap:
+                    isOwnProfile || (avatarUrl != null && avatarUrl.isNotEmpty)
+                        ? () => _showAvatarZoom(context, avatarUrl)
+                        : null,
+                child: _ProfileAvatarWithBadge(
+                  avatarUrl: avatarUrl,
+                  isIdentityVerified: isIdentityVerified,
+                  radius: 36,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (displayName.isNotEmpty) ...[
+                      Text(
+                        displayName,
+                        style: AppTypography.textTheme.titleMedium,
+                      ),
+                      Text(
+                        '@$username',
+                        style: GoogleFonts.josefinSans(
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ] else
+                      Text(
+                        '@$username',
+                        style: AppTypography.textTheme.titleMedium,
+                      ),
+                    if (hasBio) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        bio!,
+                        style: GoogleFonts.josefinSans(
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                          height: 1.5,
+                        ),
+                      ),
+                    ] else if (isOwnProfile) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        'No bio yet.',
+                        style: GoogleFonts.josefinSans(
+                          fontSize: 13,
+                          color: AppColors.textTertiary,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
+                    if (isOwnProfile) ...[
+                      const SizedBox(height: 10),
+                      GestureDetector(
+                        onTap: onEditBio,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.edit_outlined,
+                              size: 13,
+                              color: AppColors.fernGreen,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              hasBio ? 'Edit bio' : 'Add bio',
+                              style: GoogleFonts.josefinSans(
+                                fontSize: 12,
+                                color: AppColors.fernGreen,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
           ),
-
-          const SizedBox(width: AppSpacing.md),
-
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (displayName.isNotEmpty) ...[
-                  Text(
-                    displayName,
-                    style: AppTypography.textTheme.titleMedium,
-                  ),
-                  Text(
-                    '@$username',
-                    style: GoogleFonts.josefinSans(
-                      fontSize: 13,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ] else
-                  Text(
-                    '@$username',
-                    style: AppTypography.textTheme.titleMedium,
-                  ),
-                // bio text or placeholder
-                if (hasBio) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    bio!,
-                    style: GoogleFonts.josefinSans(
-                      fontSize: 13,
-                      color: AppColors.textSecondary,
-                      height: 1.5,
-                    ),
-                  ),
-                ] else if (isOwnProfile) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    'No bio yet.',
-                    style: GoogleFonts.josefinSans(
-                      fontSize: 13,
-                      color: AppColors.textTertiary,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ],
-
-                if (isOwnProfile) ...[
-                  const SizedBox(height: 10),
-                  GestureDetector(
-                    onTap: onEditBio,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.edit_outlined,
-                          size: 13,
-                          color: AppColors.fernGreen,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          hasBio ? 'Edit bio' : 'Add bio',
-                          style: GoogleFonts.josefinSans(
-                            fontSize: 12,
-                            color: AppColors.fernGreen,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
+          const SizedBox(height: AppSpacing.lg),
+          // Stats row: echoes | followers | following
+          Row(
+            children: [
+              _StatItem(label: 'Echoes', value: echoCount),
+              _StatDivider(),
+              _StatItem(label: 'Followers', value: followerCount),
+              _StatDivider(),
+              _StatItem(label: 'Following', value: followingCount),
+            ],
           ),
         ],
       ),
@@ -1347,17 +1456,59 @@ class _AvatarCard extends StatelessWidget {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(16),
             child: avatarUrl.endsWith('.svg')
-                ? SvgPicture.network(
-                    avatarUrl,
-                    fit: BoxFit.contain,
-                  )
-                : Image.network(
-                    avatarUrl,
-                    fit: BoxFit.contain,
-                  ),
+                ? SvgPicture.network(avatarUrl, fit: BoxFit.contain)
+                : Image.network(avatarUrl, fit: BoxFit.contain),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _StatItem extends StatelessWidget {
+  const _StatItem({required this.label, required this.value});
+  final String label;
+  final int value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(
+            _format(value),
+            style: GoogleFonts.josefinSans(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: AppColors.charcoal,
+            ),
+          ),
+          Text(
+            label,
+            style: GoogleFonts.josefinSans(
+              fontSize: 11,
+              color: AppColors.textTertiary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _format(int n) {
+    if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
+    if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}K';
+    return '$n';
+  }
+}
+
+class _StatDivider extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 32,
+      color: AppColors.borderSubtle,
     );
   }
 }

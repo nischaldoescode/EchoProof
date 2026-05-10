@@ -8,7 +8,8 @@ import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../services/notification_service.dart';
-
+import '../../../../shared/widgets/app_bottom_nav.dart';
+import '../../../../app/app.dart';
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
 
@@ -26,16 +27,21 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final service = context.watch<NotificationService>();
+@override
+Widget build(BuildContext context) {
+  final service = context.watch<NotificationService>();
 
-    return Scaffold(
-      backgroundColor: AppColors.white,
-      appBar: AppBar(
-        title: Text('Notifications', style: AppTypography.textTheme.titleLarge),
-      ),
-      body: service.isLoading
+  return SwipeNavigationWrapper(
+    currentLocation: '/notifications',
+    child: ExitConfirmWrapper(
+      child: Scaffold(
+        backgroundColor: AppColors.white,
+        appBar: AppBar(
+          title: Text('Notifications', style: AppTypography.textTheme.titleLarge),
+          automaticallyImplyLeading: false,
+        ),
+        bottomNavigationBar: const AppBottomNav(currentLocation: '/notifications'),
+        body: service.isLoading
           ? const Center(
               child: CircularProgressIndicator(
                 strokeWidth: 2,
@@ -58,7 +64,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: AppSpacing.xl,
-                          vertical:   AppSpacing.md,
+                          vertical: AppSpacing.md,
                         ),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -88,7 +94,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             ),
                             if (!n.read)
                               Container(
-                                width:  7,
+                                width: 7,
                                 height: 7,
                                 margin: const EdgeInsets.only(top: 4),
                                 decoration: const BoxDecoration(
@@ -102,13 +108,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     );
                   },
                 ),
+    ),
+    ),
     );
   }
 
   String _timeAgo(DateTime dt) {
     final diff = DateTime.now().difference(dt);
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24)   return '${diff.inHours}h ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
     return '${diff.inDays}d ago';
   }
 }
@@ -145,12 +153,17 @@ class _NotificationIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (icon, color) = switch (type) {
-      'echo_verified'   => (Icons.verified_outlined,      AppColors.fernGreen),
-      'trust_update'    => (Icons.trending_up_outlined,   AppColors.fernGreen),
-      'report_resolved' => (Icons.shield_outlined,        AppColors.charcoal),
-      'bond_settled'    => (Icons.link_outlined,          AppColors.fernGreen),
-      'bond_contested'  => (Icons.link_off_outlined,      AppColors.sunsetCoral),
-      _                 => (Icons.notifications_outlined, AppColors.textTertiary),
+      'echo_verified' => (Icons.verified_outlined, AppColors.fernGreen),
+      'trust_update' => (Icons.trending_up_outlined, AppColors.fernGreen),
+      'report_resolved' => (Icons.shield_outlined, AppColors.charcoal),
+      'bond_settled' => (Icons.link_outlined, AppColors.fernGreen),
+      'bond_contested' => (Icons.link_off_outlined, AppColors.sunsetCoral),
+      'content_removed' => (
+          Icons.delete_outline_rounded,
+          AppColors.sunsetCoral
+        ),
+      'identity_verified' => (Icons.verified_user_rounded, AppColors.fernGreen),
+      _ => (Icons.notifications_outlined, AppColors.textTertiary),
     };
 
     return Container(

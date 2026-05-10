@@ -154,10 +154,11 @@ class _FeedScreenState extends State<FeedScreen> {
         child: ExitConfirmWrapper(
           child: Scaffold(
             backgroundColor: AppColors.white,
-            appBar: _FeedAppBar(
-              filterActive: _filter.isActive,
-              onFilterTap: _openFilter,
-            ),
+appBar: _FeedAppBar(
+  filterActive: _filter.isActive,
+  onFilterTap: _openFilter,
+  onRefreshTap: () => context.read<EchoFeedService>().refresh(),
+),
             floatingActionButton: const _CreateFab(),
             bottomNavigationBar: const AppBottomNav(currentLocation: '/feed'),
             body: _buildBody(feed, isTablet),
@@ -377,10 +378,12 @@ class _FeedAppBar extends StatelessWidget implements PreferredSizeWidget {
   const _FeedAppBar({
     required this.filterActive,
     required this.onFilterTap,
+    required this.onRefreshTap,
   });
 
   final bool filterActive;
   final VoidCallback onFilterTap;
+  final VoidCallback onRefreshTap;
 
   @override
   Size get preferredSize => const Size.fromHeight(56);
@@ -408,7 +411,6 @@ class _FeedAppBar extends StatelessWidget implements PreferredSizeWidget {
         ],
       ),
       actions: [
-        // filter button with active indicator
         Stack(
           clipBehavior: Clip.none,
           children: [
@@ -432,6 +434,12 @@ class _FeedAppBar extends StatelessWidget implements PreferredSizeWidget {
                 ),
               ),
           ],
+        ),
+        IconButton(
+          icon: const Icon(Icons.refresh_rounded, size: 22),
+          onPressed: onRefreshTap,
+          color: AppColors.charcoal,
+          tooltip: 'Refresh feed',
         ),
         IconButton(
           icon: const Icon(Icons.search_rounded, size: 22),
