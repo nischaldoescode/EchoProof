@@ -24,7 +24,7 @@ dependencies:
   http: ^1.6.0
   # supabase
   supabase_flutter: ^2.12.4
-
+  cupertino_icons: ^1.0.9
   open_filex: ^4.7.0
 
   # networking
