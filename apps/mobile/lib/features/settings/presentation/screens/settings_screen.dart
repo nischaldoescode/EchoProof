@@ -17,6 +17,8 @@ import '../../../../core/services/ad_service.dart';
 import 'package:flutter/services.dart';
 import '../../../subscription/presentation/services/subscription_service.dart';
 import '../../../../core/utils/snack.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -39,6 +41,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     super.initState();
     _loadVersion();
     _loadVerificationStatus();
+    _loadNotifPrefs();
     WidgetsBinding.instance.addObserver(this);
   }
 
@@ -374,6 +377,48 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
+  bool _pushEnabled = true;
+  Map<String, bool> _notifPrefs = {
+    'echo_verified': true,
+    'new_follower_echo': true,
+    'someone_supported': false,
+  };
+
+  Future<void> _loadNotifPrefs() async {
+    final box = Hive.box('app_settings');
+    setState(() {
+      _pushEnabled = box.get('push_enabled', defaultValue: true) as bool;
+      _notifPrefs = {
+        'echo_verified':
+            box.get('notif_echo_verified', defaultValue: true) as bool,
+        'new_follower_echo':
+            box.get('notif_new_follower_echo', defaultValue: true) as bool,
+        'someone_supported':
+            box.get('notif_someone_supported', defaultValue: false) as bool,
+      };
+    });
+  }
+
+  Future<void> _setPushEnabled(bool v) async {
+    final box = Hive.box('app_settings');
+    await box.put('push_enabled', v);
+    setState(() => _pushEnabled = v);
+    if (!v) {
+      // Revoke notification permission is not possible programmatically on Android/iOS.
+      // Show guidance instead.
+      if (mounted) {
+        showInfoSnack(context,
+            'To fully disable notifications, go to System Settings > Apps > Echoproof > Notifications.');
+      }
+    }
+  }
+
+  Future<void> _setNotifPref(String key, bool v) async {
+    final box = Hive.box('app_settings');
+    await box.put('notif_$key', v);
+    setState(() => _notifPrefs[key] = v);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -477,21 +522,56 @@ class _SettingsScreenState extends State<SettingsScreen>
           _Section(title: 'Notifications', tiles: [
             _SwitchTile(
               icon: Icons.notifications_outlined,
-              label: 'Echo verified',
-              value: true,
-              onChanged: (_) {},
+              label: 'Push notifications',
+              value: _pushEnabled,
+              onChanged: _setPushEnabled,
             ),
-            _SwitchTile(
-              icon: Icons.people_outline,
-              label: 'New echo from someone I follow',
-              value: true,
-              onChanged: (_) {},
+            // In-app notifications are always on — shown greyed out.
+            _Tile(
+              icon: Icons.notifications_active_outlined,
+              label: 'In-app notifications',
+              subtitle: 'Always enabled (required)',
+              color: AppColors.textTertiary,
+              onTap: () => showInfoSnack(
+                  context, 'In-app notifications cannot be disabled.'),
             ),
-            _SwitchTile(
-              icon: Icons.arrow_upward_rounded,
-              label: 'Someone supported my echo',
-              value: false,
-              onChanged: (_) {},
+            if (_pushEnabled) ...[
+              _SwitchTile(
+                icon: Icons.verified_outlined,
+                label: 'Echo verified',
+                value: _notifPrefs['echo_verified'] ?? true,
+                onChanged: (v) => _setNotifPref('echo_verified', v),
+              ),
+              _SwitchTile(
+                icon: Icons.people_outline,
+                label: 'New echo from someone I follow',
+                value: _notifPrefs['new_follower_echo'] ?? true,
+                onChanged: (v) => _setNotifPref('new_follower_echo', v),
+              ),
+              _SwitchTile(
+                icon: Icons.arrow_upward_rounded,
+                label: 'Someone supported my echo',
+                value: _notifPrefs['someone_supported'] ?? false,
+                onChanged: (v) => _setNotifPref('someone_supported', v),
+              ),
+            ],
+          ]),
+
+          _Section(title: 'App Permissions', tiles: [
+            _PermissionTile(
+              icon: Icons.notifications_outlined,
+              label: 'Notifications',
+              permission: Permission.notification,
+            ),
+            _PermissionTile(
+              icon: Icons.photo_library_outlined,
+              label: 'Photo library',
+              permission: Permission.photos,
+            ),
+            _PermissionTile(
+              icon: Icons.camera_alt_outlined,
+              label: 'Camera',
+              permission: Permission.camera,
             ),
           ]),
           _Section(title: 'Privacy', tiles: [
@@ -538,7 +618,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               onTap: () {},
             ),
           ]),
-// Secret developer panel — only visible after 5 quick taps on ?
+          // Secret developer panel — only visible after 5 quick taps on ?
           AnimatedSize(
             duration: const Duration(milliseconds: 350),
             curve: Curves.easeOutCubic,
@@ -794,6 +874,113 @@ class _SettingsScreenState extends State<SettingsScreen>
     } catch (_) {
       return [];
     }
+  }
+}
+
+class _PermissionTile extends StatefulWidget {
+  const _PermissionTile({
+    required this.icon,
+    required this.label,
+    required this.permission,
+  });
+  final IconData icon;
+  final String label;
+  final Permission permission;
+
+  @override
+  State<_PermissionTile> createState() => _PermissionTileState();
+}
+
+class _PermissionTileState extends State<_PermissionTile>
+    with WidgetsBindingObserver {
+  PermissionStatus _status = PermissionStatus.denied;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _check();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _check();
+  }
+
+  Future<void> _check() async {
+    final s = await widget.permission.status;
+    if (mounted) setState(() => _status = s);
+  }
+
+  bool get _granted =>
+      _status == PermissionStatus.granted ||
+      _status == PermissionStatus.limited;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: _status == PermissionStatus.permanentlyDenied
+          ? openAppSettings
+          : () async {
+              await widget.permission.request();
+              await _check();
+            },
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+        child: Row(
+          children: [
+            Icon(widget.icon,
+                size: 20,
+                color: _granted ? AppColors.fernGreen : AppColors.charcoal),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.label,
+                    style: GoogleFonts.josefinSans(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.charcoal),
+                  ),
+                  Text(
+                    _granted
+                        ? 'Allowed'
+                        : _status == PermissionStatus.permanentlyDenied
+                            ? 'Denied — tap to open settings'
+                            : 'Not granted',
+                    style: GoogleFonts.josefinSans(
+                      fontSize: 12,
+                      color: _granted
+                          ? AppColors.fernGreen
+                          : _status == PermissionStatus.permanentlyDenied
+                              ? AppColors.sunsetCoral
+                              : AppColors.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              _granted
+                  ? Icons.check_circle_rounded
+                  : Icons.chevron_right_rounded,
+              size: 18,
+              color: _granted ? AppColors.fernGreen : AppColors.textTertiary,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

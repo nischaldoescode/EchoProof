@@ -1,14 +1,28 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/utils/logger.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 class AuthService extends ChangeNotifier {
+  static const _settingsBox = 'app_settings';
+  static const _onboardingDoneKey = 'onboarding_done';
+  static const _onboardingStepKey = 'onboarding_step';
+  static const _onboardingUsernameSetKey = 'onboarding_username_set';
+  static const _lastSignedInUserIdKey = 'last_signed_in_user_id';
+  static const _authRedirectUrl = String.fromEnvironment(
+    'AUTH_REDIRECT_URL',
+    defaultValue: 'echoproof://auth-callback',
+  );
+
   final _client = Supabase.instance.client;
   final _google = GoogleSignIn(
     serverClientId: const String.fromEnvironment('GOOGLE_WEB_CLIENT_ID'),
     scopes: ['email', 'profile'],
   );
+  late final StreamSubscription<AuthState> _authSub;
 
   bool _isLoading = false;
   bool _hasUsernameChecked = false;
@@ -30,21 +44,36 @@ class AuthService extends ChangeNotifier {
   bool _needsAgeGender = false;
   bool get needsAgeGender => _needsAgeGender;
 
+  AuthService() {
+    _authSub = _client.auth.onAuthStateChange.listen((data) {
+      if (data.event == AuthChangeEvent.signedIn ||
+          data.event == AuthChangeEvent.initialSession ||
+          data.event == AuthChangeEvent.userUpdated) {
+        unawaited(_syncSignedInUser(data.session?.user));
+      } else if (data.event == AuthChangeEvent.signedOut) {
+        _hasUsername = false;
+        _hasUsernameChecked = false;
+        _needsAgeGender = false;
+        _googleDisplayName = null;
+        notifyListeners();
+      }
+    });
+  }
+
   void clearError() {
     _error = null;
     notifyListeners();
   }
 
-  // Called after onboarding completion to immediately mark the user as having
-  // a username without a round-trip to the DB. Prevents redirect loops when
-  // the DB write succeeds but the router re-evaluates before the next check.
+  // marks the user as ready after onboarding writes successfully
   void markOnboardingComplete() {
     _hasUsername = true;
     _hasUsernameChecked = true;
+    _needsAgeGender = false;
     notifyListeners();
   }
 
-// Prevents concurrent calls — if one checkUsername is in flight, don't start another.
+  // prevents concurrent profile checks during router refresh bursts
   bool _checkingUsername = false;
 
   Future<void> checkUsername() async {
@@ -56,13 +85,15 @@ class AuthService extends ChangeNotifier {
       if (userId == null) {
         _hasUsername = false;
         _hasUsernameChecked = true;
+        _needsAgeGender = false;
         _checkingUsername = false;
         notifyListeners();
         return;
       }
 
-      // Try up to 5 times with increasing delay — handles slow trigger on new signup.
-      // On subsequent app opens the row will always exist immediately.
+      await _prepareLocalStateForUser(userId);
+
+      // handles slow profile trigger creation on first signup
       Map<String, dynamic>? row;
       for (int attempt = 0; attempt < 5; attempt++) {
         row = await _client
@@ -73,27 +104,61 @@ class AuthService extends ChangeNotifier {
 
         if (row != null) break;
 
-        // Row not yet created by trigger — wait and retry.
-        // Only retry on first-ever signup (attempt < 4).
         if (attempt < 4) {
           await Future.delayed(Duration(milliseconds: 300 * (attempt + 1)));
+        }
+      }
+
+// If after 5 retries the row still doesn't exist, the DB trigger failed.
+// Create a minimal stub row so the app can proceed to onboarding.
+// The full row gets created in completeOnboarding() via upsert.
+      if (row == null) {
+        AppLogger.warn(
+            'auth: trigger row missing after 5 retries, creating stub');
+        try {
+          await _client.from('users_public').insert({
+            'id': userId,
+            'username': null,
+            'display_name': _client.auth.currentUser?.userMetadata?['full_name']
+                    as String? ??
+                '',
+            'trust_tier': 'unverified',
+            'trust_score': 0,
+            'echo_count': 0,
+            'proof_count': 0,
+            'is_public': true,
+            'onboarding_complete': false,
+          });
+          // Re-fetch to confirm the row exists now.
+          row = await _client
+              .from('users_public')
+              .select('onboarding_complete, username, date_of_birth')
+              .eq('id', userId)
+              .maybeSingle();
+        } catch (e) {
+          AppLogger.error('auth: stub row creation failed $e');
+          // Row creation failed — proceed as new user without a row.
+          // Onboarding will create it via upsert.
         }
       }
 
       if (row == null) {
         _hasUsername = false;
         _hasUsernameChecked = true;
-        _needsAgeGender = true; // New user — needs age/gender
+        _needsAgeGender = true;
+        _clearCompletedOnboardingFlags();
       } else {
         final done = row['onboarding_complete'] as bool? ?? false;
-        _hasUsername = done == true;
+        final username = row['username'] as String?;
+        _hasUsername = done && username != null && username.trim().isNotEmpty;
         _hasUsernameChecked = true;
-        // Only needs age/gender if not yet set (date_of_birth is null)
         _needsAgeGender = row['date_of_birth'] == null;
+        if (!_hasUsername) _clearCompletedOnboardingFlags();
       }
     } catch (e) {
       _hasUsername = false;
       _hasUsernameChecked = true;
+      AppLogger.error('auth: profile check failed $e');
     }
 
     _checkingUsername = false;
@@ -107,7 +172,9 @@ class AuthService extends ChangeNotifier {
       await _client.auth.signInWithOtp(
         email: email,
         shouldCreateUser: true,
-        emailRedirectTo: null,
+        // The magic link in the email points to this URL.
+        // When tapped on Android, the app intercepts it via the intent filter.
+        emailRedirectTo: 'echoproof://auth-callback',
       );
       AppLogger.info('auth: OTP sent to $email');
       _setLoading(false);
@@ -141,6 +208,7 @@ class AuthService extends ChangeNotifier {
         return false;
       }
       AppLogger.info('auth: OTP verified ${res.user!.id}');
+      await _prepareLocalStateForUser(res.user!.id);
       await checkUsername();
       _setLoading(false);
       return true;
@@ -188,13 +256,28 @@ class AuthService extends ChangeNotifier {
         accessToken: accessToken,
       );
 
-      AppLogger.info('auth: Supabase sign in successful, checking username');
+      AppLogger.info(
+          'auth: Supabase sign in successful, clearing stale state then checking');
 
-      // retry mechanism to handle trigger delay
+// Clear stale Hive onboarding state BEFORE checking username.
+// Must run before checkUsername so the router never sees a stale
+// onboarding_done=true with hasUsername=false simultaneously.
+      final box = Hive.box('app_settings');
+      final currentUserId = _client.auth.currentUser?.id;
+      final lastUserId = box.get('last_signed_in_user_id') as String?;
+      if (lastUserId != currentUserId) {
+        AppLogger.info(
+            'auth: different user detected, wiping stale onboarding state');
+        await box.delete('onboarding_done');
+        await box.delete('onboarding_step');
+        await box.delete('onboarding_username_set');
+      }
+      await box.put('last_signed_in_user_id', currentUserId ?? '');
+
+// Now check the DB for username/onboarding status.
       for (int i = 0; i < 3; i++) {
         await checkUsername();
         if (_hasUsername) break;
-
         AppLogger.info('auth: username not ready, retrying... ($i)');
         await Future.delayed(const Duration(milliseconds: 300));
       }
@@ -226,7 +309,6 @@ class AuthService extends ChangeNotifier {
     final userId = currentUser?.id;
     if (userId == null) return;
     try {
-      // Save age + dob to users_public (needed for profile display)
       final publicPatch = <String, dynamic>{
         'age': age,
         'gender': gender,
@@ -237,7 +319,36 @@ class AuthService extends ChangeNotifier {
             '${dateOfBirth.month.toString().padLeft(2, '0')}-'
             '${dateOfBirth.day.toString().padLeft(2, '0')}';
       }
-      await _client.from('users_public').update(publicPatch).eq('id', userId);
+      final updateRes = await _client
+          .from('users_public')
+          .update(publicPatch)
+          .eq('id', userId)
+          .select('id');
+
+      if ((updateRes as List).isEmpty) {
+        final fallbackUsername =
+            'user${userId.replaceAll('-', '').substring(0, 8)}';
+        await _client.from('users_public').upsert(
+          {
+            'id': userId,
+            'username': fallbackUsername,
+            'display_name': _displayNameFromCurrentUser() ?? fallbackUsername,
+            'onboarding_complete': false,
+            'trust_tier': 'unverified',
+            'trust_score': 0,
+            'echo_count': 0,
+            'proof_count': 0,
+            'is_public': true,
+            'created_at': DateTime.now().toUtc().toIso8601String(),
+            ...publicPatch,
+          },
+          onConflict: 'id',
+        );
+      }
+
+      _needsAgeGender = false;
+      _hasUsernameChecked = true;
+      notifyListeners();
     } catch (e) {
       AppLogger.error('auth: save age/gender failed $e');
     }
@@ -250,6 +361,9 @@ class AuthService extends ChangeNotifier {
       _hasUsername = false;
       _hasUsernameChecked = false;
       _googleDisplayName = null;
+      _needsAgeGender = false;
+      _clearOnboardingState();
+      Hive.box(_settingsBox).delete(_lastSignedInUserIdKey);
       notifyListeners();
     } catch (e) {
       AppLogger.error('auth: sign out failed $e');
@@ -263,7 +377,10 @@ class AuthService extends ChangeNotifier {
       _hasUsername = false;
       _hasUsernameChecked = false;
       _googleDisplayName = null;
-      AppLogger.info('auth: signed out');
+      _needsAgeGender = false;
+      _clearOnboardingState();
+      Hive.box(_settingsBox).delete(_lastSignedInUserIdKey);
+      AppLogger.info('auth: signed out, onboarding state cleared');
       notifyListeners();
     } catch (e) {
       AppLogger.error('auth: sign out failed $e');
@@ -273,6 +390,51 @@ class AuthService extends ChangeNotifier {
   void _setLoading(bool v) {
     _isLoading = v;
     notifyListeners();
+  }
+
+  Future<void> _syncSignedInUser(User? user) async {
+    if (user == null) return;
+    await _prepareLocalStateForUser(user.id);
+    _hasUsernameChecked = false;
+    await checkUsername();
+  }
+
+  Future<void> _prepareLocalStateForUser(String userId) async {
+    final box = Hive.box(_settingsBox);
+    final lastUserId = box.get(_lastSignedInUserIdKey) as String?;
+
+    if (lastUserId != userId) {
+      AppLogger.info('auth: signed-in user changed, clearing onboarding state');
+      _clearOnboardingState();
+    }
+
+    await box.put(_lastSignedInUserIdKey, userId);
+  }
+
+  void _clearOnboardingState() {
+    final box = Hive.box(_settingsBox);
+    box.delete(_onboardingDoneKey);
+    box.delete(_onboardingStepKey);
+    box.delete(_onboardingUsernameSetKey);
+  }
+
+  void _clearCompletedOnboardingFlags() {
+    final box = Hive.box(_settingsBox);
+    box.delete(_onboardingDoneKey);
+    box.delete(_onboardingUsernameSetKey);
+  }
+
+  String? _displayNameFromCurrentUser() {
+    final metadata = currentUser?.userMetadata ?? const <String, dynamic>{};
+    final fullName = metadata['full_name'] as String?;
+    final name = metadata['name'] as String?;
+    return _googleDisplayName ?? fullName ?? name;
+  }
+
+  @override
+  void dispose() {
+    _authSub.cancel();
+    super.dispose();
   }
 
   String _friendly(String message) {

@@ -71,6 +71,16 @@ class _RouterRefreshStream extends ChangeNotifier {
   }
 }
 
+bool _isOnboardingRoute(String location) {
+  const routes = [
+    '/onboarding',
+    '/age-gender',
+    '/permissions',
+    '/verify-email'
+  ];
+  return routes.any((r) => location.startsWith(r));
+}
+
 GoRouter createRouter({
   required AuthService authService,
   required OnboardingService onboardingService,
@@ -83,78 +93,85 @@ GoRouter createRouter({
       final isLoggedIn = authService.isLoggedIn;
       final location = state.matchedLocation;
 
-      AppLogger.info(
-          'router: redirect check — isLoggedIn=$isLoggedIn location=$location');
+      AppLogger.info('router: check — loggedIn=$isLoggedIn loc=$location');
 
+      // Splash handles its own navigation — never redirect it.
       if (location == '/splash') return null;
 
+      // Not logged in: only allow login and email verify routes.
       if (!isLoggedIn) {
-        if (location == '/login' || location == '/verify-email') return null;
+        if (location == '/login' || location.startsWith('/verify-email')) {
+          return null;
+        }
         return '/login';
       }
 
-      const onboardingRoutes = [
-        '/onboarding',
-        '/age-gender',
-        '/permissions',
-        '/verify-email',
-      ];
-
-      final isOnboardingRoute =
-          onboardingRoutes.any((r) => location.startsWith(r));
-
-      // If Hive says onboarding is complete, trust it while on onboarding
-      // routes — this prevents a loop when the DB write succeeded partially
-      // or the trigger is delayed. The feed will do a real check independently.
-      if (isOnboardingRoute && onboardingService.isComplete()) {
-        AppLogger.info('router: onboarding done per Hive, going to feed');
-        return '/feed';
-      }
-
-      // If we're already on an onboarding route and the check has run at least once,
-      // do NOT re-query and do NOT redirect away — let the user stay and complete it.
-      if (isOnboardingRoute && authService.hasUsernameChecked) {
-        AppLogger.info('router: already on onboarding route, no redirect');
-        return null;
-      }
-
-      // Only hit the DB when we genuinely need fresh state.
-      final needsDbCheck = !authService.hasUsernameChecked ||
-          location == '/login' ||
-          location == '/splash';
-
-      if (needsDbCheck) {
+      // Check username/onboarding status if we don't have it yet.
+      if (!authService.hasUsernameChecked) {
         await authService.checkUsername();
       }
 
       final hasUsername = authService.hasUsername;
-      final isOnboardingDone = onboardingService.isComplete();
+      final needsAgeGender = authService.needsAgeGender;
+
+      // Hive onboarding completion  only trust it if hasUsername is also true.
+      // A stale Hive "done" with no username = first-time user, ignore the Hive flag.
+      final isHiveDone = onboardingService.isComplete() && hasUsername;
 
       AppLogger.info(
-          'router: after check — hasUsername=$hasUsername isOnboardingDone=$isOnboardingDone');
+        'router: hasUsername=$hasUsername needsAge=$needsAgeGender hiveDone=$isHiveDone loc=$location',
+      );
 
-      if (!hasUsername) {
-        if (isOnboardingRoute) return null;
-        // New user — send to age/gender first, then permissions, then onboarding
-        if (authService.needsAgeGender &&
-            location != '/age-gender' &&
-            location != '/permissions') {
-          AppLogger.info('router: new user, redirecting to age-gender');
-          return '/age-gender';
+      // Logged in, onboarding complete
+      // User has a username and Hive confirms done → they belong in the main app.
+      if (hasUsername && isHiveDone) {
+        // Pull them out of any onboarding route back to feed.
+        if (_isOnboardingRoute(location)) {
+          AppLogger.info('router: onboarding done, redirecting to feed');
+          return '/feed';
         }
-        AppLogger.info('router: no username, redirecting to onboarding');
-        return '/onboarding';
+        // Redirect login/splash to feed.
+        if (location == '/login' || location == '/splash') {
+          return '/feed';
+        }
+        // Anywhere else in the main app: let them stay.
+        return null;
       }
 
-      if (hasUsername && !isOnboardingDone) {
+      // Logged in, username exists but Hive not marked done
+      // DB says they have a username but Hive was cleared (e.g. reinstall).
+      // Mark Hive as done and let them through.
+      if (hasUsername && !isHiveDone) {
         onboardingService.complete();
+        if (location == '/login' ||
+            location == '/splash' ||
+            _isOnboardingRoute(location)) {
+          AppLogger.info('router: has username but Hive stale, going to feed');
+          return '/feed';
+        }
+        return null;
       }
 
-      if (hasUsername && (location == '/login' || location == '/splash')) {
-        return '/feed';
+      // --- Logged in, no username (new user or mid-onboarding) ---
+      // From here: hasUsername=false. They need to complete onboarding.
+
+      // If they're already on an onboarding route, let them stay there.
+      // Never redirect someone mid-onboarding back to the start.
+      if (_isOnboardingRoute(location)) {
+        AppLogger.info('router: on onboarding route, staying put');
+        return null;
       }
 
-      return null;
+      // They're a new user not yet on any onboarding route.
+      // Send to age-gender first if they haven't done it yet.
+      if (needsAgeGender) {
+        AppLogger.info('router: new user → age-gender');
+        return '/age-gender';
+      }
+
+      // Age/gender done but no username yet → onboarding flow.
+      AppLogger.info('router: no username → onboarding');
+      return '/onboarding';
     },
     routes: [
       GoRoute(
@@ -249,28 +266,9 @@ GoRouter createRouter({
         pageBuilder: (_, __) => _slidePage(const IdentityVerificationScreen()),
       ),
       GoRoute(
-        path: '/verify-email',
-        builder: (context, state) => OtpScreen(
-          email: state.extra as String? ?? '',
-        ),
-      ),
-      GoRoute(
         path: '/purchase-history',
         pageBuilder: (_, __) => _slidePage(const PurchaseHistoryScreen()),
       ),
-      // GoRoute(
-      //   path: '/analytics',
-      //   pageBuilder: (_, __) => _slidePage(const ProAnalyticsScreen()),
-      // ),
-      GoRoute(
-        path: '/onboarding-age-gender',
-        builder: (context, state) => const AgeGenderScreen(),
-      ),
-      GoRoute(
-        path: '/permissions',
-        builder: (context, state) => const PermissionsScreen(),
-      ),
-      GoRoute(path: '/subscribe', builder: (_, __) => const SubscribeScreen()),
     ],
   );
 }

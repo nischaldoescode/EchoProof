@@ -4,6 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../app/theme/colors.dart';
 import 'bottom_ad_banner.dart';
 import 'app_banner_ad.dart';
+import 'package:provider/provider.dart';
+import '../../features/notifications/presentation/services/notification_service.dart';
 
 class AppBottomNav extends StatelessWidget {
   const AppBottomNav({super.key, required this.currentLocation});
@@ -24,6 +26,12 @@ class AppBottomNav extends StatelessWidget {
       path: '/discover',
     ),
     _NavItem(
+      icon: Icons.notifications_outlined,
+      activeIcon: Icons.notifications_rounded,
+      label: 'Alerts',
+      path: '/notifications',
+    ),
+    _NavItem(
       icon: Icons.person_outline,
       activeIcon: Icons.person_rounded,
       label: 'Profile',
@@ -35,6 +43,7 @@ class AppBottomNav extends StatelessWidget {
     if (location.startsWith('/feed')) return '/feed';
     if (location.startsWith('/discover')) return '/discover';
     if (location.startsWith('/search')) return '/discover';
+    if (location.startsWith('/notifications')) return '/notifications';
     if (location.startsWith('/profile')) return '/profile';
     return '/feed';
   }
@@ -62,71 +71,88 @@ class AppBottomNav extends StatelessWidget {
               children: _items.map((item) {
                 final isActive = activePath == item.path;
                 return Expanded(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () {
-                      if (!isActive) {
-                        context.go(item.path);
-                      }
-                    },
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 250),
-                          curve: Curves.easeOutCubic,
-                          padding: EdgeInsets.symmetric(
-                            horizontal: isActive ? 16 : 0,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isActive
-                                ? AppColors.charcoal.withValues(alpha: 0.08)
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 200),
-                            child: Icon(
-                              isActive ? item.activeIcon : item.icon,
-                              key: ValueKey('${item.path}_$isActive'),
-                              size: 22,
-                              color: isActive
-                                  ? AppColors.charcoal
-                                  : AppColors.textTertiary,
+                    child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    if (!isActive) {
+                      context.go(item.path);
+                    }
+                  },
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 250),
+                        curve: Curves.easeOutCubic,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isActive ? 16 : 0,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isActive
+                              ? AppColors.charcoal.withValues(alpha: 0.08)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 200),
+                              child: Icon(
+                                isActive ? item.activeIcon : item.icon,
+                                key: ValueKey('${item.path}_$isActive'),
+                                size: 22,
+                                color: isActive
+                                    ? AppColors.charcoal
+                                    : AppColors.textTertiary,
+                              ),
                             ),
-                          ),
+                            // Unread badge for notifications tab.
+                            if (item.path == '/notifications')
+                              Consumer<NotificationService>(
+                                builder: (_, notif, __) {
+                                  final count = notif.unreadCount;
+                                  if (count == 0)
+                                    return const SizedBox.shrink();
+                                  return Positioned(
+                                    top: -4,
+                                    right: -6,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(2),
+                                      decoration: const BoxDecoration(
+                                        color: AppColors.sunsetCoral,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      constraints: const BoxConstraints(
+                                          minWidth: 14, minHeight: 14),
+                                      child: Text(
+                                        count > 9 ? '9+' : '$count',
+                                        style: const TextStyle(
+                                          fontSize: 8,
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                          ],
                         ),
-                        const SizedBox(height: 2),
-                        AnimatedDefaultTextStyle(
-                          duration: const Duration(milliseconds: 200),
-                          style: GoogleFonts.josefinSans(
-                            fontSize: 10,
-                            fontWeight:
-                                isActive ? FontWeight.w600 : FontWeight.w400,
-                            color: isActive
-                                ? AppColors.charcoal
-                                : AppColors.textTertiary,
-                          ),
-                          child: Text(item.label),
-                        ),
-                      ],
-                    ),
+                      )
+                    ],
                   ),
-                );
+                ));
               }).toList(),
             ),
           ),
         ),
       ),
-      Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).padding.bottom,
-        ),
-        child: const SizedBox(
-          width: double.infinity,
-          child: AppBannerAd(),
-        ),
+      const SizedBox(
+        width: double.infinity,
+        child: AppBannerAd(),
       ),
     ]);
   }
@@ -148,7 +174,7 @@ class SwipeNavigationWrapper extends StatefulWidget {
 
 class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
     with SingleTickerProviderStateMixin {
-  static const _routes = ['/feed', '/discover', '/profile'];
+  static const _routes = ['/feed', '/discover', '/notifications', '/profile'];
 
   // Live drag progress: -1.0 (going right→left) to +1.0 (going left→right)
   double _drag = 0.0;

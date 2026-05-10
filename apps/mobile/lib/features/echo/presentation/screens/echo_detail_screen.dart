@@ -333,6 +333,75 @@ class _LiveScoreSection extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.lg),
         InteractionButtons(echo: echo),
+        const SizedBox(height: AppSpacing.md),
+        _BasicStats(echo: echo),
+      ],
+    );
+  }
+}
+
+class _BasicStats extends StatelessWidget {
+  const _BasicStats({required this.echo});
+  final EchoEntity echo;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _MiniStat(
+            icon: Icons.thumb_up_outlined,
+            value: echo.supportCount,
+            color: AppColors.fernGreen),
+        const SizedBox(width: AppSpacing.md),
+        _MiniStat(
+            icon: Icons.thumb_down_outlined,
+            value: echo.challengeCount,
+            color: AppColors.sunsetCoral),
+        const SizedBox(width: AppSpacing.md),
+        _MiniStat(
+            icon: Icons.chat_bubble_outline,
+            value: echo.replyCount,
+            color: AppColors.charcoal),
+        const SizedBox(width: AppSpacing.md),
+        _MiniStat(
+            icon: Icons.link_outlined,
+            value: 0,
+            color: const Color(0xFF9C6FDE)),
+        const Spacer(),
+        Text(
+          '${echo.confidenceScore.toStringAsFixed(0)}% confidence',
+          style: TextStyle(
+            fontSize: 11,
+            color: AppColors.textTertiary,
+            fontFamily: 'Josefin Sans',
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MiniStat extends StatelessWidget {
+  const _MiniStat(
+      {required this.icon, required this.value, required this.color});
+  final IconData icon;
+  final int value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 13, color: color),
+        const SizedBox(width: 3),
+        Text(
+          '$value',
+          style: TextStyle(
+              fontSize: 11,
+              color: AppColors.textTertiary,
+              fontFamily: 'Josefin Sans'),
+        ),
       ],
     );
   }

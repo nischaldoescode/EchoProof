@@ -6,6 +6,7 @@ import 'dart:math' as math;
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../services/auth_service.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -409,7 +410,7 @@ class _LoginScreenState extends State<LoginScreen>
   }
 }
 
-//    sub-widgets  
+//    sub-widgets
 
 class _EmailField extends StatefulWidget {
   const _EmailField({required this.ctrl});
@@ -623,79 +624,52 @@ class _GoogleButton extends StatelessWidget {
 }
 
 // draws the actual Google G logo using canvas
-class _GoogleG extends StatelessWidget {
+class _GoogleG extends StatefulWidget {
   const _GoogleG();
 
   @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 20,
-      height: 20,
-      child: CustomPaint(painter: _GoogleGPainter()),
-    );
-  }
+  State<_GoogleG> createState() => _GoogleGState();
 }
 
-class _GoogleGPainter extends CustomPainter {
+class _GoogleGState extends State<_GoogleG>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+
   @override
-  void paint(Canvas canvas, Size size) {
-    final cx = size.width / 2;
-    final cy = size.height / 2;
-    final r = size.width / 2 - 2;
+  void initState() {
+    super.initState();
 
-    final baseRect = Rect.fromCircle(center: Offset(cx, cy), radius: r);
-
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 4.5
-      ..strokeCap = StrokeCap.round;
-
-    canvas.drawArc(
-      baseRect,
-      -0.75,
-      1.6,
-      false,
-      paint..color = const Color(0xFF4285F4),
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
     );
 
-    canvas.drawArc(
-      baseRect,
-      0.85,
-      1.2,
-      false,
-      paint..color = const Color(0xFFEA4335),
-    );
-
-    canvas.drawArc(
-      baseRect,
-      2.05,
-      1.1,
-      false,
-      paint..color = const Color(0xFFFBBC05),
-    );
-
-    canvas.drawArc(
-      baseRect,
-      3.15,
-      1.2,
-      false,
-      paint..color = const Color(0xFF34A853),
-    );
-
-    final barPaint = Paint()
-      ..color = const Color(0xFF4285F4)
-      ..strokeWidth = 6
-      ..strokeCap = StrokeCap.round;
-
-    canvas.drawLine(
-      Offset(cx, cy),
-      Offset(cx + r * 0.85, cy),
-      barPaint,
-    );
+    // start slightly delayed for nicer entrance
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) _c.forward();
+    });
   }
 
   @override
-  bool shouldRepaint(_) => false;
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RotationTransition(
+      turns: CurvedAnimation(
+        parent: _c,
+        curve: Curves.easeOutCubic,
+      ),
+      child: SvgPicture.asset(
+        'assets/icons/google.svg',
+        width: 20,
+        height: 20,
+      ),
+    );
+  }
 }
 
 // animated logo
@@ -811,7 +785,7 @@ class _TypewriterTextState extends State<_TypewriterText>
   }
 }
 
-//    animated dot  
+//    animated dot
 
 class _Dot extends StatefulWidget {
   const _Dot({required this.delay});

@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/services/avatar_service.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../auth/presentation/services/auth_service.dart';
+import '../../../../core/utils/sanitizer.dart';
 
 const _kStep = 'onboarding_step';
 const _kUsernameSet = 'onboarding_username_set';
@@ -146,7 +147,7 @@ class OnboardingService extends ChangeNotifier {
         final patch = <String, dynamic>{
           'onboarding_complete': true,
         };
-        if (username.isNotEmpty) patch['username'] = username;
+        if (username.isNotEmpty) patch['username'] = Sanitizer.username(username);
 
         // Try update first (existing row from trigger).
         // If no row exists yet (trigger delayed or failed), fall back to insert.

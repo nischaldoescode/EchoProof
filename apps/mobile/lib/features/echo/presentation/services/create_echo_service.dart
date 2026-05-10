@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../domain/entities/echo_entity.dart';
 import '../../../../core/utils/logger.dart';
 import 'dart:io';
+import '../../../../core/utils/sanitizer.dart';
 
 const _kDraftKey = 'echo_draft';
 
@@ -29,11 +30,24 @@ class CreateEchoService extends ChangeNotifier {
   bool get success => _success;
   String? get error => _error;
   int get echoesCreatedThisSession => _echoesCreatedThisSession;
+  bool _isPro = false;
+
+  // Call this from the screen after subscription status is known.
+  void setProStatus(bool isPro) {
+    _isPro = isPro;
+    notifyListeners();
+  }
+
+  int get contentMaxLength => _isPro ? 5000 : 308;
+  int get titleMaxLength => _isPro ? 200 : 120;
+
   bool get canSubmit =>
       _title.trim().isNotEmpty &&
       _content.trim().isNotEmpty &&
       _category != null &&
-      !_isSubmitting;
+      !_isSubmitting &&
+      _content.length <= contentMaxLength &&
+      _title.length <= titleMaxLength;
 
   final List<String> _mediaUrls = [];
   List<String> get mediaUrls => List.unmodifiable(_mediaUrls);
@@ -64,7 +78,6 @@ class CreateEchoService extends ChangeNotifier {
               upsert: false,
             ),
           );
-
 
       final url = client.storage.from('media').getPublicUrl(path);
       _mediaUrls.add(url);
@@ -158,8 +171,8 @@ class CreateEchoService extends ChangeNotifier {
 
       await client.from('echoes').insert({
         'user_id': userId,
-        'title': _title.trim(),
-        'content': _content.trim(),
+        'title': Sanitizer.text(_title),
+        'content': Sanitizer.text(_content),
         'category': _category!.name,
         'verification_required': _requiresVerification,
         'status': 'pending_verification',

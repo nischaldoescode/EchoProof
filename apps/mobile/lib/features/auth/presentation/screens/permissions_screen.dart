@@ -10,6 +10,9 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../core/services/push_notification_service.dart';
+import '../../../auth/presentation/services/auth_service.dart';
+import '../../../onboarding/presentation/services/onboarding_service.dart';
+import 'package:provider/provider.dart';
 
 class PermissionsScreen extends StatefulWidget {
   const PermissionsScreen({super.key});
@@ -94,6 +97,21 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
     }
   }
 
+  void _proceed(BuildContext context) {
+    final auth = context.read<AuthService>();
+    // If user already has a username (returning user who went through permissions again),
+    // mark done and go to feed.
+    if (auth.hasUsername) {
+      context.read<OnboardingService>().complete();
+      context.go('/feed');
+      return;
+    }
+    // New user: go to onboarding (username + categories selection).
+    // Do NOT call onboarding.complete() here — that happens in StepFirstEcho/StepUsername.
+    // Do NOT call markOnboardingComplete() here either.
+    context.go('/onboarding');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -153,8 +171,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                       ? () async {
                           await PushNotificationService.instance.initialize();
                           if (!context.mounted) return;
-
-                          context.go('/feed');
+                          _proceed(context);
                         }
                       : _requestAll,
                   style: ElevatedButton.styleFrom(
@@ -179,7 +196,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
               // skip
               Center(
                 child: TextButton(
-                  onPressed: () => context.go('/feed'),
+                  onPressed: () => _proceed(context),
                   child: Text(
                     'Skip for now',
                     style: GoogleFonts.josefinSans(

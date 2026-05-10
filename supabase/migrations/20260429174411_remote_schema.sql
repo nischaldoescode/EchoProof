@@ -29,8 +29,6 @@ CREATE UNIQUE INDEX echo_replies_pkey ON public.echo_replies USING btree (id);
 
 CREATE INDEX echo_replies_user_id_idx ON public.echo_replies USING btree (user_id);
 
-CREATE UNIQUE INDEX unique_username ON public.users_public USING btree (username);
-
 alter table "public"."echo_replies" add constraint "echo_replies_pkey" PRIMARY KEY using index "echo_replies_pkey";
 
 alter table "public"."echo_replies" add constraint "echo_replies_content_check" CHECK (((char_length(content) >= 1) AND (char_length(content) <= 500))) not valid;
@@ -48,9 +46,6 @@ alter table "public"."echo_replies" validate constraint "echo_replies_parent_rep
 alter table "public"."echo_replies" add constraint "echo_replies_user_id_fkey" FOREIGN KEY (user_id) REFERENCES public.users_public(id) ON DELETE CASCADE not valid;
 
 alter table "public"."echo_replies" validate constraint "echo_replies_user_id_fkey";
-
-alter table "public"."users_public" add constraint "unique_username" UNIQUE using index "unique_username";
-
 set check_function_bodies = off;
 
 CREATE OR REPLACE FUNCTION public.increment_reply_count(p_echo_id uuid)

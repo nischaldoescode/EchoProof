@@ -11,41 +11,89 @@ const CORS = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const serviceClient = createClient(supabaseUrl, serviceRoleKey);
+
 serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   try {
     const { user_id, workflow_id, redirect_uri } = await req.json();
 
-    // --- Rate limiting: check server-side cooldown ---
-    const serviceClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    // Get client IP from request headers.
+    // Supabase edge functions receive CF-Connecting-IP from Cloudflare.
+    const clientIp =
+      req.headers.get("cf-connecting-ip") ??
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+      "unknown";
+
+    const now = new Date();
+
+    // 1. Per-account: max 2 attempts in any 30-day window.
+    const { data: userAttemptCount } = await serviceClient.rpc(
+      "count_verification_attempts_by_user",
+      { p_user_id: user_id, p_days: 30 },
     );
 
+    if ((userAttemptCount ?? 0) >= 2) {
+      return new Response(
+        JSON.stringify({
+          error: "verification_account_limit",
+          message:
+            "You have reached the maximum of 2 verification attempts per month per account.",
+        }),
+        {
+          status: 429,
+          headers: { ...CORS, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    // 2. Per-IP: max 3 attempts in 30 days (prevents account farming).
+    if (clientIp !== "unknown") {
+      const { data: ipAttemptCount } = await serviceClient.rpc(
+        "count_verification_attempts_by_ip",
+        { p_ip: clientIp, p_days: 30 },
+      );
+
+      if ((ipAttemptCount ?? 0) >= 3) {
+        return new Response(
+          JSON.stringify({
+            error: "verification_ip_limit",
+            message:
+              "Too many verification attempts from this network. Please try again later.",
+          }),
+          {
+            status: 429,
+            headers: { ...CORS, "Content-Type": "application/json" },
+          },
+        );
+      }
+    }
+
+    // 3. 30-day cooldown after rejection.
     const { data: privateRow } = await serviceClient
       .from("users_private")
-      .select("last_verification_request_at, verification_rejection_at, verification_attempt_count")
+      .select(
+        "last_verification_request_at, verification_rejection_at, verification_attempt_count",
+      )
       .eq("id", user_id)
       .maybeSingle();
 
     if (privateRow) {
-      const now = new Date();
-      const lastRequest = privateRow.last_verification_request_at
-        ? new Date(privateRow.last_verification_request_at)
-        : null;
       const rejectionAt = privateRow.verification_rejection_at
-        ? new Date(privateRow.verification_rejection_at)
+        ? new Date(privateRow.verification_rejection_at as string)
         : null;
 
-      // 30-day cooldown after rejection (server-enforced, not cache-dependent)
       if (rejectionAt) {
-        const daysSinceRejection = (now.getTime() - rejectionAt.getTime()) / (1000 * 60 * 60 * 24);
+        const daysSinceRejection =
+          (now.getTime() - rejectionAt.getTime()) / (1000 * 60 * 60 * 24);
         if (daysSinceRejection < 30) {
           const daysRemaining = Math.ceil(30 - daysSinceRejection);
           return new Response(
             JSON.stringify({
-              error: `verification_cooldown`,
+              error: "verification_cooldown",
               days_remaining: daysRemaining,
               message: `You can re-apply for verification in ${daysRemaining} day(s).`,
             }),
@@ -56,29 +104,18 @@ serve(async (req: Request): Promise<Response> => {
           );
         }
       }
-
-      // Rate limit: max 3 requests per 24 hours regardless of outcome
-      if (lastRequest) {
-        const hoursSinceLastRequest = (now.getTime() - lastRequest.getTime()) / (1000 * 60 * 60);
-        if (hoursSinceLastRequest < 24 && (privateRow.verification_attempt_count ?? 0) >= 3) {
-          return new Response(
-            JSON.stringify({
-              error: `rate_limited`,
-              message: `Too many verification attempts. Please wait 24 hours.`,
-            }),
-            {
-              status: 429,
-              headers: { ...CORS, "Content-Type": "application/json" },
-            },
-          );
-        }
-      }
     }
 
-    // Update last request timestamp
+    // 4. Log this attempt (for both account and IP rate limiting).
+    await serviceClient.from("verification_ip_log").insert({
+      ip_address: clientIp,
+      user_id,
+    });
+
+    // 5. Update last request timestamp on users_private.
     await serviceClient
       .from("users_private")
-      .update({ last_verification_request_at: new Date().toISOString() })
+      .update({ last_verification_request_at: now.toISOString() })
       .eq("id", user_id);
 
     const diditApiKey = Deno.env.get("DIDIT_API_KEY");
