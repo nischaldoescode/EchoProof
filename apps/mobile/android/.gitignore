@@ -13,3 +13,10 @@ key.properties
 **/*.keystore
 **/*.jks
 AndroidManifest.xml
+android/key.properties
+android/release-keystore.jks
+release-keystore.jks
+key.properties
+*.jks
+android/app/key.properties
+android/app/release-keystore.jks
