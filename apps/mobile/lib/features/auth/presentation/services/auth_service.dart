@@ -177,7 +177,7 @@ class AuthService extends ChangeNotifier {
         shouldCreateUser: true,
         // The magic link in the email points to this URL.
         // When tapped on Android, the app intercepts it via the intent filter.
-        emailRedirectTo: 'echoproof://auth-callback',
+        // emailRedirectTo: 'https://echoproof.online/auth-callback',
       );
       AppLogger.info('auth: OTP sent to $email');
       _setLoading(false);
