@@ -3,14 +3,9 @@
 
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { createBrowserClient } from "@supabase/supabase-js";
+import { supabaseAdmin as supabase } from "@/lib/supabase";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
-
-const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
 
 // next.js 16 app router — params is a Promise
 interface Props {
@@ -365,7 +360,7 @@ export default async function UserProfilePage({ params }: Props) {
               fontFamily: "'Josefin Sans', sans-serif",
             }}
           >
-            Don't have the app? Download on Android
+            Don&apos;t have the app? Download on Android
           </a>
 
           {/* blurred echoes section */}
@@ -527,7 +522,7 @@ export default async function UserProfilePage({ params }: Props) {
                   letterSpacing: "-0.01em",
                 }}
               >
-                See {displayName.split(" ")[0]}'s echoes in the app
+                See {displayName.split(" ")[0]}&apos;s echoes in the app
               </p>
               <p
                 style={{

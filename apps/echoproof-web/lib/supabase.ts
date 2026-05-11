@@ -1,15 +1,33 @@
-import { createBrowserClient } from "@supabase/supabase-js";
+import * as supabaseJs from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 const supabaseUrl        = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey    = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
+type SupabaseFactory = (
+  supabaseUrl: string,
+  supabaseKey: string,
+) => SupabaseClient;
+
+const supabaseModule = supabaseJs as unknown as {
+  createBrowserClient?: SupabaseFactory;
+  createClient?: SupabaseFactory;
+};
+
+const createSupabaseClient =
+  supabaseModule.createBrowserClient ?? supabaseModule.createClient;
+
+if (!createSupabaseClient) {
+  throw new Error("No compatible Supabase client factory was found.");
+}
+
 // client for browser (anon key — subject to RLS)
-export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createSupabaseClient(supabaseUrl, supabaseAnonKey);
 
 // server-side client (service role — bypasses RLS)
 // only import this in getServerSideProps or API routes
-export const supabaseAdmin = createBrowserClient(supabaseUrl, supabaseServiceKey);
+export const supabaseAdmin = createSupabaseClient(supabaseUrl, supabaseServiceKey);
 
 // types for echo and profile data
 export interface Echo {

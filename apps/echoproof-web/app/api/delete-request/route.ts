@@ -1,16 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createBrowserClient } from "@supabase/supabase-js";
+import { supabaseAdmin as supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-/**
- * supabase client using service role for privileged operations.
- */
-const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
 
 /**
  * sanitizes user input by trimming and removing unsafe characters.
@@ -82,14 +74,19 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    let { email, reason, description, token } = body as {
+    const {
+      email,
+      reason: rawReason,
+      description: rawDescription,
+      token,
+    } = body as {
       email: string;
       reason: string;
       description: string;
       token: string;
     };
 
-    if (!email || !reason || !token) {
+    if (!email || !rawReason || !token) {
       return NextResponse.json(
         { error: "Missing required fields." },
         { status: 400 },
@@ -119,8 +116,8 @@ export async function POST(req: NextRequest) {
 
     // normalize + sanitize
     const normalizedEmail = sanitize(email.toLowerCase(), 120);
-    reason = sanitize(reason, 120);
-    description = sanitize(description ?? "", 500);
+    const reason = sanitize(rawReason, 120);
+    const description = sanitize(rawDescription ?? "", 500);
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(normalizedEmail)) {
