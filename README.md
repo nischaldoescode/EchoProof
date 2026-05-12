@@ -9,7 +9,7 @@
 A trust-layer social platform where community members support or challenge claims.
 High-signal echoes get verified on-chain. Built with Flutter + Supabase.
 
-[![Android](https://img.shields.io/badge/Android-available-4CAF6E?style=flat-square&logo=android&logoColor=white)](https://play.google.com/store/apps/details?id=com.echoproof.app)
+[![Android](https://img.shields.io/badge/Android-coming--soon-3DDC84?style=flat-square&logo=android&logoColor=white)]()
 [![Flutter](https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter&logoColor=white)](https://flutter.dev)
 [![Supabase](https://img.shields.io/badge/Supabase-backend-3ECF8E?style=flat-square&logo=supabase&logoColor=white)](https://supabase.com)
 [![Solana](https://img.shields.io/badge/Solana-on--chain-9945FF?style=flat-square&logo=solana&logoColor=white)](https://solana.com)
@@ -64,29 +64,42 @@ Explorer so anyone can independently verify the record exists.
 ### Network
 
 Development uses Solana devnet (free, test SOL from faucet.solana.com).
-Production targets mainnet-beta.
-
-Configure via environment variable:
-SOLANA_RPC_URL=https://api.devnet.solana.com
+Production targets same Devnet (THE MAIN REQUIRES FUNDING).
 
 ## Architecture
-Flutter app (iOS + Android)
-Supabase Auth — login, Google OAuth, session management
-Supabase DB — echoes, users, interactions, reports
-Supabase Storage — proof files, avatars
-Supabase Realtime — live score updates
-Supabase Edge Functions
-on-interaction — processes support and challenge votes
-on-report — processes community reports
-on-echo-created — AI spam detection via Hugging Face
-on-echo-verified — creates Solana on-chain record
-on-persona-webhook — receives identity verification result
-trust-engine — periodic score maintenance
-Third-party
-Persona — identity verification (government ID + liveness)
-Hugging Face — free AI spam detection
-DiceBear — avatar generation (called once per user, cached in storage)
-Solana — proof staking, reputation anchoring, verified echo records
+
+> Flutter app iOS Android
+
+- Supabase Auth  
+  > login  
+  > Google OAuth  
+  > session management  
+
+- Supabase DB  
+  > echoes  
+  > users  
+  > interactions  
+  > reports  
+
+- Supabase Storage  
+  > proof files  
+  > avatars  
+
+- Supabase Realtime  
+  > live score updates  
+
+- Supabase Edge Functions  
+  > on interaction processes support and challenge votes  
+  > on report processes community reports  
+  > on echo created AI spam detection  
+  > on echo verified creates Solana on chain record
+  > trust engine periodic score maintenance  
+
+- Third party  
+  > DIDIT identity verification government ID and liveness  
+  > Sight Engine AI spam detection  
+  > DiceBear avatar generation called once per user cached in storage  
+  > Solana proof staking reputation anchoring verified echo records  
 
 
 ## Feed Ranking Algorithm
@@ -188,7 +201,7 @@ In the UI this appears as "Bond this truth" on verified echoes and
 "Your bonds" on the profile screen. The word Solana never appears to users.
 
 ## NOTE
-> I myself Don't advise to run this app locally on a machine by cloning the project as I have not included some internal config files, You need to write those on your own.
+> I myself Don't advise to run this app locally on a machine by cloning the project as I have not included some internal some config files, You need to write those on your own.
 
 Regards,
 Nischal
