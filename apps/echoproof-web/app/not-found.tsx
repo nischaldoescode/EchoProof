@@ -58,7 +58,7 @@ export default function NotFound() {
               marginBottom: 12,
             }}
           >
-            This page doesn't exist.
+            This page doesn&apos;t exist.
           </h1>
           <p
             style={{
@@ -99,10 +99,7 @@ export default function NotFound() {
             >
               Back to home
             </Link>
-            <a
-              href="https://play.google.com/store/apps/details?id=com.echoproof.app"
-              target="_blank"
-              rel="noopener noreferrer"
+            <span
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -117,8 +114,8 @@ export default function NotFound() {
                 fontFamily: "'Josefin Sans', sans-serif",
               }}
             >
-              Open the app
-            </a>
+              App coming soon
+            </span>
           </div>
         </div>
       </main>

@@ -21,7 +21,18 @@ const submittedEmails = new Set<string>();
 
 declare global {
   interface Window {
-    turnstile: any;
+    turnstile?: {
+      render: (
+        element: HTMLElement,
+        options: {
+          sitekey: string;
+          callback: (token: string) => void;
+          "expired-callback": () => void;
+          "error-callback": () => void;
+        },
+      ) => string;
+      reset: () => void;
+    };
   }
 }
 

@@ -183,6 +183,13 @@ class AuthService extends ChangeNotifier {
     _setLoading(true);
     _error = null;
     try {
+      final emailValidation = await _validateAllowedEmail(normalizedEmail);
+      if (!emailValidation.allowed) {
+        _error = emailValidation.message;
+        _setLoading(false);
+        return false;
+      }
+
       final authCooldown = await _consumeActionCooldown(
         action: 'auth_login',
         subject: 'ip-only',
@@ -603,6 +610,31 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  Future<_EmailValidationResult> _validateAllowedEmail(String email) async {
+    try {
+      final response = await _client.rpc('validate_auth_email', params: {
+        'p_email': email,
+      });
+      final map = Map<String, dynamic>.from(response as Map);
+      final allowed = map['allowed'] as bool? ?? false;
+      final reason = map['reason'] as String? ?? 'invalid';
+
+      if (allowed) return const _EmailValidationResult.allowed();
+
+      return _EmailValidationResult.blocked(switch (reason) {
+        'unsupported_domain' =>
+          'Use a trusted email provider like Gmail, Outlook, Hotmail, Yahoo, iCloud, or Proton.',
+        'invalid_format' => 'Enter a valid email address.',
+        _ => 'This email address is not supported.',
+      });
+    } catch (e) {
+      AppLogger.warn('auth: email validation failed $e');
+      return const _EmailValidationResult.blocked(
+        'Email validation is unavailable. Please try again soon.',
+      );
+    }
+  }
+
   String _formatCooldown(int seconds) {
     final minutes = (seconds / 60).ceil();
     if (minutes <= 1) return '$seconds seconds';
@@ -721,4 +753,13 @@ class AuthService extends ChangeNotifier {
         return OtpType.email;
     }
   }
+}
+
+class _EmailValidationResult {
+  const _EmailValidationResult._(this.allowed, this.message);
+  const _EmailValidationResult.allowed() : this._(true, null);
+  const _EmailValidationResult.blocked(String message) : this._(false, message);
+
+  final bool allowed;
+  final String? message;
 }

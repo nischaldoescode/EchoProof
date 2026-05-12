@@ -4,6 +4,7 @@
 
 import type { GetServerSideProps } from "next";
 import Head from "next/head";
+import { supabaseAdmin as supabase } from "@/lib/supabase";
 
 interface Props {
   echo: {
@@ -66,50 +67,110 @@ export default function EchoPage({ echo, echoId }: Props) {
       <div
         style={{
           fontFamily: "'Josefin Sans', sans-serif",
-          maxWidth: 600,
-          margin: "80px auto",
-          padding: "0 24px",
+          minHeight: "100svh",
+          background: "#F8F7F5",
+          padding: "72px 20px",
         }}
       >
-        <div style={{ marginBottom: 24 }}>
-          <img src="/logo.png" width={48} height={48} alt="Echoproof" />
-        </div>
+        <main style={{ maxWidth: 620, margin: "0 auto" }}>
+          <div style={{ marginBottom: 20 }}>
+            <img
+              src="/logo.png"
+              width={52}
+              height={52}
+              alt="Echoproof"
+              style={{ borderRadius: 14 }}
+            />
+          </div>
 
-        <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>
-          {echo?.title ?? "Echo not found"}
-        </h1>
-
-        {echo && (
-          <>
-            <p style={{ color: "#666", marginBottom: 24 }}>
-              Posted by @{echo.username}
+          <section
+            style={{
+              background: "#fff",
+              border: "1px solid #E6E6E6",
+              borderRadius: 22,
+              padding: "24px 22px",
+              boxShadow: "0 12px 34px rgba(0,0,0,0.06)",
+            }}
+          >
+            <p
+              style={{
+                margin: "0 0 10px",
+                color: "#2D7A4A",
+                fontSize: 12,
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.12em",
+              }}
+            >
+              Echo preview
             </p>
-            <p style={{ lineHeight: 1.6, marginBottom: 32 }}>{echo.content}</p>
-          </>
-        )}
 
-        {/* deep link button — opens app or redirects to store */}
-        <a
-          href={`echoproof://echo/${echoId}`}
-          style={{
-            display: "inline-block",
-            background: "#1A1A1A",
-            color: "white",
-            padding: "14px 28px",
-            borderRadius: "12px",
-            textDecoration: "none",
-            fontWeight: 600,
-          }}
-        >
-          Open in Echoproof
-        </a>
+            <h1
+              style={{
+                fontSize: 26,
+                lineHeight: 1.15,
+                fontWeight: 800,
+                color: "#1A1A1A",
+                margin: "0 0 8px",
+              }}
+            >
+              {echo?.title ?? "Echo not found"}
+            </h1>
 
-        <p style={{ marginTop: 16, fontSize: 12, color: "#999" }}>
-          Don't have the app?{" "}
-          <a href="https://play.google.com/store/apps/details?id=com.echoproof.app">
-            Download for Android
-          </a>
-        </p>
+            {echo && (
+              <>
+                <p style={{ color: "#777", margin: "0 0 22px" }}>
+                  Posted by @{echo.username || "echoproof"}
+                </p>
+                <p
+                  style={{
+                    lineHeight: 1.65,
+                    margin: "0 0 28px",
+                    color: "#3A3A3A",
+                    fontSize: 15,
+                  }}
+                >
+                  {echo.content}
+                </p>
+              </>
+            )}
+
+            {/* deep link button — keep intact for installed app handoff */}
+            <a
+              href={`echoproof://echo/${echoId}`}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "#1A1A1A",
+                color: "white",
+                height: 52,
+                borderRadius: "14px",
+                textDecoration: "none",
+                fontWeight: 700,
+              }}
+            >
+              Open in Echoproof
+            </a>
+
+            <div
+              style={{
+                marginTop: 14,
+                height: 44,
+                border: "1px solid #E6E6E6",
+                borderRadius: 14,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#777",
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              Android download coming soon
+            </div>
+          </section>
+        </main>
       </div>
     </>
   );
@@ -119,19 +180,23 @@ export const getServerSideProps: GetServerSideProps = async ({ params }) => {
   const echoId = params?.id as string;
 
   try {
-    // fetch echo from supabase for OG tags
-    const res = await fetch(
-      `${process.env.SUPABASE_URL}/rest/v1/echoes?id=eq.${echoId}&select=title,content,status,user_id`,
-      {
-        headers: {
-          apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
-          Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY!}`,
-        },
-      },
-    );
+    const { data } = await supabase
+      .from("echoes")
+      .select("title, content, status, users_public(username)")
+      .eq("id", echoId)
+      .maybeSingle();
 
-    const data = await res.json();
-    const echo = data[0] ?? null;
+    const user = Array.isArray(data?.users_public)
+      ? data?.users_public[0]
+      : data?.users_public;
+    const echo = data
+      ? {
+          title: data.title,
+          content: data.content,
+          status: data.status,
+          username: user?.username ?? "echoproof",
+        }
+      : null;
 
     return {
       props: { echo: echo ?? null, echoId },

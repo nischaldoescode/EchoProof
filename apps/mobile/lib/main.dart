@@ -116,6 +116,13 @@ Future<void> main() async {
       adService.onUserLoggedIn();
       notificationService.loadNotifications();
       notificationService.startRealtime();
+      final pending = _pendingDeepLinkLocation;
+      if (pending != null && authService.hasUsername) {
+        _pendingDeepLinkLocation = null;
+        Future.delayed(const Duration(milliseconds: 250), () {
+          _safeGo(router, pending);
+        });
+      }
     } else if (!isLoggedIn && wasLoggedIn) {
       adService.onUserLoggedOut();
       notificationService.stopRealtime();
@@ -150,9 +157,6 @@ Future<void> main() async {
 
   // cold start link
   final initialUri = await appLinks.getInitialLink();
-  if (initialUri != null) {
-    _handleDeepLink(initialUri, router, authService);
-  }
 
   // foreground link
   appLinks.uriLinkStream.listen((uri) {
@@ -216,16 +220,32 @@ Future<void> main() async {
       ),
     ),
   );
+
+  if (initialUri != null) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 350), () {
+        _handleDeepLink(initialUri, router, authService);
+      });
+    });
+  }
 }
 
 String? _lastHandledLink;
+DateTime? _lastHandledLinkAt;
+String? _pendingDeepLinkLocation;
 
 // maps supported app links to internal routes
 void _handleDeepLink(Uri uri, GoRouter router, [AuthService? auth]) {
   final link = uri.toString();
 
-  if (_lastHandledLink == link) return;
+  final now = DateTime.now();
+  if (_lastHandledLink == link &&
+      _lastHandledLinkAt != null &&
+      now.difference(_lastHandledLinkAt!) < const Duration(seconds: 2)) {
+    return;
+  }
   _lastHandledLink = link;
+  _lastHandledLinkAt = now;
 
   if (_isSupabaseAuthLink(uri)) {
     AppLogger.info('deep link: auth callback received');
@@ -239,12 +259,20 @@ void _handleDeepLink(Uri uri, GoRouter router, [AuthService? auth]) {
 
   if (uri.scheme == 'echoproof') {
     if (uri.host == 'echo' && segments.isNotEmpty) {
-      router.go('/feed/echo/${segments.first}');
+      _safeGo(
+        router,
+        '/feed/echo/${Uri.encodeComponent(segments.first)}',
+        auth: auth,
+      );
       return;
     }
 
     if (uri.host == 'user' && segments.isNotEmpty) {
-      router.go('/profile/${segments.first}');
+      _safeGo(
+        router,
+        '/profile/${Uri.encodeComponent(segments.first)}',
+        auth: auth,
+      );
       return;
     }
   }
@@ -252,14 +280,40 @@ void _handleDeepLink(Uri uri, GoRouter router, [AuthService? auth]) {
   // https app links
   if (uri.scheme == 'https' &&
       (uri.host == 'echoproof.online' || uri.host == 'www.echoproof.online')) {
-    if (segments.length >= 2 && segments[0] == 'echo') {
-      router.go('/feed/echo/${segments[1]}');
+    if (segments.length >= 2 && (segments[0] == 'echo' || segments[0] == 'e')) {
+      _safeGo(
+        router,
+        '/feed/echo/${Uri.encodeComponent(segments[1])}',
+        auth: auth,
+      );
       return;
     }
-    if (segments.length >= 2 && segments[0] == 'user') {
-      router.go('/profile/${segments[1]}');
+    if (segments.length >= 2 && (segments[0] == 'user' || segments[0] == 'u')) {
+      _safeGo(
+        router,
+        '/profile/${Uri.encodeComponent(segments[1])}',
+        auth: auth,
+      );
       return;
     }
+  }
+}
+
+void _safeGo(GoRouter router, String location, {AuthService? auth}) {
+  if (auth != null && !auth.isLoggedIn) {
+    _pendingDeepLinkLocation = location;
+    router.go('/login');
+    return;
+  }
+
+  try {
+    router.go(location);
+  } on GoException catch (e) {
+    AppLogger.warn('deep link: route failed for $location: $e');
+    router.go('/feed');
+  } catch (e) {
+    AppLogger.warn('deep link: route failed for $location: $e');
+    router.go('/feed');
   }
 }
 
@@ -275,7 +329,13 @@ Future<void> _completeAuthCallback(
   }
 
   if (auth.hasUsername) {
-    router.go('/feed');
+    final pending = _pendingDeepLinkLocation;
+    if (pending != null) {
+      _pendingDeepLinkLocation = null;
+      _safeGo(router, pending);
+    } else {
+      router.go('/feed');
+    }
   } else if (auth.needsAgeGender) {
     router.go('/age-gender');
   } else {
