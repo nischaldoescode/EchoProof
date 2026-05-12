@@ -32,11 +32,20 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const loginPath = adminPath("/login");
+  const callbackPath = adminPath("/auth/callback");
+  const magicLinkPath = adminPath("/api/auth/admin-magic-link");
+  const path = request.nextUrl.pathname;
   const isLoginPage =
-    request.nextUrl.pathname === "/login" || request.nextUrl.pathname === loginPath;
+    path === "/login" || path === loginPath;
+  const isPublicAuthPath =
+    isLoginPage ||
+    path === "/auth/callback" ||
+    path === callbackPath ||
+    path === "/api/auth/admin-magic-link" ||
+    path === magicLinkPath;
   const isAllowedAdmin = isAllowedAdminEmail(user?.email);
 
-  if (!user && !isLoginPage) {
+  if (!user && !isPublicAuthPath) {
     return NextResponse.redirect(new URL(adminPath("/login"), request.url));
   }
 
