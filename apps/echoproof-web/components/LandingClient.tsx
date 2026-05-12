@@ -18,8 +18,8 @@ function PageLoader() {
 
     sessionStorage.setItem("echoproof_loader_shown", "1");
 
-    // start fade-in immediately
-    setPhase("in");
+    // start fade-in on the next tick to avoid a sync state update in effect
+    const startTimer = setTimeout(() => setPhase("in"), 0);
 
     // fully visible after fade-in completes (600ms)
     const holdTimer = setTimeout(() => setPhase("hold"), 600);
@@ -32,6 +32,7 @@ function PageLoader() {
       clearTimeout(holdTimer);
       clearTimeout(outTimer);
       clearTimeout(goneTimer);
+      clearTimeout(startTimer);
     };
   }, []);
 
@@ -416,19 +417,10 @@ function Reveal({
   );
 }
 
-function PlayStoreBadge({
-  href,
-  light = false,
-}: {
-  href: string;
-  light?: boolean;
-}) {
+function PlayStoreBadge({ light = false }: { light?: boolean }) {
   const [hovered, setHovered] = useState(false);
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
+    <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -446,7 +438,6 @@ function PlayStoreBadge({
             ? "#2d2d2d"
             : "#1A1A1A",
         border: light ? "1px solid rgba(255,255,255,0.2)" : "none",
-        textDecoration: "none",
         transition: "background 0.2s, box-shadow 0.2s, transform 0.2s",
         boxShadow: hovered
           ? light
@@ -485,7 +476,7 @@ function PlayStoreBadge({
             textTransform: "uppercase",
           }}
         >
-          Get it on
+          Coming soon on
         </span>
         <span
           style={{
@@ -498,7 +489,7 @@ function PlayStoreBadge({
           Google Play
         </span>
       </div>
-    </a>
+    </div>
   );
 }
 
@@ -964,7 +955,7 @@ export default function LandingClient() {
                 alignItems: "center",
               }}
             >
-              <PlayStoreBadge href="https://play.google.com/store/apps/details?id=com.echoproof.app" />
+              <PlayStoreBadge />
               <a
                 href="#how-it-works"
                 style={{
@@ -1361,7 +1352,7 @@ export default function LandingClient() {
                 }}
               >
                 On every other platform, a thousand new accounts can out-shout a
-                hundred experts. On Echoproof, a verified contributor's single
+                hundred experts. On Echoproof, a verified contributor&apos;s single
                 vote can outweigh a wave of anonymous noise. The engine
                 calculates this automatically — no moderation team required.
               </p>
@@ -1633,7 +1624,7 @@ export default function LandingClient() {
                 shut down. It lives independently, and it travels with you to
                 any platform that reads the ledger.
               </p>
-              <PlayStoreBadge href="https://play.google.com/store/apps/details?id=com.echoproof.app" />
+              <PlayStoreBadge />
             </Reveal>
           </div>
         </section>
@@ -1719,13 +1710,10 @@ export default function LandingClient() {
                   marginBottom: 36,
                 }}
               >
-                Available now on Android. Post echoes, earn trust, stake claims,
+                Coming soon on Android. Post echoes, earn trust, stake claims,
                 and help the community establish what is actually true.
               </p>
-              <PlayStoreBadge
-                href="https://play.google.com/store/apps/details?id=com.echoproof.app"
-                light
-              />
+              <PlayStoreBadge light />
             </Reveal>
           </div>
         </section>

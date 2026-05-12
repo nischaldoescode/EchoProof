@@ -5,6 +5,7 @@ import '../../app/theme/colors.dart';
 import 'bottom_ad_banner.dart';
 import 'app_banner_ad.dart';
 import 'package:provider/provider.dart';
+import '../../core/localization/app_copy.dart';
 import '../../features/notifications/presentation/services/notification_service.dart';
 
 class AppBottomNav extends StatelessWidget {
@@ -16,25 +17,25 @@ class AppBottomNav extends StatelessWidget {
     _NavItem(
       icon: Icons.home_outlined,
       activeIcon: Icons.home_rounded,
-      label: 'Feed',
+      labelKey: 'nav.feed',
       path: '/feed',
     ),
     _NavItem(
       icon: Icons.explore_outlined,
       activeIcon: Icons.explore_rounded,
-      label: 'Discover',
+      labelKey: 'nav.discover',
       path: '/discover',
     ),
     _NavItem(
       icon: Icons.notifications_outlined,
       activeIcon: Icons.notifications_rounded,
-      label: 'Alerts',
+      labelKey: 'nav.alerts',
       path: '/notifications',
     ),
     _NavItem(
       icon: Icons.person_outline,
       activeIcon: Icons.person_rounded,
-      label: 'Profile',
+      labelKey: 'nav.profile',
       path: '/profile',
     ),
   ];
@@ -119,8 +120,9 @@ class AppBottomNav extends StatelessWidget {
                                 Consumer<NotificationService>(
                                   builder: (_, notif, __) {
                                     final count = notif.unreadCount;
-                                    if (count == 0)
+                                    if (count == 0) {
                                       return const SizedBox.shrink();
+                                    }
                                     return Positioned(
                                       top: -4,
                                       right: -6,
@@ -212,7 +214,13 @@ class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
     super.dispose();
   }
 
-  int get _idx => _routes.indexOf(widget.currentLocation);
+  int get _idx {
+    final index = _routes.indexOf(widget.currentLocation);
+    return index < 0 ? 0 : index;
+  }
+
+  bool get _canGoBack => _idx > 0;
+  bool get _canGoForward => _idx < _routes.length - 1;
 
   void _onDragStart(DragStartDetails d) {
     if (_exiting) return;
@@ -225,17 +233,9 @@ class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
     if (!_dragging || _exiting) return;
     final w = MediaQuery.sizeOf(context).width;
     var delta = (d.globalPosition.dx - _dragStartX) / w;
-    // Clamp based on available routes.
-    if (delta > 0 && _idx <= 0) delta = 0;
-    // On last screen, allow tiny right-swipe drag with rubber-band resistance
-    if (delta < 0 && _idx >= _routes.length - 1) {
-      delta = delta * 0.12; // rubber-band: 12% resistance
-    }
-    // On first screen, same for left-swipe
-    if (delta > 0 && _idx <= 0) {
-      delta = delta * 0.12;
-    }
-    setState(() => _drag = delta.clamp(-1.0, 1.0));
+    if (delta > 0 && !_canGoBack) delta = 0;
+    if (delta < 0 && !_canGoForward) delta = 0;
+    setState(() => _drag = delta.clamp(-1.0, 1.0).toDouble());
   }
 
   void _onDragEnd(DragEndDetails d) {
@@ -287,16 +287,35 @@ class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
     if (p == 0.0) return Matrix4.identity();
 
     final m = Matrix4.identity();
-    // Subtle perspective — too much causes a visible gap at the edge.
-    m.setEntry(3, 2, 0.0005);
-    // Max ~22° rotation — enough to feel 3D without exposing background.
-    final angle = p * (3.14159 / 8.0);
+    m.setEntry(3, 2, 0.0014);
+    final angle = p * (3.14159 / 3.4);
+    m.translateByDouble(p * MediaQuery.sizeOf(context).width * 0.08, 0, 0, 1);
     m.rotateY(-angle);
-    // Scale down slightly as it rotates — card recedes into space.
-    final scale = 1.0 - p.abs() * 0.08;
+    final scale = 1.0 - p.abs() * 0.10;
     m.scaleByDouble(scale, scale, 1.0, 1.0);
 
     return m;
+  }
+
+  Matrix4 _buildPreviewMatrix(double p) {
+    final m = Matrix4.identity();
+    final abs = p.abs().clamp(0.0, 1.0).toDouble();
+    final direction = p.sign;
+    m.setEntry(3, 2, 0.0012);
+    m.translateByDouble(-direction * (1 - abs) * 90, 0, -80 + abs * 80, 1);
+    m.rotateY(direction * (1 - abs) * (3.14159 / 5.5));
+    m.scaleByDouble(0.90 + abs * 0.07, 0.90 + abs * 0.07, 1, 1);
+    return m;
+  }
+
+  _NavItem? _previewItemFor(double p) {
+    if (p < 0 && _canGoForward) {
+      return AppBottomNav._items[_idx + 1];
+    }
+    if (p > 0 && _canGoBack) {
+      return AppBottomNav._items[_idx - 1];
+    }
+    return null;
   }
 
   @override
@@ -307,6 +326,8 @@ class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
         final p = _exiting ? _exitDirection * _exitProgress.value : _drag;
 
         final align = p >= 0 ? Alignment.centerLeft : Alignment.centerRight;
+        final previewItem = _previewItemFor(p);
+        final progress = p.abs().clamp(0.0, 1.0).toDouble();
 
         return GestureDetector(
           onHorizontalDragStart: _onDragStart,
@@ -316,14 +337,43 @@ class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
           // the Android black window from showing through the 3D gap.
           child: ColoredBox(
             color: const Color(0xFFF5FAF7), // AppColors.softGreen background
-            child: Transform(
-              alignment: align,
-              transform: _buildMatrix(p),
-              child: Opacity(
-                // Very subtle opacity — just enough to signal transition.
-                opacity: (1.0 - p.abs() * 0.08).clamp(0.0, 1.0),
-                child: widget.child,
-              ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (previewItem != null && progress > 0)
+                  Opacity(
+                    opacity: (progress * 1.35).clamp(0.0, 0.92).toDouble(),
+                    child: Transform(
+                      alignment:
+                          p < 0 ? Alignment.centerRight : Alignment.centerLeft,
+                      transform: _buildPreviewMatrix(p),
+                      child: _RoutePreviewCard(item: previewItem),
+                    ),
+                  ),
+                Transform(
+                  alignment: align,
+                  transform: _buildMatrix(p),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      boxShadow: progress == 0
+                          ? const []
+                          : [
+                              BoxShadow(
+                                color: Colors.black
+                                    .withValues(alpha: 0.10 * progress),
+                                blurRadius: 30 * progress,
+                                offset: Offset(0, 12 * progress),
+                              ),
+                            ],
+                    ),
+                    child: Opacity(
+                      opacity:
+                          (1.0 - progress * 0.08).clamp(0.0, 1.0).toDouble(),
+                      child: widget.child,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         );
@@ -336,12 +386,56 @@ class _NavItem {
   const _NavItem({
     required this.icon,
     required this.activeIcon,
-    required this.label,
+    required this.labelKey,
     required this.path,
   });
 
   final IconData icon;
   final IconData activeIcon;
-  final String label;
+  final String labelKey;
   final String path;
+}
+
+class _RoutePreviewCard extends StatelessWidget {
+  const _RoutePreviewCard({required this.item});
+
+  final _NavItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(22, 62, 22, 96),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: AppColors.borderSubtle),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 28,
+              offset: const Offset(0, 16),
+            ),
+          ],
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(item.activeIcon, color: AppColors.fernGreen, size: 34),
+              const SizedBox(height: 10),
+              Text(
+                context.tx(item.labelKey),
+                style: GoogleFonts.josefinSans(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.charcoal,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

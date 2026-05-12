@@ -26,9 +26,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const { data } = await supabase
     .from("users_public")
-    .select("username, display_name, avatar_url, trust_tier, echo_count, bio")
+    .select("username, display_name, avatar_url, trust_tier, echo_count, bio, is_public")
     .eq("username", username)
-    .eq("is_public", true)
     .maybeSingle();
 
   if (!data) {
@@ -39,8 +38,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
 
   const displayName = data.display_name || `@${data.username}`;
-  const description =
-    data.bio ||
+  const isPrivate = data.is_public === false;
+  const description = isPrivate
+    ? `${displayName} has a private Echoproof profile. Open Echoproof to request access.`
+    : data.bio ||
     `${displayName} has posted ${data.echo_count ?? 0} echo${(data.echo_count ?? 0) === 1 ? "" : "s"} on Echoproof — the community-verified truth platform.`;
   const image = data.avatar_url || "/og-image.png";
   const url = `${process.env.NEXT_PUBLIC_SITE_URL}/user/${username}`;
@@ -88,6 +89,7 @@ export default async function UserProfilePage({ params }: Props) {
   const displayName = profile.display_name || `@${profile.username}`;
   const joinedYear = new Date(profile.created_at).getFullYear();
   const skeletonCards = Array.from({ length: 4 });
+  const isPrivate = profile.is_public === false;
 
   return (
     <>
@@ -101,6 +103,7 @@ export default async function UserProfilePage({ params }: Props) {
             url: `${process.env.NEXT_PUBLIC_SITE_URL}/user/${username}`,
             image: profile.avatar_url,
             description: profile.bio,
+            additionalType: isPrivate ? "PrivateProfile" : undefined,
           }),
         }}
       />
@@ -199,7 +202,8 @@ export default async function UserProfilePage({ params }: Props) {
                 <p
                   style={{ fontSize: 13, color: "#9A9A9A", margin: "0 0 10px" }}
                 >
-                  @{profile.username} · joined {joinedYear}
+                  @{profile.username}
+                  {!isPrivate && <> · joined {joinedYear}</>}
                 </p>
                 <span
                   style={{
@@ -227,7 +231,23 @@ export default async function UserProfilePage({ params }: Props) {
               </div>
             </div>
 
-            {profile.bio && (
+            {isPrivate ? (
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "#5A5A5A",
+                  lineHeight: 1.7,
+                  marginBottom: 20,
+                  padding: "14px 16px",
+                  borderRadius: 14,
+                  background: "#F8F7F5",
+                  border: "1px solid #E6E6E6",
+                }}
+              >
+                This profile is private. Open Echoproof to view allowed details
+                or request access.
+              </div>
+            ) : profile.bio ? (
               <p
                 style={{
                   fontSize: 13,
@@ -240,7 +260,7 @@ export default async function UserProfilePage({ params }: Props) {
               >
                 {profile.bio}
               </p>
-            )}
+            ) : null}
 
             <div
               style={{
@@ -263,17 +283,30 @@ export default async function UserProfilePage({ params }: Props) {
                     borderRadius: 12,
                   }}
                 >
-                  <p
-                    style={{
-                      fontSize: 20,
-                      fontWeight: 700,
-                      color: "#1A1A1A",
-                      margin: "0 0 2px",
-                      letterSpacing: "-0.02em",
-                    }}
-                  >
-                    {stat.value}
-                  </p>
+                  {isPrivate ? (
+                    <div
+                      style={{
+                        width: 38,
+                        height: 16,
+                        borderRadius: 999,
+                        background: "linear-gradient(90deg,#E6E6E6,#F8F7F5)",
+                        filter: "blur(2px)",
+                        margin: "2px auto 8px",
+                      }}
+                    />
+                  ) : (
+                    <p
+                      style={{
+                        fontSize: 20,
+                        fontWeight: 700,
+                        color: "#1A1A1A",
+                        margin: "0 0 2px",
+                        letterSpacing: "-0.02em",
+                      }}
+                    >
+                      {stat.value}
+                    </p>
+                  )}
                   <p
                     style={{
                       fontSize: 10,
@@ -339,10 +372,7 @@ export default async function UserProfilePage({ params }: Props) {
           </a>
 
           {/* download fallback */}
-          <a
-            href="https://play.google.com/store/apps/details?id=com.echoproof.app"
-            target="_blank"
-            rel="noopener noreferrer"
+          <div
             style={{
               display: "flex",
               alignItems: "center",
@@ -360,8 +390,8 @@ export default async function UserProfilePage({ params }: Props) {
               fontFamily: "'Josefin Sans', sans-serif",
             }}
           >
-            Don&apos;t have the app? Download on Android
-          </a>
+            Android download coming soon
+          </div>
 
           {/* blurred echoes section */}
           <div style={{ position: "relative" }}>
@@ -522,7 +552,9 @@ export default async function UserProfilePage({ params }: Props) {
                   letterSpacing: "-0.01em",
                 }}
               >
-                See {displayName.split(" ")[0]}&apos;s echoes in the app
+                {isPrivate
+                  ? "This profile is private"
+                  : `See ${displayName.split(" ")[0]}'s echoes in the app`}
               </p>
               <p
                 style={{
@@ -532,8 +564,9 @@ export default async function UserProfilePage({ params }: Props) {
                   lineHeight: 1.6,
                 }}
               >
-                Full profiles, confidence scores, and community signals are only
-                visible in Echoproof.
+                {isPrivate
+                  ? "Only approved people can see this user's profile details."
+                  : "Full profiles, confidence scores, and community signals are only visible in Echoproof."}
               </p>
               <a
                 href={`echoproof://user/${profile.username}`}
