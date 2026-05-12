@@ -12,6 +12,7 @@ import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
+import '../../../../core/localization/app_copy.dart';
 import '../../../../core/utils/sanitizer.dart';
 import '../services/onboarding_service.dart';
 import '../../../auth/presentation/services/auth_service.dart';
@@ -58,14 +59,14 @@ class _StepUsernameState extends State<StepUsername> {
     if (v.length < 3) {
       setState(() {
         _usernameOk = false;
-        _usernameError = 'At least 3 characters';
+        _usernameError = context.l('At least 3 characters');
       });
       return;
     }
     if (!RegExp(r'^[a-z0-9_]+$').hasMatch(v)) {
       setState(() {
         _usernameOk = false;
-        _usernameError = 'Only letters, numbers, and underscores';
+        _usernameError = context.l('Only letters, numbers, and underscores');
       });
       return;
     }
@@ -91,7 +92,7 @@ class _StepUsernameState extends State<StepUsername> {
       if (row != null) {
         setState(() {
           _usernameOk = false;
-          _usernameError = 'Username taken';
+          _usernameError = context.l('Username taken');
           _isChecking = false;
         });
       } else {
@@ -151,7 +152,7 @@ class _StepUsernameState extends State<StepUsername> {
     } catch (e) {
       AppLogger.error('onboarding: set username failed $e');
       if (mounted) {
-        showErrorSnack(context, 'Failed to save. Please try again.');
+        showErrorSnack(context, context.l('Failed to save. Please try again.'));
       }
     }
 
@@ -169,23 +170,25 @@ class _StepUsernameState extends State<StepUsername> {
         final leave = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: Text('Cancel setup?',
+            title: Text(context.l('Cancel setup?'),
                 style: GoogleFonts.josefinSans(fontWeight: FontWeight.w700)),
             content: Text(
-              'Your account won\'t be fully set up. You\'ll need to complete this next time.',
+              context.l(
+                'Your account won\'t be fully set up. You\'ll need to complete this next time.',
+              ),
               style: GoogleFonts.josefinSans(fontSize: 14, height: 1.5),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: Text('Stay',
+                child: Text(context.l('Stay'),
                     style: GoogleFonts.josefinSans(color: AppColors.fernGreen)),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(ctx, true),
                 style: TextButton.styleFrom(
                     foregroundColor: AppColors.sunsetCoral),
-                child: Text('Leave',
+                child: Text(context.l('Leave'),
                     style:
                         GoogleFonts.josefinSans(fontWeight: FontWeight.w600)),
               ),
@@ -242,7 +245,7 @@ class _StepUsernameState extends State<StepUsername> {
                         const SizedBox(height: AppSpacing.xxl),
 
                         Text(
-                          'Set your identity',
+                          context.l('Set your identity'),
                           style: GoogleFonts.josefinSans(
                             fontSize: 26,
                             fontWeight: FontWeight.w700,
@@ -251,7 +254,9 @@ class _StepUsernameState extends State<StepUsername> {
                         ),
                         const SizedBox(height: AppSpacing.sm),
                         Text(
-                          'Your display name is what people see. Your username is your unique handle.',
+                          context.l(
+                            'Your display name is what people see. Your username is your unique handle.',
+                          ),
                           style: GoogleFonts.josefinSans(
                             fontSize: 14,
                             color: AppColors.textSecondary,
@@ -263,7 +268,7 @@ class _StepUsernameState extends State<StepUsername> {
 
                         // display name field
                         Text(
-                          'Display name',
+                          context.l('Display name'),
                           style: GoogleFonts.josefinSans(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
@@ -286,7 +291,7 @@ class _StepUsernameState extends State<StepUsername> {
                             color: AppColors.charcoal,
                           ),
                           decoration: InputDecoration(
-                            hintText: 'Your name',
+                            hintText: context.l('Your name'),
                             hintStyle: GoogleFonts.josefinSans(
                               fontSize: 15,
                               color: AppColors.textTertiary,
@@ -307,7 +312,7 @@ class _StepUsernameState extends State<StepUsername> {
                                 horizontal: 16, vertical: 14),
                           ),
                           validator: (v) => (v == null || v.trim().isEmpty)
-                              ? 'Enter your name'
+                              ? context.l('Enter your name')
                               : null,
                         ),
 
@@ -315,7 +320,7 @@ class _StepUsernameState extends State<StepUsername> {
 
                         // username field
                         Text(
-                          'Username',
+                          context.l('Username'),
                           style: GoogleFonts.josefinSans(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
@@ -353,7 +358,7 @@ class _StepUsernameState extends State<StepUsername> {
                             color: AppColors.charcoal,
                           ),
                           decoration: InputDecoration(
-                            hintText: 'username',
+                            hintText: context.l('username'),
                             hintStyle: GoogleFonts.josefinSans(
                               fontSize: 15,
                               color: AppColors.textTertiary,
@@ -407,11 +412,14 @@ class _StepUsernameState extends State<StepUsername> {
                           ),
                           validator: (v) {
                             if (v == null || v.trim().isEmpty) {
-                              return 'Enter a username';
+                              return context.l('Enter a username');
                             }
-                            if (v.length < 3) return 'At least 3 characters';
+                            if (v.length < 3) {
+                              return context.l('At least 3 characters');
+                            }
                             if (!_usernameOk) {
-                              return _usernameError ?? 'Check username';
+                              return _usernameError ??
+                                  context.l('Check username');
                             }
                             return null;
                           },
@@ -421,7 +429,7 @@ class _StepUsernameState extends State<StepUsername> {
                           Padding(
                             padding: const EdgeInsets.only(top: 6),
                             child: Text(
-                              'Available!',
+                              context.l('Available!'),
                               style: GoogleFonts.josefinSans(
                                 fontSize: 12,
                                 color: AppColors.fernGreen,
@@ -452,7 +460,7 @@ class _StepUsernameState extends State<StepUsername> {
                                     child: CircularProgressIndicator(
                                         strokeWidth: 2, color: Colors.white),
                                   )
-                                : Text('Continue',
+                                : Text(context.l('Continue'),
                                     style: GoogleFonts.josefinSans(
                                         fontSize: 15,
                                         fontWeight: FontWeight.w600)),

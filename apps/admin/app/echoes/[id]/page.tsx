@@ -1,7 +1,7 @@
 // echo detail page — admin view
 // shows full echo content, trust scores, interactions, reports, moderation actions
 
-import { createServerClient } from "@/lib/supabase/client";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { notFound } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
@@ -22,7 +22,7 @@ interface Props {
 }
 
 export default async function EchoDetailPage({ params }: Props) {
-  const supabase = createServerClient();
+  const supabase = createAdminClient();
 
   const { data: echo, error } = await supabase
     .from("echoes")

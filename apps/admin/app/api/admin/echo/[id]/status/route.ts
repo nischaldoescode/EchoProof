@@ -1,7 +1,8 @@
 // admin API: update echo status and notify the author
 // requires service role — never expose to users
 
-import { createServerClient } from "@/lib/supabase/client";
+import { requireAdmin } from "@/lib/auth/require-admin";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 
 type RouteContext = {
@@ -26,6 +27,9 @@ const allowed = new Set([
 ]);
 
 export async function POST(req: NextRequest, context: RouteContext) {
+  const admin = await requireAdmin();
+  if (!admin.ok) return admin.response;
+
   const { id } = await Promise.resolve(context.params);
   const payload = await readPayload(req);
   const status = payload.status;
@@ -34,7 +38,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: "invalid status" }, { status: 400 });
   }
 
-  const supabase = createServerClient();
+  const supabase = createAdminClient();
 
   const { data: echo, error: echoError } = await supabase
     .from("echoes")
@@ -124,7 +128,7 @@ async function notifyEchoAuthor({
   status,
   title,
 }: {
-  supabase: ReturnType<typeof createServerClient>;
+  supabase: ReturnType<typeof createAdminClient>;
   userId: string;
   echoId: string;
   status: string;

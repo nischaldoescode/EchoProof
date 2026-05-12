@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:didit_sdk/sdk_flutter.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
+import '../../../../core/localization/app_copy.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../core/utils/snack.dart';
 
@@ -106,7 +107,10 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
   // Block back navigation mid-verification
   Future<bool> _onWillPop() async {
     if (_isLoading) {
-      showInfoSnack(context, 'Please complete or cancel verification first.');
+      showInfoSnack(
+        context,
+        context.l('Please complete or cancel verification first.'),
+      );
       return false;
     }
     return true;
@@ -170,12 +174,15 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
       setState(() => _isLoading = false);
 
       // Parse cooldown error from edge function
-      String errorMessage = 'Could not start verification. Please try again.';
+      String errorMessage =
+          context.l('Could not start verification. Please try again.');
       try {
         if (e.toString().contains('verification_cooldown')) {
-          errorMessage = 'You can re-apply after your 30-day cooldown period.';
+          errorMessage =
+              context.l('You can re-apply after your 30-day cooldown period.');
         } else if (e.toString().contains('rate_limited')) {
-          errorMessage = 'Too many attempts today. Please try again tomorrow.';
+          errorMessage =
+              context.l('Too many attempts today. Please try again tomorrow.');
         }
       } catch (_) {}
 
@@ -217,7 +224,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
             );
         }
       case VerificationCancelled():
-        showInfoSnack(context, 'Verification Canceled');
+        showInfoSnack(context, context.l('Verification Canceled'));
 
       case VerificationFailed(:final error):
         AppLogger.error('verification: failed ${error.type} ${error.message}');
@@ -286,7 +293,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
             ),
             const SizedBox(height: 16),
             Text(
-              title,
+              context.l(title),
               style: GoogleFonts.josefinSans(
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
@@ -295,7 +302,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
             ),
             const SizedBox(height: 8),
             Text(
-              body,
+              context.l(body),
               style: GoogleFonts.josefinSans(
                 fontSize: 14,
                 color: AppColors.textSecondary,
@@ -318,7 +325,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                   elevation: 0,
                 ),
                 child: Text(
-                  isSuccess ? 'Great!' : 'Got it',
+                  isSuccess ? context.l('Great!') : context.l('Got it'),
                   style: GoogleFonts.josefinSans(fontWeight: FontWeight.w600),
                 ),
               ),
@@ -340,7 +347,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
         backgroundColor: const Color(0xFFF5FAF7),
         appBar: AppBar(
           title: Text(
-            'Verify identity',
+            context.l('Verify identity'),
             style: GoogleFonts.josefinSans(
                 fontSize: 18, fontWeight: FontWeight.w600),
           ),
@@ -399,7 +406,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                   const SizedBox(height: AppSpacing.xl),
 
                   Text(
-                    'Verify your identity',
+                    context.l('Verify your identity'),
                     style: GoogleFonts.josefinSans(
                       fontSize: 24,
                       fontWeight: FontWeight.w700,
@@ -409,7 +416,9 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   Text(
-                    'Powered by Didit — bank-grade KYC in under 2 minutes.',
+                    context.l(
+                      'Powered by Didit — bank-grade KYC in under 2 minutes.',
+                    ),
                     style: GoogleFonts.josefinSans(
                       fontSize: 14,
                       color: AppColors.textSecondary,
@@ -437,7 +446,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'What Didit verifies',
+                          context.l('What Didit verifies'),
                           style: GoogleFonts.josefinSans(
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
@@ -469,7 +478,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                                   const SizedBox(width: AppSpacing.sm),
                                   Expanded(
                                     child: Text(
-                                      item,
+                                      context.l(item),
                                       style: GoogleFonts.josefinSans(
                                         fontSize: 13,
                                         color: AppColors.textSecondary,
@@ -501,7 +510,9 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                         const SizedBox(width: AppSpacing.sm),
                         Expanded(
                           child: Text(
-                            'Your identity is verified by Didit and stays private. Only your trust level is visible to others.',
+                            context.l(
+                              'Your identity is verified by Didit and stays private. Only your trust level is visible to others.',
+                            ),
                             style: GoogleFonts.josefinSans(
                               fontSize: 12,
                               color: AppColors.textSecondary,
@@ -567,7 +578,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                                     ),
                                     const SizedBox(width: 10),
                                     Text(
-                                      'Starting verification...',
+                                      context.l('Starting verification...'),
                                       style: GoogleFonts.josefinSans(
                                         fontSize: 15,
                                         fontWeight: FontWeight.w600,
@@ -577,7 +588,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                                 )
                               : Text(
                                   key: const ValueKey('idle'),
-                                  'Start verification',
+                                  context.l('Start verification'),
                                   style: GoogleFonts.josefinSans(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w600,
@@ -591,7 +602,9 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                   const SizedBox(height: AppSpacing.md),
                   Center(
                     child: Text(
-                      'Powered by Didit — bank-grade identity verification',
+                      context.l(
+                        'Powered by Didit — bank-grade identity verification',
+                      ),
                       style: GoogleFonts.josefinSans(
                         fontSize: 11,
                         color: AppColors.textTertiary,
@@ -641,12 +654,12 @@ class _BenefitRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
+                Text(context.l(title),
                     style: GoogleFonts.josefinSans(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                         color: AppColors.charcoal)),
-                Text(desc,
+                Text(context.l(desc),
                     style: GoogleFonts.josefinSans(
                         fontSize: 12,
                         color: AppColors.textSecondary,
@@ -708,7 +721,7 @@ class _VerificationPillRail extends StatelessWidget {
                     Icon(item.icon, size: 18, color: AppColors.fernGreenDark),
                     const SizedBox(height: 5),
                     Text(
-                      item.label,
+                      context.l(item.label),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.josefinSans(
@@ -803,7 +816,7 @@ class _VerificationTimeline extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          steps[i].title,
+                          context.l(steps[i].title),
                           style: GoogleFonts.josefinSans(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
@@ -812,7 +825,7 @@ class _VerificationTimeline extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          steps[i].body,
+                          context.l(steps[i].body),
                           style: GoogleFonts.josefinSans(
                             fontSize: 12,
                             color: AppColors.textSecondary,

@@ -11,6 +11,7 @@ import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../../../core/services/echo_interaction_service.dart';
+import '../../../../core/localization/app_copy.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../shared/widgets/echo_action_sheet.dart';
 import '../../domain/entities/echo_entity.dart';
@@ -40,7 +41,7 @@ class InteractionButtons extends StatelessWidget {
           Expanded(
             child: _InteractionButton(
               count: echo.replyCount,
-              label: 'Reply',
+              label: context.l('Reply'),
               icon: Icons.chat_bubble_outline_rounded,
               onTap: () async {
                 _openReplies(context);
@@ -52,7 +53,7 @@ class InteractionButtons extends StatelessWidget {
           Expanded(
             child: _InteractionButton(
               count: echo.supportCount,
-              label: 'Like',
+              label: context.l('Like'),
               icon: Icons.favorite_border_rounded,
               onTap: () => _interact(context, 'support'),
               flashColor: AppColors.fernGreen,
@@ -61,7 +62,7 @@ class InteractionButtons extends StatelessWidget {
           Expanded(
             child: _InteractionButton(
               count: echo.challengeCount,
-              label: 'Challenge',
+              label: context.l('Challenge'),
               icon: Icons.arrow_downward_rounded,
               onTap: () => _interact(context, 'challenge'),
               flashColor: AppColors.sunsetCoralDark,
@@ -70,7 +71,7 @@ class InteractionButtons extends StatelessWidget {
           Expanded(
             child: _InteractionButton(
               count: echo.bondCount,
-              label: 'Bonds',
+              label: context.l('Bonds'),
               icon: Icons.link_outlined,
               onTap: () async {
                 _openBonds(context);
@@ -83,7 +84,7 @@ class InteractionButtons extends StatelessWidget {
             visualDensity: VisualDensity.compact,
             icon: const Icon(Icons.more_horiz_rounded, size: 19),
             color: AppColors.textTertiary,
-            tooltip: 'More actions',
+            tooltip: context.l('More actions'),
             onPressed: () => showEchoActionSheet(
               context: context,
               echoId: echo.id,
@@ -101,7 +102,7 @@ class InteractionButtons extends StatelessWidget {
   }
 
   void _openBonds(BuildContext context) {
-    showInfoSnack(context, 'Opening echo bonds and evidence.');
+    showInfoSnack(context, context.l('Opening echo bonds and evidence.'));
     context.push('/feed/echo/${echo.id}');
   }
 
@@ -122,7 +123,10 @@ class InteractionButtons extends StatelessWidget {
   Future<bool> _interact(BuildContext context, String type) async {
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
     if (echo.userId.isNotEmpty && echo.userId == currentUserId) {
-      showInfoSnack(context, 'You cannot support or challenge your own echo.');
+      showInfoSnack(
+        context,
+        context.l('You cannot support or challenge your own echo.'),
+      );
       return false;
     }
 

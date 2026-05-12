@@ -48,7 +48,7 @@ export function EchoTable({ echoes }: EchoTableProps) {
 
       <div className="flex flex-col gap-4 xl:flex-row">
         {/* table */}
-        <div className="flex-1 overflow-hidden rounded-xl border border-border-subtle bg-white">
+        <div className="admin-soft-card flex-1 overflow-hidden rounded-xl border border-border-subtle bg-white">
           <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] text-sm">
             <thead>

@@ -109,14 +109,10 @@ const sections = [
   },
   {
     title: "Limitation of liability",
-    body: "To the maximum extent permitted by law, Echoproof and its operators shall not be liable for any indirect, incidental, or consequential damages arising from your use of the platform. Our total liability to you for any claim shall not exceed the amount you paid us in the 12 months preceding the claim.",
+    body: "Echoproof or it's makers shall not be liable for any indirect, incidental, or consequential damages arising from your use of the platform. Our total liability to you for any claim shall not exceed the amount you paid us in the 12 months preceding the claim.",
   },
   {
     title: "Termination",
     body: "You may delete your account at any time through the app settings or by submitting a deletion request at echoproof.online/delete-account. We may suspend or terminate your account at any time for violations of these terms. Upon termination, your right to use the platform ceases immediately.",
-  },
-  {
-    title: "Governing law",
-    body: "These terms are governed by the laws of India. Any disputes arising from these terms shall be subject to the exclusive jurisdiction of the courts of Bengaluru, Karnataka.",
   },
 ];

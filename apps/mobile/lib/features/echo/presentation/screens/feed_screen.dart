@@ -26,6 +26,7 @@ import '../services/create_echo_service.dart';
 import '../../../../shared/widgets/birthday_celebration.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/storage_keys.dart';
+import '../../../../core/localization/app_copy.dart';
 import '../../../../core/services/ad_service.dart';
 import '../../../subscription/presentation/services/subscription_service.dart';
 
@@ -249,7 +250,7 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
 
   Widget _buildBody(EchoFeedService feed, bool isTablet) {
     if (feed.isLoading && feed.echoes.isEmpty) {
-      return const EchoLogoLoader(label: 'Loading feed');
+      return EchoLogoLoader(label: context.l('Loading feed'));
     }
 
     if (feed.loadState == FeedLoadState.error && feed.echoes.isEmpty) {
@@ -512,7 +513,7 @@ class _FeedAppBar extends StatelessWidget implements PreferredSizeWidget {
               icon: const Icon(Icons.tune_rounded, size: 22),
               onPressed: onFilterTap,
               color: filterActive ? AppColors.charcoal : AppColors.charcoal,
-              tooltip: 'Filter',
+              tooltip: context.l('Filter'),
             ),
             if (filterActive)
               Positioned(
@@ -533,13 +534,13 @@ class _FeedAppBar extends StatelessWidget implements PreferredSizeWidget {
           icon: const Icon(Icons.refresh_rounded, size: 22),
           onPressed: onRefreshTap,
           color: AppColors.charcoal,
-          tooltip: 'Refresh feed',
+          tooltip: context.l('Refresh feed'),
         ),
         IconButton(
           icon: const Icon(Icons.search_rounded, size: 22),
           onPressed: () => context.push('/search'),
           color: AppColors.charcoal,
-          tooltip: 'Search',
+          tooltip: context.l('Search'),
         ),
         const SizedBox(width: 4),
       ],
@@ -654,10 +655,11 @@ class _EmptyFeed extends StatelessWidget {
                   size: 36, color: AppColors.textTertiary),
             ),
             const SizedBox(height: AppSpacing.xl),
-            Text('Nothing yet', style: AppTypography.textTheme.headlineSmall),
+            Text(context.l('Nothing yet'),
+                style: AppTypography.textTheme.headlineSmall),
             const SizedBox(height: AppSpacing.sm),
             Text(
-              'Be the first to create an echo.',
+              context.l('Be the first to create an echo.'),
               style: AppTypography.textTheme.bodyMedium?.copyWith(
                 color: AppColors.textSecondary,
               ),
@@ -685,11 +687,11 @@ class _EmptyFilter extends StatelessWidget {
             const Icon(Icons.filter_alt_off_outlined,
                 size: 48, color: AppColors.textTertiary),
             const SizedBox(height: AppSpacing.lg),
-            Text('No echoes match your filters',
+            Text(context.l('No echoes match your filters'),
                 style: AppTypography.textTheme.titleMedium),
             const SizedBox(height: AppSpacing.sm),
             Text(
-              'Try adjusting or clearing your filters.',
+              context.l('Try adjusting or clearing your filters.'),
               style: AppTypography.textTheme.bodySmall,
               textAlign: TextAlign.center,
             ),
@@ -704,7 +706,7 @@ class _EmptyFilter extends StatelessWidget {
                 ),
               ),
               child: Text(
-                'Clear filters',
+                context.l('Clear filters'),
                 style: GoogleFonts.josefinSans(fontWeight: FontWeight.w600),
               ),
             ),
@@ -728,7 +730,7 @@ class _ErrorState extends StatelessWidget {
           const Icon(Icons.cloud_off_outlined,
               size: 48, color: AppColors.textTertiary),
           const SizedBox(height: AppSpacing.lg),
-          Text('Could not load feed',
+          Text(context.l('Could not load feed'),
               style: AppTypography.textTheme.titleMedium),
           const SizedBox(height: AppSpacing.md),
           ElevatedButton(
@@ -739,7 +741,7 @@ class _ErrorState extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-            child: Text('Try again',
+            child: Text(context.l('Try again'),
                 style: GoogleFonts.josefinSans(fontWeight: FontWeight.w600)),
           ),
         ],

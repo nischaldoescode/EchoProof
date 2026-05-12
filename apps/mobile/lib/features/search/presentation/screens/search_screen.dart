@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
+import '../../../../core/localization/app_copy.dart';
 import '../../../../core/utils/logger.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -133,7 +134,7 @@ class _SearchScreenState extends State<SearchScreen>
         setState(() {
           _isSearching = false;
           _hasSearched = true;
-          _errorMessage = 'Search failed. Please try again.';
+          _errorMessage = context.l('Search failed. Please try again.');
         });
       }
     }
@@ -186,9 +187,9 @@ class _SearchScreenState extends State<SearchScreen>
           ),
           unselectedLabelStyle: GoogleFonts.josefinSans(fontSize: 13),
           tabs: [
-            const Tab(text: 'Top'),
-            Tab(text: 'People ${_users.length}'),
-            Tab(text: 'Echoes ${_echoes.length}'),
+            Tab(text: context.l('Top')),
+            Tab(text: '${context.l('People')} ${_users.length}'),
+            Tab(text: '${context.l('Echoes')} ${_echoes.length}'),
           ],
         ),
       ),
@@ -277,7 +278,7 @@ class _SearchFieldState extends State<_SearchField> {
           color: AppColors.charcoal,
         ),
         decoration: InputDecoration(
-          hintText: 'Search people or echoes...',
+          hintText: context.l('Search people or echoes...'),
           hintStyle: GoogleFonts.josefinSans(
             fontSize: 14,
             color: AppColors.textTertiary,
@@ -321,8 +322,8 @@ class _UserResults extends StatelessWidget {
     if (users.isEmpty) {
       return _NoResults(
         icon: Icons.person_search_rounded,
-        title: 'No people found',
-        message: 'Try a username, display name, or profile bio.',
+        title: context.l('No people found'),
+        message: context.l('Try a username, display name, or profile bio.'),
         query: query,
       );
     }
@@ -378,8 +379,9 @@ class _TopResults extends StatelessWidget {
     if (users.isEmpty && echoes.isEmpty) {
       return _NoResults(
         icon: Icons.search_off_rounded,
-        title: 'No results found',
-        message: 'Try fewer words, a username, or a phrase from the echo.',
+        title: context.l('No results found'),
+        message: context
+            .l('Try fewer words, a username, or a phrase from the echo.'),
         query: query,
       );
     }
@@ -390,8 +392,8 @@ class _TopResults extends StatelessWidget {
       children: [
         if (users.isNotEmpty) ...[
           _SearchSectionHeader(
-            title: 'People',
-            actionLabel: users.length > 3 ? 'View all' : null,
+            title: context.l('People'),
+            actionLabel: users.length > 3 ? context.l('View all') : null,
             onAction: users.length > 3 ? onPeopleTap : null,
           ),
           ...users.take(3).map(
@@ -403,8 +405,8 @@ class _TopResults extends StatelessWidget {
         ],
         if (echoes.isNotEmpty) ...[
           _SearchSectionHeader(
-            title: 'Echoes',
-            actionLabel: echoes.length > 5 ? 'View all' : null,
+            title: context.l('Echoes'),
+            actionLabel: echoes.length > 5 ? context.l('View all') : null,
             onAction: echoes.length > 5 ? onEchoesTap : null,
           ),
           ...echoes.take(5).map(
@@ -530,8 +532,8 @@ class _EchoResults extends StatelessWidget {
     if (echoes.isEmpty) {
       return _NoResults(
         icon: Icons.search_off_rounded,
-        title: 'No echoes found',
-        message: 'Try words from the title or the echo body.',
+        title: context.l('No echoes found'),
+        message: context.l('Try words from the title or the echo body.'),
         query: query,
       );
     }
@@ -665,7 +667,9 @@ class _EchoResultCard extends StatelessWidget {
                             size: 13, color: AppColors.textTertiary),
                         const SizedBox(width: 4),
                         Text(
-                          '${mediaUrls.length} media',
+                          context.l('{count} media', {
+                            'count': mediaUrls.length,
+                          }),
                           style: AppTypography.textTheme.labelMedium,
                         ),
                       ],
@@ -684,17 +688,17 @@ class _EchoResultCard extends StatelessWidget {
               child: Row(
                 children: [
                   _SigPill(
-                    label: '$support support',
+                    label: '$support ${context.l('support')}',
                     color: AppColors.fernGreen,
                   ),
                   const SizedBox(width: AppSpacing.xs),
                   _SigPill(
-                    label: '$challenge challenge',
+                    label: '$challenge ${context.l('challenge')}',
                     color: AppColors.sunsetCoral,
                   ),
                   const SizedBox(width: AppSpacing.xs),
                   _SigPill(
-                    label: '$replies replies',
+                    label: '$replies ${context.l('replies')}',
                     color: AppColors.textTertiary,
                   ),
                   const Spacer(),
@@ -851,12 +855,18 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, color) = switch (status) {
-      'verified' => ('Verified', AppColors.fernGreen),
-      'disputed' => ('Disputed', AppColors.sunsetCoral),
-      'controversial' => ('Controversial', AppColors.statusControversial),
-      'under_review' => ('Under Review', AppColors.statusUnderReview),
-      'pending_verification' => ('Pending', AppColors.textTertiary),
-      _ => ('Active', AppColors.textTertiary),
+      'verified' => (context.l('Verified'), AppColors.fernGreen),
+      'disputed' => (context.l('Disputed'), AppColors.sunsetCoral),
+      'controversial' => (
+          context.l('Controversial'),
+          AppColors.statusControversial
+        ),
+      'under_review' => (
+          context.l('Under Review'),
+          AppColors.statusUnderReview
+        ),
+      'pending_verification' => (context.l('Pending'), AppColors.textTertiary),
+      _ => (context.l('Active'), AppColors.textTertiary),
     };
 
     if (status == 'active' || status == 'pending_verification') {
@@ -1077,7 +1087,7 @@ class _SearchError extends StatelessWidget {
     return _NoResults(
       icon: Icons.error_outline_rounded,
       title: message,
-      message: 'The search request could not complete.',
+      message: context.l('The search request could not complete.'),
       query: '',
     );
   }
@@ -1106,7 +1116,9 @@ class _EmptySearch extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.md),
           Text(
-            isTooShort ? 'Keep typing' : 'Search Echoproof',
+            isTooShort
+                ? context.l('Keep typing')
+                : context.l('Search Echoproof'),
             style: GoogleFonts.josefinSans(
               fontSize: 16,
               fontWeight: FontWeight.w700,
@@ -1116,8 +1128,10 @@ class _EmptySearch extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             isTooShort
-                ? 'Type at least 2 characters'
-                : 'Find people, echo titles, and proof-backed claims.',
+                ? context.l('Type at least 2 characters')
+                : context.l(
+                    'Find people, echo titles, and proof-backed claims.',
+                  ),
             textAlign: TextAlign.center,
             style: GoogleFonts.josefinSans(
               fontSize: 12,
