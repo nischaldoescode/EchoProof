@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Native splash — shown before Flutter engine boots.
+     Must match the Flutter SplashScreen layout exactly. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Background color matches AppColors.softGreen / #F5FAF7 -->
+    <item>
+        <color android:color="#F5FAF7"/>
+    </item>
+    <!-- App icon centered — replace @drawable/splash with your actual 
+         logo drawable. The gravity="center" matches Flutter's centered layout. -->
+    <item>
+        <bitmap
+            android:gravity="center"
+            android:src="@drawable/splash"
+            android:tileMode="disabled"/>
+    </item>
+</layer-list>
