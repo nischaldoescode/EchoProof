@@ -48,10 +48,11 @@ class FeedScreen extends StatefulWidget {
 //   return echoCount + adCount + (feed.hasMore ? 1 : 0);
 // }
 
-class _FeedScreenState extends State<FeedScreen> {
+class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   final _scrollCtrl = ScrollController();
   FeedFilter _filter = const FeedFilter();
   Timer? _feedAdTimer;
+  DateTime _lastActiveAt = DateTime.now();
 
   Future<void> _maybeTriggerBirthdayEaster() async {
     // Only check once per app session using Hive.
@@ -81,6 +82,7 @@ class _FeedScreenState extends State<FeedScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _scrollCtrl.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final feed = context.read<EchoFeedService>();
@@ -128,9 +130,29 @@ class _FeedScreenState extends State<FeedScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _feedAdTimer?.cancel();
     _scrollCtrl.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.detached) {
+      _lastActiveAt = DateTime.now();
+      _feedAdTimer?.cancel();
+      return;
+    }
+
+    if (state == AppLifecycleState.resumed) {
+      final staleFor = DateTime.now().difference(_lastActiveAt);
+      _startFeedAdRoutine();
+      if (staleFor >= const Duration(minutes: 15)) {
+        context.read<EchoFeedService>().refresh();
+      }
+    }
   }
 
   void _startFeedAdRoutine() {

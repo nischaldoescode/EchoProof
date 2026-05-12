@@ -23,6 +23,7 @@ import '../../../../shared/widgets/rich_text_display.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../core/utils/media_file_safety.dart';
+import '../../../../core/localization/app_copy.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../../core/services/video_playback_coordinator.dart';
 import '../widgets/echo_video_player.dart';
@@ -330,172 +331,229 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
               elevation: 0,
               scrolledUnderElevation: 0.5,
               shadowColor: AppColors.borderSubtle,
-              title: Text('Echo', style: AppTypography.textTheme.titleMedium),
+              title: _EchoDetailAppBarTitle(echo: displayed),
             ),
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.xl),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // author row
-                    Row(
-                      children: [
-                        Expanded(
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () => _openAuthorProfile(displayed),
-                            child: Row(
-                              children: [
-                                _VerifiedAvatar(
-                                  avatarUrl: displayed.userAvatarUrl,
-                                  isVerified: displayed.userIsVerified,
-                                ),
-                                const SizedBox(width: AppSpacing.sm),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        displayed.userDisplayName
-                                                .trim()
-                                                .isNotEmpty
-                                            ? displayed.userDisplayName.trim()
-                                            : displayed.username,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style:
-                                            AppTypography.textTheme.titleSmall,
-                                      ),
-                                      Text(
-                                        '@${displayed.username} · ${displayed.timeAgo}',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style:
-                                            AppTypography.textTheme.labelMedium,
-                                      ),
-                                    ],
+                padding: EdgeInsets.fromLTRB(
+                  AppSpacing.xl,
+                  AppSpacing.xl,
+                  AppSpacing.xl,
+                  AppSpacing.xl + MediaQuery.paddingOf(context).bottom,
+                ),
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: 1),
+                  duration: const Duration(milliseconds: 360),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, value, child) {
+                    return Opacity(
+                      opacity: value,
+                      child: Transform.translate(
+                        offset: Offset(0, 12 * (1 - value)),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // author row
+                      Row(
+                        children: [
+                          Expanded(
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => _openAuthorProfile(displayed),
+                              child: Row(
+                                children: [
+                                  _VerifiedAvatar(
+                                    avatarUrl: displayed.userAvatarUrl,
+                                    isVerified: displayed.userIsVerified,
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(width: AppSpacing.sm),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          displayed.userDisplayName
+                                                  .trim()
+                                                  .isNotEmpty
+                                              ? displayed.userDisplayName.trim()
+                                              : displayed.username,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: AppTypography
+                                              .textTheme.titleSmall,
+                                        ),
+                                        Text(
+                                          '@${displayed.username} · ${displayed.timeAgo}',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: AppTypography
+                                              .textTheme.labelMedium,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                        TrustBadge(tier: displayed.userTrustTier),
-                      ],
-                    ),
-
-                    const SizedBox(height: AppSpacing.xl),
-
-                    if (displayed.title.isNotEmpty) ...[
-                      RichTextDisplay(
-                        text: displayed.title,
-                        style: AppTypography.textTheme.headlineSmall?.copyWith(
-                          height: 1.15,
-                          color: AppColors.charcoal,
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                    ],
-
-                    RichTextDisplay(
-                      text: displayed.content,
-                      style: AppTypography.textTheme.bodyLarge,
-                    ),
-
-                    if (previewUrl != null)
-                      EchoLinkPreview(
-                        url: previewUrl,
-                        variant: EchoLinkPreviewVariant.detail,
+                          TrustBadge(tier: displayed.userTrustTier),
+                        ],
                       ),
 
-                    if (displayed.mediaUrls.isNotEmpty) ...[
-                      const SizedBox(height: AppSpacing.lg),
-                      _EchoDetailMediaGallery(
-                        echoId: displayed.id,
-                        urls: displayed.mediaUrls,
-                      ),
-                    ],
+                      const SizedBox(height: AppSpacing.xl),
 
-                    const SizedBox(height: AppSpacing.xl),
-                    _DetailCategoryChip(echo: displayed),
-                    const SizedBox(height: AppSpacing.lg),
-                    const Divider(),
-                    const SizedBox(height: AppSpacing.lg),
-
-                    // live score section
-                    _LiveScoreSection(
-                      echo: displayed,
-                      onEchoHidden: _handleEchoHidden,
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    Wrap(
-                      spacing: AppSpacing.sm,
-                      runSpacing: AppSpacing.sm,
-                      children: [
-                        SolanaStatusChip(
-                          status: displayed.solanaStatus,
-                          signature: displayed.createdRecordTx,
-                          label: 'Solana post',
-                          compact: false,
-                        ),
-                        if (displayed.status == EchoStatus.verified)
-                          SolanaStatusChip(
-                            status: displayed.verifiedRecordStatus,
-                            signature: displayed.verifiedRecordTx,
-                            label: 'Solana verification',
-                            compact: false,
+                      if (displayed.title.isNotEmpty) ...[
+                        RichTextDisplay(
+                          text: displayed.title,
+                          style:
+                              AppTypography.textTheme.headlineSmall?.copyWith(
+                            height: 1.15,
+                            color: AppColors.charcoal,
                           ),
-                      ],
-                    ),
-
-                    const SizedBox(height: AppSpacing.xl),
-                    const Divider(),
-                    const SizedBox(height: AppSpacing.lg),
-
-                    // verified record
-                    if (displayed.status == EchoStatus.verified) ...[
-                      if (displayed.verifiedRecordTx != null &&
-                          displayed.verifiedRecordTx!.isNotEmpty) ...[
-                        VerifiedEchoRecord(
-                          transactionSignature: displayed.verifiedRecordTx!,
-                          verifiedAt: displayed.verifiedRecordAt ??
-                              displayed.createdRecordAt ??
-                              DateTime.now(),
                         ),
                         const SizedBox(height: AppSpacing.md),
                       ],
-                      TruthBondButton(
-                        echoId: displayed.id,
-                        status: displayed.status,
-                        bondCount: displayed.bondCount,
+
+                      RichTextDisplay(
+                        text: displayed.content,
+                        style: AppTypography.textTheme.bodyLarge,
+                      ),
+
+                      if (previewUrl != null)
+                        EchoLinkPreview(
+                          url: previewUrl,
+                          variant: EchoLinkPreviewVariant.detail,
+                        ),
+
+                      if (displayed.mediaUrls.isNotEmpty) ...[
+                        const SizedBox(height: AppSpacing.lg),
+                        _EchoDetailMediaGallery(
+                          echoId: displayed.id,
+                          urls: displayed.mediaUrls,
+                        ),
+                      ],
+
+                      const SizedBox(height: AppSpacing.xl),
+                      _DetailCategoryChip(echo: displayed),
+                      const SizedBox(height: AppSpacing.lg),
+                      const Divider(),
+                      const SizedBox(height: AppSpacing.lg),
+
+                      // live score section
+                      _LiveScoreSection(
+                        echo: displayed,
+                        onEchoHidden: _handleEchoHidden,
                       ),
                       const SizedBox(height: AppSpacing.md),
+                      Wrap(
+                        spacing: AppSpacing.sm,
+                        runSpacing: AppSpacing.sm,
+                        children: [
+                          SolanaStatusChip(
+                            status: displayed.solanaStatus,
+                            signature: displayed.createdRecordTx,
+                            label: 'Solana post',
+                            compact: false,
+                          ),
+                          if (displayed.status == EchoStatus.verified)
+                            SolanaStatusChip(
+                              status: displayed.verifiedRecordStatus,
+                              signature: displayed.verifiedRecordTx,
+                              label: 'Solana verification',
+                              compact: false,
+                            ),
+                        ],
+                      ),
+
+                      const SizedBox(height: AppSpacing.xl),
+                      const Divider(),
+                      const SizedBox(height: AppSpacing.lg),
+
+                      // verified record
+                      if (displayed.status == EchoStatus.verified) ...[
+                        if (displayed.verifiedRecordTx != null &&
+                            displayed.verifiedRecordTx!.isNotEmpty) ...[
+                          VerifiedEchoRecord(
+                            transactionSignature: displayed.verifiedRecordTx!,
+                            verifiedAt: displayed.verifiedRecordAt ??
+                                displayed.createdRecordAt ??
+                                DateTime.now(),
+                          ),
+                          const SizedBox(height: AppSpacing.md),
+                        ],
+                        TruthBondButton(
+                          echoId: displayed.id,
+                          status: displayed.status,
+                          bondCount: displayed.bondCount,
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                      ],
+
+                      // proofs section
+                      _ProofsSection(
+                        proofs: _proofs,
+                        onRefresh: _loadProofs,
+                      ),
+
+                      const SizedBox(height: AppSpacing.xl),
+                      const Divider(),
+                      const SizedBox(height: AppSpacing.lg),
+
+                      _RepliesPreviewSection(
+                        replies: _replies,
+                        isLoading: _isRepliesLoading,
+                        onOpenReplies: () => _openReplies(displayed),
+                      ),
                     ],
-
-                    // proofs section
-                    _ProofsSection(
-                      proofs: _proofs,
-                      onRefresh: _loadProofs,
-                    ),
-
-                    const SizedBox(height: AppSpacing.xl),
-                    const Divider(),
-                    const SizedBox(height: AppSpacing.lg),
-
-                    _RepliesPreviewSection(
-                      replies: _replies,
-                      isLoading: _isRepliesLoading,
-                      onOpenReplies: () => _openReplies(displayed),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _EchoDetailAppBarTitle extends StatelessWidget {
+  const _EchoDetailAppBarTitle({required this.echo});
+
+  final EchoEntity echo;
+
+  @override
+  Widget build(BuildContext context) {
+    final compactId = echo.id.replaceAll('-', '');
+    final shortId =
+        compactId.length <= 8 ? compactId : compactId.substring(0, 8);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '#echo$shortId',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTypography.textTheme.titleSmall?.copyWith(
+            color: AppColors.charcoal,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        Text(
+          'by @${echo.username}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTypography.textTheme.labelSmall?.copyWith(
+            color: AppColors.textSecondary,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -629,7 +687,10 @@ class _LiveScoreSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Community signals', style: AppTypography.textTheme.titleMedium),
+        Text(
+          context.tx('echoDetail.communitySignals'),
+          style: AppTypography.textTheme.titleMedium,
+        ),
         const SizedBox(height: AppSpacing.md),
         ConfidenceBar(confidence: echo.confidenceScore, status: echo.status),
         const SizedBox(height: AppSpacing.md),
@@ -686,7 +747,8 @@ class _ProofsSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Evidence', style: AppTypography.textTheme.titleMedium),
+        Text(context.tx('echoDetail.evidence'),
+            style: AppTypography.textTheme.titleMedium),
         const SizedBox(height: AppSpacing.sm),
         if (proofs.isEmpty)
           Text(
@@ -738,14 +800,18 @@ class _RepliesPreviewSection extends StatelessWidget {
         Row(
           children: [
             Text(
-              replies.isEmpty ? 'Replies' : 'Replies (${replies.length})',
+              replies.isEmpty
+                  ? context.tx('echoDetail.replies')
+                  : '${context.tx('echoDetail.replies')} (${replies.length})',
               style: AppTypography.textTheme.titleMedium,
             ),
             const Spacer(),
             TextButton(
               onPressed: onOpenReplies,
               child: Text(
-                replies.isEmpty ? 'Add reply' : 'View thread',
+                replies.isEmpty
+                    ? context.tx('echoDetail.addReply')
+                    : context.tx('echoDetail.viewThread'),
                 style: const TextStyle(color: AppColors.fernGreenDark),
               ),
             ),

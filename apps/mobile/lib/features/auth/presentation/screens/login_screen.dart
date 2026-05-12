@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
+import '../../../../core/localization/app_copy.dart';
 import '../../../../core/utils/link_launcher.dart';
 import '../../../../core/utils/snack.dart';
 import '../services/auth_service.dart';
@@ -166,7 +167,7 @@ class _LoginScreenState extends State<LoginScreen>
                             ),
                             const SizedBox(height: AppSpacing.lg),
                             Text(
-                              'Secure email codes. Native Google sign-in. No password to remember.',
+                              context.tx('login.secureCopy'),
                               textAlign: TextAlign.center,
                               style: GoogleFonts.josefinSans(
                                 fontSize: 12,
@@ -238,14 +239,49 @@ class _BrandHeader extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              'Verified claims, real people.',
+              context.tx('login.subtitle'),
               style: GoogleFonts.josefinSans(
                 fontSize: 14,
                 color: AppColors.textSecondary,
                 height: 1.35,
               ),
             ),
+            const SizedBox(height: AppSpacing.lg),
+            _SignalMeter(animation: animation),
           ],
+        );
+      },
+    );
+  }
+}
+
+class _SignalMeter extends StatelessWidget {
+  const _SignalMeter({required this.animation});
+  final Animation<double> animation;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, _) {
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(4, (index) {
+            final phase = (animation.value + index * 0.18) % 1.0;
+            final height = 5.0 + math.sin(phase * math.pi) * 10.0;
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              width: 18,
+              height: height,
+              decoration: BoxDecoration(
+                color: AppColors.fernGreen.withValues(
+                  alpha: 0.20 + phase * 0.26,
+                ),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            );
+          }),
         );
       },
     );
@@ -292,10 +328,13 @@ class _LoginPanel extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Sign in', style: AppTypography.textTheme.headlineSmall),
+            _PanelAccent(isLoading: isLoading),
+            const SizedBox(height: AppSpacing.lg),
+            Text(context.tx('login.signIn'),
+                style: AppTypography.textTheme.headlineSmall),
             const SizedBox(height: AppSpacing.xs),
             Text(
-              'Enter your email and we will send a 6-digit code.',
+              context.tx('login.emailHelp'),
               style: GoogleFonts.josefinSans(
                 fontSize: 13,
                 color: AppColors.textSecondary,
@@ -341,6 +380,64 @@ class _LoginPanel extends StatelessWidget {
               onTap: onGoogle,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PanelAccent extends StatefulWidget {
+  const _PanelAccent({required this.isLoading});
+  final bool isLoading;
+
+  @override
+  State<_PanelAccent> createState() => _PanelAccentState();
+}
+
+class _PanelAccentState extends State<_PanelAccent>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: SizedBox(
+        height: 4,
+        width: double.infinity,
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, _) {
+            final x = widget.isLoading ? _controller.value : 0.18;
+            return DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment(-1 + x * 2, 0),
+                  end: Alignment(0.4 + x * 2, 0),
+                  colors: [
+                    AppColors.fernGreen.withValues(alpha: 0.14),
+                    AppColors.fernGreen.withValues(alpha: 0.52),
+                    AppColors.sunsetCoral.withValues(alpha: 0.24),
+                  ],
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -393,7 +490,7 @@ class _EmailFieldState extends State<_EmailField> {
             return null;
           },
           decoration: InputDecoration(
-            hintText: 'name@email.com',
+            hintText: context.tx('login.emailHint'),
             hintStyle: GoogleFonts.josefinSans(
               fontSize: 14,
               color: AppColors.textTertiary,
@@ -451,7 +548,9 @@ class _ContinueButton extends StatelessWidget {
             child: isLoading
                 ? const _LiquidLoader(key: ValueKey('loader'))
                 : Text(
-                    canTap ? 'Continue with email' : 'Continue with email',
+                    canTap
+                        ? context.tx('login.continueEmail')
+                        : context.tx('login.continueEmail'),
                     key: const ValueKey('label'),
                     style: GoogleFonts.josefinSans(
                       fontSize: 15,
@@ -509,7 +608,7 @@ class _GoogleButton extends StatelessWidget {
                     : const _AnimatedGoogleIcon(),
                 const SizedBox(width: AppSpacing.md),
                 Text(
-                  'Continue with Google',
+                  context.tx('login.continueGoogle'),
                   style: GoogleFonts.josefinSans(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
@@ -564,12 +663,12 @@ class _AgreementCheckbox extends StatelessWidget {
                 height: 1.45,
               ),
               children: [
-                const TextSpan(text: 'I agree to the '),
+                TextSpan(text: context.tx('login.termsPrefix')),
                 WidgetSpan(
                   alignment: PlaceholderAlignment.baseline,
                   baseline: TextBaseline.alphabetic,
                   child: _InlineLink(
-                    label: 'Terms',
+                    label: context.tx('login.terms'),
                     url: 'https://echoproof.online/terms',
                   ),
                 ),
@@ -578,7 +677,7 @@ class _AgreementCheckbox extends StatelessWidget {
                   alignment: PlaceholderAlignment.baseline,
                   baseline: TextBaseline.alphabetic,
                   child: _InlineLink(
-                    label: 'Privacy Policy',
+                    label: context.tx('login.privacy'),
                     url: 'https://echoproof.online/privacy',
                   ),
                 ),

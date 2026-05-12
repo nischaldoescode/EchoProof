@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useState, useEffect } from "react";
 
 export default function Nav() {
@@ -53,14 +52,11 @@ export default function Nav() {
           >
             Trust engine
           </Link>
-          <a
-            href="https://play.google.com/store/apps/details?id=com.echoproof.app"
-            target="_blank"
-            rel="noopener noreferrer"
+          <span
             className="text-sm bg-charcoal text-white px-4 py-2 rounded-full hover:bg-neutral-800 transition-colors font-medium"
           >
-            Get the app
-          </a>
+            App coming soon
+          </span>
         </div>
 
         {/* mobile menu button */}
@@ -103,14 +99,11 @@ export default function Nav() {
           >
             Trust engine
           </Link>
-          <a
-            href="https://play.google.com/store/apps/details?id=com.echoproof.app"
-            target="_blank"
-            rel="noopener noreferrer"
+          <span
             className="text-sm bg-charcoal text-white px-4 py-2.5 rounded-full text-center font-medium"
           >
-            Get the app →
-          </a>
+            App coming soon
+          </span>
         </div>
       </div>
     </nav>

@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
+import '../../../../core/localization/app_copy.dart';
 import '../services/onboarding_service.dart';
 import 'package:flutter/services.dart';
 
@@ -80,12 +81,12 @@ class _StepLanguageState extends State<StepLanguage>
                 children: [
                   const SizedBox(height: AppSpacing.xxl),
                   Text(
-                    'Choose your language',
+                    context.tx('onboarding.languageTitle'),
                     style: AppTypography.textTheme.headlineMedium,
                   ),
                   const SizedBox(height: AppSpacing.xs),
                   Text(
-                    'You can change this any time in Settings.',
+                    context.tx('onboarding.languageHelp'),
                     style: AppTypography.textTheme.bodyMedium?.copyWith(
                       color: AppColors.textSecondary,
                     ),
@@ -239,7 +240,7 @@ class _LanguageContinueButtonState extends State<_LanguageContinueButton>
                   widget.onPressed();
                 }
               : null,
-          child: const Text('Continue'),
+          child: Text(context.tx('common.continue')),
         ),
       ),
     );
