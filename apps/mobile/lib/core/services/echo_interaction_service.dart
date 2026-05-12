@@ -28,12 +28,14 @@ class EchoInteractionService {
         ? _supabaseUrl
         : _supabaseUrl;
     final url = '$supabaseUrl/functions/v1/on-interaction';
+    const anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
 
     AppLogger.debug('interaction: posting $type on $echoId');
 
     final response = await http.post(
       Uri.parse(url),
       headers: {
+        if (anonKey.isNotEmpty) 'apikey': anonKey,
         'Authorization': 'Bearer $jwtToken',
         'Content-Type': 'application/json',
       },

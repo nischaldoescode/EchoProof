@@ -246,42 +246,7 @@ class _BrandHeader extends StatelessWidget {
                 height: 1.35,
               ),
             ),
-            const SizedBox(height: AppSpacing.lg),
-            _SignalMeter(animation: animation),
           ],
-        );
-      },
-    );
-  }
-}
-
-class _SignalMeter extends StatelessWidget {
-  const _SignalMeter({required this.animation});
-  final Animation<double> animation;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: animation,
-      builder: (context, _) {
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(4, (index) {
-            final phase = (animation.value + index * 0.18) % 1.0;
-            final height = 5.0 + math.sin(phase * math.pi) * 10.0;
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              margin: const EdgeInsets.symmetric(horizontal: 3),
-              width: 18,
-              height: height,
-              decoration: BoxDecoration(
-                color: AppColors.fernGreen.withValues(
-                  alpha: 0.20 + phase * 0.26,
-                ),
-                borderRadius: BorderRadius.circular(999),
-              ),
-            );
-          }),
         );
       },
     );

@@ -61,9 +61,11 @@ class _LinkPreviewCardState extends State<LinkPreviewCard> {
       if (session == null) return;
 
       final supabaseUrl = const String.fromEnvironment('SUPABASE_URL');
+      final anonKey = const String.fromEnvironment('SUPABASE_ANON_KEY');
       final res = await http.post(
         Uri.parse('$supabaseUrl/functions/v1/fetch-link-preview'),
         headers: {
+          if (anonKey.isNotEmpty) 'apikey': anonKey,
           'Authorization': 'Bearer ${session.accessToken}',
           'Content-Type': 'application/json',
         },
@@ -309,9 +311,11 @@ class _EchoLinkPreviewState extends State<EchoLinkPreview> {
       }
 
       final supabaseUrl = const String.fromEnvironment('SUPABASE_URL');
+      final anonKey = const String.fromEnvironment('SUPABASE_ANON_KEY');
       final res = await http.post(
         Uri.parse('$supabaseUrl/functions/v1/fetch-link-preview'),
         headers: {
+          if (anonKey.isNotEmpty) 'apikey': anonKey,
           'Authorization': 'Bearer ${session.accessToken}',
           'Content-Type': 'application/json',
         },
