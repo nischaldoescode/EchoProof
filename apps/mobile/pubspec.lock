@@ -835,7 +835,7 @@ packages:
     source: sdk
     version: "0.0.0"
   flutter_windowmanager_plus:
-    dependency: "direct dev"
+    dependency: "direct main"
     description:
       name: flutter_windowmanager_plus
       sha256: "4e2bf7c7f374699fd74d59785f1d74efd40052c24a5edde5a4d825cc72608d40"
