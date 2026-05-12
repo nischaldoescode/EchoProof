@@ -3,6 +3,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { isAllowedAdminEmail } from "@/lib/auth/allowlist";
+import { adminSessionFromRequest } from "@/lib/auth/admin-session";
+import { adminUrl } from "@/lib/public-url";
 import { adminPath } from "@/lib/routes";
 
 export async function proxy(request: NextRequest) {
@@ -42,21 +44,27 @@ export async function proxy(request: NextRequest) {
     path === "/auth/callback" ||
     path === callbackPath ||
     path === "/api/auth/admin-magic-link" ||
-    path === magicLinkPath;
+    path === magicLinkPath ||
+    path === "/api/auth/admin-access-login" ||
+    path === adminPath("/api/auth/admin-access-login") ||
+    path === "/api/auth/admin-logout" ||
+    path === adminPath("/api/auth/admin-logout");
   const isAllowedAdmin = isAllowedAdminEmail(user?.email);
+  const staticAdmin = await adminSessionFromRequest(request);
+  const isAuthenticatedAdmin = isAllowedAdmin || Boolean(staticAdmin);
 
-  if (!user && !isPublicAuthPath) {
-    return NextResponse.redirect(new URL(adminPath("/login"), request.url));
+  if (!user && !staticAdmin && !isPublicAuthPath) {
+    return NextResponse.redirect(adminUrl(request, "/login"));
   }
 
-  if (user && !isAllowedAdmin && !isLoginPage) {
-    const url = new URL(adminPath("/login"), request.url);
+  if (user && !isAuthenticatedAdmin && !isLoginPage) {
+    const url = adminUrl(request, "/login");
     url.searchParams.set("error", "unauthorized");
     return NextResponse.redirect(url);
   }
 
-  if (user && isLoginPage && isAllowedAdmin) {
-    return NextResponse.redirect(new URL(adminPath("/"), request.url));
+  if (isLoginPage && isAuthenticatedAdmin) {
+    return NextResponse.redirect(adminUrl(request, "/"));
   }
 
   return response;

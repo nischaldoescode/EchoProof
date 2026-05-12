@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminPath } from "@/lib/routes";
+import { adminUrl } from "@/lib/public-url";
 import { createServer } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
 
   if (!code) {
     return NextResponse.redirect(
-      new URL(adminPath("/login?error=auth_callback"), request.url),
+      adminUrl(request, "/login?error=auth_callback"),
     );
   }
 
@@ -17,12 +17,12 @@ export async function GET(request: NextRequest) {
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {
-    const url = new URL(adminPath("/login"), request.url);
+    const url = adminUrl(request, "/login");
     url.searchParams.set("error", "auth_callback");
     return NextResponse.redirect(url);
   }
 
-  return NextResponse.redirect(new URL(adminPath(next), request.url));
+  return NextResponse.redirect(adminUrl(request, next));
 }
 
 function safeNextPath(value: string | null) {

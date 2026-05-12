@@ -2,9 +2,19 @@
 
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import {
+  ADMIN_SESSION_COOKIE,
+  verifyAdminSessionToken,
+} from "@/lib/auth/admin-session";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function createServer() {
   const cookieStore = await cookies();
+  const staticSession = await verifyAdminSessionToken(
+    cookieStore.get(ADMIN_SESSION_COOKIE)?.value,
+  );
+  if (staticSession) return createAdminClient();
+
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,

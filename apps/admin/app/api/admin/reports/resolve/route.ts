@@ -2,7 +2,7 @@
 
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { adminPath } from "@/lib/routes";
+import { adminUrl } from "@/lib/public-url";
 import { NextRequest, NextResponse } from "next/server";
 
 type ResolvePayload = {
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true });
   }
 
-  return NextResponse.redirect(new URL(adminPath("/reports"), req.url));
+  return NextResponse.redirect(adminUrl(req, "/reports"));
 }
 
 async function readPayload(req: NextRequest): Promise<ResolvePayload> {
