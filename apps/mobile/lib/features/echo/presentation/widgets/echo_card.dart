@@ -23,6 +23,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../shared/widgets/image_viewer.dart';
+import '../../../../core/services/video_playback_coordinator.dart';
+import 'echo_video_player.dart';
+import 'link_preview_card.dart';
 
 class EchoCard extends StatefulWidget {
   const EchoCard({
@@ -113,6 +116,8 @@ class _EchoCardState extends State<EchoCard> {
 
   @override
   Widget build(BuildContext context) {
+    final previewUrl = extractFirstUrl('${echo.title}\n${echo.content}');
+
     return VisibilityDetector(
       key: Key('echo_card_${echo.id}'),
       onVisibilityChanged: (info) {
@@ -182,9 +187,12 @@ class _EchoCardState extends State<EchoCard> {
                           : echo.content,
                       style: AppTypography.textTheme.bodyMedium,
                     ),
+                    if (previewUrl != null) ...[
+                      EchoLinkPreview(url: previewUrl),
+                    ],
                     if (echo.mediaUrls.isNotEmpty) ...[
                       const SizedBox(height: AppSpacing.md),
-                      _EchoMediaPreview(urls: echo.mediaUrls),
+                      _EchoMediaPreview(echoId: echo.id, urls: echo.mediaUrls),
                     ],
                     const SizedBox(height: AppSpacing.sm),
                     Wrap(
@@ -192,6 +200,10 @@ class _EchoCardState extends State<EchoCard> {
                       runSpacing: AppSpacing.xs,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
+                        _CategoryLabel(
+                          category: echo.category,
+                          detail: echo.categoryDetail,
+                        ),
                         _StatusLabel(status: echo.status),
                         SolanaStatusChip(
                           status: echo.solanaStatus,
@@ -223,8 +235,9 @@ class _EchoCardState extends State<EchoCard> {
 }
 
 class _EchoMediaPreview extends StatelessWidget {
-  const _EchoMediaPreview({required this.urls});
+  const _EchoMediaPreview({required this.echoId, required this.urls});
 
+  final String echoId;
   final List<String> urls;
 
   bool _isVideo(String url) {
@@ -244,6 +257,7 @@ class _EchoMediaPreview extends StatelessWidget {
             for (int i = 0; i < visible.length; i++) ...[
               Expanded(
                 child: _MediaTile(
+                  echoId: echoId,
                   url: visible[i],
                   urls: urls,
                   isVideo: _isVideo(visible[i]),
@@ -260,11 +274,13 @@ class _EchoMediaPreview extends StatelessWidget {
 
 class _MediaTile extends StatelessWidget {
   const _MediaTile({
+    required this.echoId,
     required this.url,
     required this.urls,
     required this.isVideo,
   });
 
+  final String echoId;
   final String url;
   final List<String> urls;
   final bool isVideo;
@@ -272,12 +288,16 @@ class _MediaTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (isVideo) {
-      return Container(
-        color: AppColors.charcoal,
-        child: const Center(
-          child: Icon(Icons.play_circle_fill_rounded,
-              color: AppColors.white, size: 38),
-        ),
+      return EchoVideoPlayer(
+        url: url,
+        playbackId: 'feed_${echoId}_${url.hashCode}',
+        compact: true,
+        onOpen: () {
+          VideoPlaybackCoordinator.instance.pauseAll();
+          context.push(
+            '/feed/echo/$echoId/video?url=${Uri.encodeComponent(url)}',
+          );
+        },
       );
     }
 
@@ -626,6 +646,43 @@ class _AvatarWithRing extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CategoryLabel extends StatelessWidget {
+  const _CategoryLabel({required this.category, this.detail});
+  final EchoCategory category;
+  final String? detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final cleanDetail = detail?.trim();
+    final label = category == EchoCategory.other &&
+            cleanDetail != null &&
+            cleanDetail.isNotEmpty
+        ? 'Other: $cleanDetail'
+        : category.displayName;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceSecondary,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w600,
+          color: AppColors.textSecondary,
+          fontFamily: AppTypography.fontFamily,
+        ),
       ),
     );
   }

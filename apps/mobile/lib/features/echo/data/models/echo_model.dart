@@ -23,6 +23,7 @@ class EchoModel {
       userIsVerified: user['is_identity_verified'] as bool? ?? false,
       userAvatarUrl: user['avatar_url'] as String?,
       category: EchoCategory.fromString(row['category'] as String),
+      categoryDetail: row['category_detail'] as String?,
       status: _parseStatus(row['status'] as String),
       confidenceScore: (row['confidence_score'] as num?)?.toDouble() ?? 0.0,
       trustScore: (row['trust_score'] as num?)?.toInt() ?? 0,

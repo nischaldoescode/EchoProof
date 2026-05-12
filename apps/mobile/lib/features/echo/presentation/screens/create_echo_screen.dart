@@ -329,6 +329,20 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
       });
     }
 
+    if (service.error != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final message = context.read<CreateEchoService>().error;
+        if (message == null) return;
+        if (message.toLowerCase().contains('another echo')) {
+          showInfoSnack(context, message);
+        } else {
+          showErrorSnack(context, message);
+        }
+        context.read<CreateEchoService>().clearError();
+      });
+    }
+
     // navigate away on success
     if (service.success) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -542,6 +556,23 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                         selected: service.category,
                         onSelect: context.read<CreateEchoService>().setCategory,
                       ),
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOutCubic,
+                        child: service.category == EchoCategory.other
+                            ? Padding(
+                                padding: const EdgeInsets.only(
+                                  top: AppSpacing.md,
+                                ),
+                                child: _OtherCategoryField(
+                                  value: service.categoryDetail,
+                                  onChanged: context
+                                      .read<CreateEchoService>()
+                                      .setCategoryDetail,
+                                ),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
                       const SizedBox(height: AppSpacing.xl),
                       _VerificationToggle(
                         value: service.requiresVerification,
@@ -642,8 +673,8 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
               title: 'Link Previews',
               tips: [
                 'Paste any URL and a preview card appears automatically',
-                'Tap "Attach preview" to include the card in your echo',
-                'Click the external link icon to open it first',
+                'The feed shows a compact preview after posting',
+                'Echo detail shows a larger preview with open options',
                 'Links are validated — only http/https accepted',
               ],
             ),
@@ -772,13 +803,7 @@ class _ContentMentionField extends StatelessWidget {
   final void Function(String?) onUrlDetected;
 
   void _extractUrl(String text) {
-    final urlPattern = RegExp(
-      r'https?://[^\s<>"{}|\\^`\[\]]+',
-      caseSensitive: false,
-    );
-
-    final match = urlPattern.firstMatch(text);
-    onUrlDetected(match?.group(0));
+    onUrlDetected(extractFirstUrl(text));
   }
 
   @override
@@ -1353,6 +1378,144 @@ class _CategoryPicker extends StatelessWidget {
           ),
         );
       }).toList(),
+    );
+  }
+}
+
+class _OtherCategoryField extends StatefulWidget {
+  const _OtherCategoryField({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String value;
+  final void Function(String) onChanged;
+
+  @override
+  State<_OtherCategoryField> createState() => _OtherCategoryFieldState();
+}
+
+class _OtherCategoryFieldState extends State<_OtherCategoryField> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value);
+  }
+
+  @override
+  void didUpdateWidget(covariant _OtherCategoryField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.value != _controller.text) {
+      _controller.value = TextEditingValue(
+        text: widget.value,
+        selection: TextSelection.collapsed(offset: widget.value.length),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final count = _controller.text.length;
+    final isEmpty = _controller.text.trim().isEmpty;
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) => Opacity(
+        opacity: value,
+        child: Transform.translate(
+          offset: Offset(0, (1 - value) * 8),
+          child: child,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _controller,
+            maxLength: 10,
+            inputFormatters: [LengthLimitingTextInputFormatter(10)],
+            textInputAction: TextInputAction.done,
+            autocorrect: false,
+            onChanged: (value) {
+              widget.onChanged(value);
+              setState(() {});
+            },
+            buildCounter: (
+              _, {
+              required currentLength,
+              required isFocused,
+              required maxLength,
+            }) =>
+                null,
+            style: AppTypography.textTheme.bodyMedium,
+            decoration: InputDecoration(
+              hintText: 'Field name',
+              prefixIcon: const Icon(Icons.label_outline_rounded, size: 18),
+              filled: true,
+              fillColor: AppColors.surfaceSecondary,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: AppColors.borderSubtle),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide:
+                    const BorderSide(color: AppColors.fernGreen, width: 1.4),
+              ),
+              errorBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: AppColors.sunsetCoral),
+              ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Row(
+            children: [
+              Icon(
+                isEmpty ? Icons.info_outline_rounded : Icons.check_rounded,
+                size: 14,
+                color: isEmpty ? AppColors.sunsetCoral : AppColors.fernGreen,
+              ),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  isEmpty
+                      ? 'Describe the Other category in 10 characters or less.'
+                      : 'Other category: ${_controller.text.trim()}',
+                  style: GoogleFonts.josefinSans(
+                    fontSize: 11,
+                    color: isEmpty
+                        ? AppColors.sunsetCoral
+                        : AppColors.textSecondary,
+                  ),
+                ),
+              ),
+              Text(
+                '$count/10',
+                style: GoogleFonts.josefinSans(
+                  fontSize: 11,
+                  color: count >= 10
+                      ? AppColors.sunsetCoral
+                      : AppColors.textTertiary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
