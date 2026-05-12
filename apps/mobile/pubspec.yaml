@@ -1,7 +1,7 @@
 name: echoproof
 description: trust-layer social platform — verified opinions, community validation
 publish_to: none
-version: 1.0.0+1
+version: 1.1.1+1
 
 environment:
   sdk: ">=3.1.0 <4.0.0"
@@ -49,6 +49,7 @@ dependencies:
   image_picker: ^1.2.1
   file_picker: ^11.0.2
   url_launcher: ^6.3.2
+  flutter_windowmanager_plus: ^1.0.1
 
   # utilities
   uuid: ^4.5.3
@@ -100,7 +101,6 @@ dev_dependencies:
   mockito: ^5.6.4
   mocktail: ^1.0.5
   flutter_native_splash: ^2.4.7
-  flutter_windowmanager_plus: ^1.0.1
   integration_test:
     sdk: flutter
 
