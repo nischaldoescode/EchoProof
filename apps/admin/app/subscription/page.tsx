@@ -14,6 +14,7 @@ import {
 } from "@radix-ui/themes";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
+import { adminPath } from "@/lib/routes";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +61,7 @@ export default async function SubscriptionsPage() {
           <Heading size="4" mb="4">
             Pricing
           </Heading>
-          <form action="/api/admin/subscription/pricing" method="POST">
+          <form action={adminPath("/api/admin/subscription/pricing")} method="POST">
             <Flex gap="4" align="end" wrap="wrap">
               <Box>
                 <Text size="2" color="gray">
@@ -122,33 +123,69 @@ export default async function SubscriptionsPage() {
           <Heading size="4" mb="4">
             Grant subscription manually
           </Heading>
-          <form action="/api/admin/subscription/grant" method="POST">
-            <Flex gap="3" align="end" wrap="wrap">
-              <Box>
+          <form action={adminPath("/api/admin/subscription/grant")} method="POST">
+            <Flex gap="3" align="end" wrap="wrap" className="w-full">
+              <Box className="w-full sm:w-auto">
                 <Text size="2" color="gray">
                   Username
                 </Text>
                 <input
                   name="username"
                   placeholder="@username"
-                  className="border rounded p-2 w-48 mt-1"
+                  className="border rounded p-2 w-full sm:w-48 mt-1"
                 />
               </Box>
-              <Box>
+              <Box className="w-[calc(50%-6px)] sm:w-auto">
+                <Text size="2" color="gray">
+                  Plan
+                </Text>
+                <select
+                  name="plan_type"
+                  defaultValue="pro_monthly"
+                  className="border rounded p-2 w-full sm:w-40 mt-1 bg-white"
+                >
+                  <option value="pro_monthly">Pro monthly</option>
+                  <option value="pro_yearly">Pro yearly</option>
+                </select>
+              </Box>
+              <Box className="w-[calc(50%-6px)] sm:w-auto">
                 <Text size="2" color="gray">
                   Duration (days)
                 </Text>
                 <input
                   name="days"
                   type="number"
+                  min={1}
+                  max={3650}
                   defaultValue={30}
-                  className="border rounded p-2 w-24 mt-1"
+                  className="border rounded p-2 w-full sm:w-24 mt-1"
                 />
               </Box>
-              <Button type="submit" color="green">
+              <Box className="w-full sm:w-auto">
+                <Text size="2" color="gray">
+                  Purchase history
+                </Text>
+                <select
+                  name="purchase_history_mode"
+                  defaultValue="none"
+                  className="border rounded p-2 w-full sm:w-64 mt-1 bg-white"
+                >
+                  <option value="none">Do not generate</option>
+                  <option value="active">Generate active mock order</option>
+                  <option value="acknowledged">
+                    Generate acknowledged mock order
+                  </option>
+                </select>
+              </Box>
+              <Button type="submit" color="green" className="w-full sm:w-auto">
                 Grant
               </Button>
             </Flex>
+            <Text size="1" color="gray" mt="3" as="p">
+              Mock history is for admin-only manual grants and uses the same
+              expiry as the granted subscription. Real Google Play purchases
+              should still come through server validation.
+            </Text>
           </form>
         </Box>
       </Card>
@@ -208,7 +245,7 @@ export default async function SubscriptionsPage() {
                   </Table.Cell>
                   <Table.Cell>
                     <form
-                      action="/api/admin/subscription/revoke"
+                      action={adminPath("/api/admin/subscription/revoke")}
                       method="POST"
                     >
                       <input

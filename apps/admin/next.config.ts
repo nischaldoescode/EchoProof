@@ -1,7 +1,20 @@
 import type { NextConfig } from "next";
 
+function normalizeBasePath(value?: string) {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed || trimmed === "/") return undefined;
+
+  const withSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return withSlash.replace(/\/+$/, "");
+}
+
+const adminBasePath = normalizeBasePath(
+  process.env.NEXT_PUBLIC_ADMIN_BASE_PATH || process.env.ADMIN_BASE_PATH,
+);
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  ...(adminBasePath ? { basePath: adminBasePath } : {}),
   images: {
     remotePatterns: [
       {

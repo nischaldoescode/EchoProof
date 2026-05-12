@@ -119,6 +119,8 @@ class EchoEntity extends Equatable {
     this.verifiedRecordStatus = 'pending',
     this.verifiedRecordError,
     this.bondCount = 0,
+    this.socialContext,
+    this.previewReplies = const [],
   });
 
   final String id;
@@ -158,6 +160,8 @@ class EchoEntity extends Equatable {
   final String verifiedRecordStatus;
   final String? verifiedRecordError;
   final int bondCount;
+  final String? socialContext;
+  final List<EchoReplyPreview> previewReplies;
 
   /// pre-formatted relative time string, e.g. "2h ago"
   final String timeAgo;
@@ -202,6 +206,12 @@ class EchoEntity extends Equatable {
           json['verified_record_status'] as String? ?? 'pending',
       verifiedRecordError: json['verified_record_error'] as String?,
       bondCount: (json['bond_count'] as num?)?.toInt() ?? 0,
+      socialContext: json['social_context'] as String?,
+      previewReplies: (json['preview_replies'] as List?)
+              ?.whereType<Map<String, dynamic>>()
+              .map(EchoReplyPreview.fromJson)
+              .toList() ??
+          const [],
     );
   }
 
@@ -244,6 +254,8 @@ class EchoEntity extends Equatable {
     String? verifiedRecordStatus,
     String? verifiedRecordError,
     int? bondCount,
+    String? socialContext,
+    List<EchoReplyPreview>? previewReplies,
   }) {
     return EchoEntity(
       id: id ?? this.id,
@@ -279,6 +291,8 @@ class EchoEntity extends Equatable {
       verifiedRecordStatus: verifiedRecordStatus ?? this.verifiedRecordStatus,
       verifiedRecordError: verifiedRecordError ?? this.verifiedRecordError,
       bondCount: bondCount ?? this.bondCount,
+      socialContext: socialContext ?? this.socialContext,
+      previewReplies: previewReplies ?? this.previewReplies,
     );
   }
 
@@ -317,5 +331,72 @@ class EchoEntity extends Equatable {
         verifiedRecordStatus,
         verifiedRecordError,
         bondCount,
+        socialContext,
+        previewReplies,
+      ];
+}
+
+class EchoReplyPreview extends Equatable {
+  const EchoReplyPreview({
+    required this.id,
+    required this.content,
+    required this.username,
+    required this.displayName,
+    required this.userId,
+    this.avatarUrl,
+    this.userTrustTier = 'unverified',
+    this.userIsVerified = false,
+    this.userIsPro = false,
+    this.likeCount = 0,
+    this.childReplyCount = 0,
+    this.createdAt,
+  });
+
+  final String id;
+  final String content;
+  final String username;
+  final String displayName;
+  final String userId;
+  final String? avatarUrl;
+  final String userTrustTier;
+  final bool userIsVerified;
+  final bool userIsPro;
+  final int likeCount;
+  final int childReplyCount;
+  final DateTime? createdAt;
+
+  factory EchoReplyPreview.fromJson(Map<String, dynamic> json) {
+    return EchoReplyPreview(
+      id: json['id'] as String? ?? '',
+      content: json['content'] as String? ?? '',
+      username: json['username'] as String? ?? 'unknown',
+      displayName: json['display_name'] as String? ??
+          json['username'] as String? ??
+          'unknown',
+      userId: json['user_id'] as String? ?? '',
+      avatarUrl: json['avatar_url'] as String?,
+      userTrustTier: json['user_trust_tier'] as String? ?? 'unverified',
+      userIsVerified: json['user_is_verified'] as bool? ?? false,
+      userIsPro: json['user_is_pro'] as bool? ?? false,
+      likeCount: (json['like_count'] as num?)?.toInt() ?? 0,
+      childReplyCount: (json['child_reply_count'] as num?)?.toInt() ?? 0,
+      createdAt: EchoEntity._dateFromJson(json['created_at']),
+    );
+  }
+
+  @override
+  List<Object?> get props => [
+        id,
+        content,
+        username,
+        displayName,
+        userId,
+        avatarUrl,
+        userTrustTier,
+        userIsVerified,
+        userIsPro,
+        likeCount,
+        childReplyCount,
+        createdAt,
       ];
 }
