@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
+import 'solana_status_chip.dart';
 
 class ProofAttachment extends StatelessWidget {
   const ProofAttachment({
@@ -18,13 +19,17 @@ class ProofAttachment extends StatelessWidget {
     required this.description,
     required this.username,
     required this.timeAgo,
+    this.stakeTx,
+    this.solanaStatus = 'pending',
   });
 
-  final String  proofType;
-  final String  proofUrl;
+  final String proofType;
+  final String proofUrl;
   final String? description;
-  final String  username;
-  final String  timeAgo;
+  final String username;
+  final String timeAgo;
+  final String? stakeTx;
+  final String solanaStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -95,7 +100,8 @@ class ProofAttachment extends StatelessWidget {
                         onTap: () async {
                           final uri = Uri.parse(proofUrl);
                           if (await canLaunchUrl(uri)) {
-                            await launchUrl(uri, mode: LaunchMode.externalApplication);
+                            await launchUrl(uri,
+                                mode: LaunchMode.externalApplication);
                           }
                         },
                         child: const Icon(
@@ -106,7 +112,6 @@ class ProofAttachment extends StatelessWidget {
                       ),
                   ],
                 ),
-
                 if (description != null && description!.isNotEmpty) ...[
                   const SizedBox(height: AppSpacing.xs),
                   Text(
@@ -114,12 +119,16 @@ class ProofAttachment extends StatelessWidget {
                     style: AppTypography.textTheme.bodySmall,
                   ),
                 ],
-
                 const SizedBox(height: AppSpacing.xs),
-
                 Text(
                   '@$username · $timeAgo',
                   style: AppTypography.textTheme.labelMedium,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                SolanaStatusChip(
+                  status: solanaStatus,
+                  signature: stakeTx,
+                  label: 'Solana proof',
                 ),
               ],
             ),
@@ -130,11 +139,11 @@ class ProofAttachment extends StatelessWidget {
   }
 
   String _typeLabel(String type) => switch (type) {
-    'image'    => 'IMAGE PROOF',
-    'url'      => 'LINK PROOF',
-    'document' => 'DOCUMENT',
-    _          => 'PROOF',
-  };
+        'image' => 'IMAGE PROOF',
+        'url' => 'LINK PROOF',
+        'document' => 'DOCUMENT',
+        _ => 'PROOF',
+      };
 }
 
 class _TypeIcon extends StatelessWidget {
@@ -144,10 +153,10 @@ class _TypeIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final icon = switch (proofType) {
-      'image'    => Icons.image_outlined,
-      'url'      => Icons.link_outlined,
+      'image' => Icons.image_outlined,
+      'url' => Icons.link_outlined,
       'document' => Icons.attach_file_outlined,
-      _          => Icons.attach_file_outlined,
+      _ => Icons.attach_file_outlined,
     };
     return Icon(icon, size: 13, color: AppColors.textTertiary);
   }

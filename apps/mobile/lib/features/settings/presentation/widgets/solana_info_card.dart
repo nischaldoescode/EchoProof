@@ -36,7 +36,7 @@ class SolanaInfoCard extends StatelessWidget {
               ),
               const SizedBox(width: AppSpacing.md),
               Text(
-                'How records are stored',
+                'Solana record layer',
                 style: AppTypography.textTheme.titleSmall,
               ),
             ],
@@ -44,23 +44,23 @@ class SolanaInfoCard extends StatelessWidget {
           const SizedBox(height: AppSpacing.lg),
           _InfoRow(
             icon: Icons.verified_outlined,
-            title: 'Permanent verification records',
+            title: 'Echoes are anchored on Solana',
             description:
-                'When an echo reaches verified status, a permanent record is created containing a fingerprint of the content, confidence score, and timestamp. This record cannot be altered or deleted by anyone.',
+                'New posts and verified echoes create Solana memo records with a fingerprint of the content, confidence score, and timestamp.',
           ),
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
             icon: Icons.workspace_premium_outlined,
             title: 'Portable reputation',
             description:
-                'When you reach High or Elite trust tier, your reputation score is anchored in an immutable public record. You can use this to prove your credibility anywhere.',
+                'High-trust actions can be connected to public Solana records, so credibility is easier to verify outside the app.',
           ),
           const SizedBox(height: AppSpacing.md),
           _InfoRow(
             icon: Icons.handshake_outlined,
             title: 'Truth Bonds',
             description:
-                'Bonding your reputation to a verified echo creates a 30-day settlement window. If the echo stays verified, your bond settles and you receive a reputation boost. If it is later downgraded, your bond is marked contested — a permanent public record.',
+                'Bonding your reputation to a verified echo creates a Solana record and a 30-day settlement window.',
           ),
           const SizedBox(height: AppSpacing.lg),
           Container(
@@ -82,7 +82,7 @@ class SolanaInfoCard extends StatelessWidget {
                 const SizedBox(width: AppSpacing.xs),
                 Expanded(
                   child: Text(
-                    'Records are stored on a public distributed ledger. Echoproof cannot modify or delete them.',
+                    'Records are written through Solana Memo Program transactions. Echoproof can show their status, but cannot rewrite an anchored transaction.',
                     style: GoogleFonts.josefinSans(
                       fontSize: 11,
                       color: AppColors.fernGreenDark,

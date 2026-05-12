@@ -3,6 +3,7 @@
 // uses plain StatefulWidget with supabase queries — no riverpod
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
@@ -10,15 +11,20 @@ import '../../../../app/theme/typography.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../shared/widgets/app_bottom_nav.dart';
 import '../../../../app/app.dart';
-import '../../../../core/utils/snack.dart';
+import '../../../../shared/widgets/shimmer_loader.dart';
+
 class TrendingSignal {
   const TrendingSignal({
     required this.signal,
     required this.echoCount,
+    required this.authorCount,
+    required this.fairScore,
     this.countryCode,
   });
   final String signal;
   final int echoCount;
+  final int authorCount;
+  final double fairScore;
   final String? countryCode;
 }
 
@@ -61,10 +67,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     _subscribeRealtime();
   }
 
-  RealtimeChannel? _channel;
-
   void _subscribeRealtime() {
-    final client = Supabase.instance.client;
     // Refresh signals every 2 minutes via realtime-like polling.
     // (echo_signals table doesn't have a natural realtime trigger, so we poll.)
     Future.delayed(const Duration(minutes: 2), () {
@@ -110,15 +113,15 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       if (_selectedCountry != null) {
         rows = await client
             .from('trending_signals_by_country')
-            .select('signal, echo_count')
+            .select('signal, echo_count, author_count, fair_score')
             .eq('country_code', _selectedCountry!)
-            .order('echo_count', ascending: false)
+            .order('fair_score', ascending: false)
             .limit(20);
       } else {
         rows = await client
             .from('trending_signals_global')
-            .select('signal, echo_count')
-            .order('echo_count', ascending: false)
+            .select('signal, echo_count, author_count, fair_score')
+            .order('fair_score', ascending: false)
             .limit(30);
       }
 
@@ -127,6 +130,10 @@ class _DiscoverScreenState extends State<DiscoverScreen>
             .map((r) => TrendingSignal(
                   signal: r['signal'] as String,
                   echoCount: (r['echo_count'] as num).toInt(),
+                  authorCount: (r['author_count'] as num?)?.toInt() ?? 1,
+                  fairScore: ((r['fair_score'] as num?)?.toDouble() ?? 0)
+                      .clamp(0, 999)
+                      .toDouble(),
                   countryCode: _selectedCountry,
                 ))
             .toList();
@@ -230,68 +237,81 @@ class _DiscoverScreenState extends State<DiscoverScreen>
               ),
 
               Expanded(
-                child: _isLoading
-                    ? const Center(
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppColors.fernGreen,
-                        ),
-                      )
-                    : _signals.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
+                child: RefreshIndicator(
+                  color: AppColors.fernGreen,
+                  onRefresh: _loadSignals,
+                  child: _isLoading
+                      ? ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: const [
+                            SizedBox(height: 180),
+                            EchoLogoLoader(label: 'Finding signals'),
+                          ],
+                        )
+                      : _signals.isEmpty
+                          ? ListView(
+                              physics: const AlwaysScrollableScrollPhysics(),
                               children: [
-                                const Icon(
-                                  Icons.tag,
-                                  size: 40,
-                                  color: AppColors.textTertiary,
-                                ),
-                                const SizedBox(height: AppSpacing.md),
-                                Text(
-                                  'No signals trending yet',
-                                  style: AppTypography.textTheme.bodyMedium
-                                      ?.copyWith(
-                                    color: AppColors.textSecondary,
+                                const SizedBox(height: 160),
+                                Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.tag,
+                                        size: 40,
+                                        color: AppColors.textTertiary,
+                                      ),
+                                      const SizedBox(height: AppSpacing.md),
+                                      Text(
+                                        'No signals trending yet',
+                                        style: AppTypography
+                                            .textTheme.bodyMedium
+                                            ?.copyWith(
+                                          color: AppColors.textSecondary,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
-                            ),
-                          )
-                        : ListView.builder(
-                            padding: const EdgeInsets.only(bottom: 80),
-                            itemCount: _signals.length,
-                            itemBuilder: (context, index) {
-                              final delay = index * 0.04;
-                              final end = (delay + 0.3).clamp(0.0, 1.0);
-                              final anim =
-                                  Tween<double>(begin: 0, end: 1).animate(
-                                CurvedAnimation(
-                                  parent: _entranceController,
-                                  curve: Interval(delay, end,
-                                      curve: Curves.easeOut),
-                                ),
-                              );
+                            )
+                          : ListView.builder(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.only(bottom: 80),
+                              itemCount: _signals.length,
+                              itemBuilder: (context, index) {
+                                final delay = index * 0.04;
+                                final end = (delay + 0.3).clamp(0.0, 1.0);
+                                final anim =
+                                    Tween<double>(begin: 0, end: 1).animate(
+                                  CurvedAnimation(
+                                    parent: _entranceController,
+                                    curve: Interval(delay, end,
+                                        curve: Curves.easeOut),
+                                  ),
+                                );
 
-                              return AnimatedBuilder(
-                                animation: anim,
-                                builder: (context, child) => Opacity(
-                                  opacity: anim.value,
-                                  child: Transform.translate(
-                                    offset: Offset(0, (1 - anim.value) * 16),
-                                    child: child,
+                                return AnimatedBuilder(
+                                  animation: anim,
+                                  builder: (context, child) => Opacity(
+                                    opacity: anim.value,
+                                    child: Transform.translate(
+                                      offset: Offset(0, (1 - anim.value) * 16),
+                                      child: child,
+                                    ),
                                   ),
-                                ),
-                                child: _SignalRow(
-                                  signal: _signals[index],
-                                  rank: index + 1,
-                                  onTap: () => _openSignalFeed(
-                                    _signals[index].signal,
+                                  child: _SignalRow(
+                                    signal: _signals[index],
+                                    rank: index + 1,
+                                    onTap: () => _openSignalFeed(
+                                      _signals[index].signal,
+                                    ),
                                   ),
-                                ),
-                              );
-                            },
-                          ),
+                                );
+                              },
+                            ),
+                ),
               ),
             ],
           ),
@@ -299,7 +319,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   }
 
   void _openSignalFeed(String signal) {
-    showInfoSnack(context, 'Maximum 2 attachments allowed');
+    context.push('/search?q=${Uri.encodeQueryComponent(signal)}');
   }
 }
 
@@ -353,7 +373,7 @@ class _SignalRow extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    '${_formatCount(signal.echoCount)} echoes',
+                    '${_formatCount(signal.echoCount)} echoes - ${_formatCount(signal.authorCount)} voices',
                     style: AppTypography.textTheme.labelMedium,
                   ),
                 ],
@@ -370,7 +390,7 @@ class _SignalRow extends StatelessWidget {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  'Trending',
+                  'Fair ${signal.fairScore.toStringAsFixed(1)}',
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w600,

@@ -34,26 +34,78 @@ class EchoFeedService extends ChangeNotifier {
   bool get isLoading => _loadState == FeedLoadState.loading;
   bool get isLoadingMore => _loadState == FeedLoadState.loadingMore;
 
+  void removeEcho(String echoId) {
+    final next = _echoes.where((echo) => echo.id != echoId).toList();
+    if (next.length == _echoes.length) return;
+    _echoes = next;
+    notifyListeners();
+  }
+
   Future<List<EchoEntity>> _fetchFallback() async {
     AppLogger.info('feed: running fallback direct DB query');
     final client = Supabase.instance.client;
 
     try {
+      final userId = client.auth.currentUser?.id;
+      final hiddenEchoIds = <String>{};
+      final hiddenAuthorIds = <String>{};
+
+      if (userId != null) {
+        final results = await Future.wait([
+          client
+              .from('user_feed_feedback')
+              .select('echo_id, author_id, feedback_type')
+              .eq('user_id', userId)
+              .filter(
+                'feedback_type',
+                'in',
+                '("not_interested","report","block_author")',
+              ),
+          client
+              .from('user_blocks')
+              .select('blocked_id')
+              .eq('blocker_id', userId),
+        ]);
+        for (final row in List<Map<String, dynamic>>.from(results[0] as List)) {
+          final echoId = row['echo_id'] as String?;
+          if (echoId != null) hiddenEchoIds.add(echoId);
+          if (row['feedback_type'] == 'block_author') {
+            final authorId = row['author_id'] as String?;
+            if (authorId != null) hiddenAuthorIds.add(authorId);
+          }
+        }
+        for (final row in List<Map<String, dynamic>>.from(results[1] as List)) {
+          final blockedId = row['blocked_id'] as String?;
+          if (blockedId != null) hiddenAuthorIds.add(blockedId);
+        }
+      }
+
       final rows = await client
           .from('echoes')
           .select('''
             id, title, content, category, status, version,
+            user_id, media_urls, reply_count, proof_count, bond_count,
             trust_score, confidence_score, controversy_score, report_score,
             support_count, challenge_count, created_at,
-            users_public!inner(username, avatar_url, trust_tier)
+            created_record_tx, created_record_at, solana_status, solana_error,
+            verified_record_tx, verified_record_at,
+            verified_record_status, verified_record_error,
+            users_public!inner(username, display_name, avatar_url, trust_tier, is_pro, is_public)
           ''')
           .not('status', 'in', '("hidden","rejected")')
+          .eq('users_public.is_public', true)
           .order('created_at', ascending: false)
           .limit(_kPageSize);
 
       AppLogger.info('feed: fallback returned ${(rows as List).length} echoes');
 
-      return (rows as List).map((row) {
+      return (rows as List).where((row) {
+        final r = row as Map<String, dynamic>;
+        final echoId = r['id'] as String? ?? '';
+        final authorId = r['user_id'] as String? ?? '';
+        return !hiddenEchoIds.contains(echoId) &&
+            !hiddenAuthorIds.contains(authorId);
+      }).map((row) {
         final r = row as Map<String, dynamic>;
         final user = r['users_public'] as Map<String, dynamic>;
         return _mapToEntity(r, user);
@@ -240,6 +292,10 @@ class EchoFeedService extends ChangeNotifier {
       title: row['title'] as String? ?? '',
       content: row['content'] as String,
       username: user['username'] as String,
+      userDisplayName:
+          (user['display_name'] as String?)?.trim().isNotEmpty == true
+              ? user['display_name'] as String
+              : user['username'] as String,
       userTrustTier: user['trust_tier'] as String? ?? 'unverified',
       userIsVerified: user['is_identity_verified'] as bool? ?? false,
       userIsPro: user['is_pro'] as bool? ?? false,
@@ -255,7 +311,26 @@ class EchoFeedService extends ChangeNotifier {
       supportCount: (row['support_count'] as num?)?.toInt() ?? 0,
       challengeCount: (row['challenge_count'] as num?)?.toInt() ?? 0,
       timeAgo: Formatters.timeAgo(created),
+      mediaUrls: (row['media_urls'] as List?)?.cast<String>() ?? const [],
+      replyCount: (row['reply_count'] as num?)?.toInt() ?? 0,
+      proofCount: (row['proof_count'] as num?)?.toInt() ?? 0,
+      userId: row['user_id'] as String? ?? '',
+      createdRecordTx: row['created_record_tx'] as String?,
+      createdRecordAt: _parseDate(row['created_record_at']),
+      solanaStatus: row['solana_status'] as String? ?? 'pending',
+      solanaError: row['solana_error'] as String?,
+      verifiedRecordTx: row['verified_record_tx'] as String?,
+      verifiedRecordAt: _parseDate(row['verified_record_at']),
+      verifiedRecordStatus:
+          row['verified_record_status'] as String? ?? 'pending',
+      verifiedRecordError: row['verified_record_error'] as String?,
+      bondCount: (row['bond_count'] as num?)?.toInt() ?? 0,
     );
+  }
+
+  DateTime? _parseDate(dynamic value) {
+    if (value is String) return DateTime.tryParse(value);
+    return null;
   }
 
   EchoStatus _parseStatus(String v) => switch (v) {

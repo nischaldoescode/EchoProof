@@ -20,6 +20,7 @@ MockEchoEntity makeMockEcho({
     'This is the content of the echo for testing purposes.',
   );
   when(() => mock.username).thenReturn('anonymous_user_42');
+  when(() => mock.userDisplayName).thenReturn('Anonymous User');
   when(() => mock.userTrustTier).thenReturn('medium');
   when(() => mock.userIsVerified).thenReturn(true);
   when(() => mock.userAvatarUrl).thenReturn(null);
@@ -33,6 +34,20 @@ MockEchoEntity makeMockEcho({
   when(() => mock.timeAgo).thenReturn('2h ago');
   when(() => mock.proofCount).thenReturn(0);
   when(() => mock.requiresVerification).thenReturn(true);
+  when(() => mock.version).thenReturn(1);
+  when(() => mock.replyCount).thenReturn(0);
+  when(() => mock.userIsPro).thenReturn(false);
+  when(() => mock.mediaUrls).thenReturn(const []);
+  when(() => mock.userId).thenReturn('test-user-id');
+  when(() => mock.createdRecordTx).thenReturn(null);
+  when(() => mock.createdRecordAt).thenReturn(null);
+  when(() => mock.solanaStatus).thenReturn('pending');
+  when(() => mock.solanaError).thenReturn(null);
+  when(() => mock.verifiedRecordTx).thenReturn(null);
+  when(() => mock.verifiedRecordAt).thenReturn(null);
+  when(() => mock.verifiedRecordStatus).thenReturn('pending');
+  when(() => mock.verifiedRecordError).thenReturn(null);
+  when(() => mock.bondCount).thenReturn(0);
 
   return mock;
 }

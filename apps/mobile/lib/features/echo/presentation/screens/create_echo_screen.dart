@@ -21,7 +21,10 @@ import 'package:flutter_mentions/flutter_mentions.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/utils/snack.dart';
 import '../../../../core/services/tflite_spam_checker.dart';
+import '../../../../core/utils/media_file_safety.dart';
+import '../../../../core/utils/sanitizer.dart';
 import '../widgets/link_preview_card.dart';
+import '../../../../shared/widgets/rich_text_display.dart';
 
 enum _DraftAction { save, discard }
 
@@ -111,6 +114,13 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
   }
 
   Future<void> _pickMedia(bool isVideo) async {
+    final service = context.read<CreateEchoService>();
+
+    if (service.localMediaPaths.length >= 2) {
+      showInfoSnack(context, 'Maximum 2 attachments allowed');
+      return;
+    }
+
     final picker = ImagePicker();
     XFile? file;
 
@@ -130,36 +140,62 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
     if (file == null) return;
     if (!mounted) return;
 
-    // Reject files over 10MB to prevent upload timeouts.
-    final fileSize = await File(file.path).length();
-    if (fileSize > 10 * 1024 * 1024) {
-      if (mounted) {
-        showInfoSnack(
-            context, "File is too large, Make sure the file is less than 10MB");
-      }
+    final validation = await MediaFileSafety.validateLocalFile(
+      file.path,
+      expectedKind: isVideo ? MediaFileKind.video : MediaFileKind.image,
+    );
+
+    if (!mounted) return;
+    if (!validation.isValid) {
+      showInfoSnack(context, validation.error ?? 'File could not be attached');
       return;
     }
 
-    final service = context.read<CreateEchoService>();
-
-    if (service.localMediaPaths.length >= 2) {
-      showInfoSnack(context, 'Maximum 2 attachments allowed');
+    final selectedPath = File(file.path).absolute.path;
+    final alreadyAttached = service.localMediaPaths.any(
+      (path) => File(path).absolute.path == selectedPath,
+    );
+    if (alreadyAttached) {
+      showInfoSnack(context, 'That attachment is already selected');
       return;
     }
 
     // Store local path for preview + upload later.
     service.addLocalMedia(file.path);
+    HapticFeedback.selectionClick();
   }
 
   Future<void> _submit() async {
-    if (!(_formKey.currentState?.validate() ?? false)) return;
-    final content = _contentKey.currentState?.controller?.text ?? '';
-    context.read<CreateEchoService>().setContent(content);
-
     final service = context.read<CreateEchoService>();
+    final contentController = _contentKey.currentState?.controller;
+    final cleanTitle = Sanitizer.text(_titleController.text);
+    final cleanContent = Sanitizer.text(contentController?.text ?? '');
+
+    if (_titleController.text != cleanTitle) {
+      _titleController.value = TextEditingValue(
+        text: cleanTitle,
+        selection: TextSelection.collapsed(offset: cleanTitle.length),
+      );
+    }
+    if (contentController != null && contentController.text != cleanContent) {
+      final currentOffset = contentController.selection.baseOffset;
+      final offset = currentOffset < 0
+          ? cleanContent.length
+          : currentOffset.clamp(0, cleanContent.length).toInt();
+      contentController.value = TextEditingValue(
+        text: cleanContent,
+        selection: TextSelection.collapsed(offset: offset),
+      );
+    }
+
+    service
+      ..setTitle(cleanTitle)
+      ..setContent(cleanContent);
+
+    if (!(_formKey.currentState?.validate() ?? false)) return;
 
     // Client-side pre-check — fast, no network.
-    if (TfliteSpamChecker.shouldWarn(service.title, content)) {
+    if (TfliteSpamChecker.shouldWarn(service.title, cleanContent)) {
       final proceed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -284,6 +320,14 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
     final service = context.watch<CreateEchoService>();
     final size = MediaQuery.sizeOf(context);
     final isTablet = size.width > 700;
+    final isPro = context.watch<SubscriptionService>().isPro;
+    if (service.isPro != isPro) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          context.read<CreateEchoService>().setProStatus(isPro);
+        }
+      });
+    }
 
     // navigate away on success
     if (service.success) {
@@ -322,7 +366,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
         onPopInvokedWithResult: (didPop, _) async {
           if (didPop) return;
           final action = await _showDiscardSheet(context);
-          if (!mounted) return;
+          if (!context.mounted) return;
           if (action == _DraftAction.discard) {
             service.reset();
             context.pop();
@@ -346,7 +390,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                   return;
                 }
                 final action = await _showDiscardSheet(context);
-                if (!mounted) return;
+                if (!context.mounted) return;
                 if (action == _DraftAction.discard) {
                   service.reset();
                   context.pop();
@@ -356,7 +400,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
               },
             ),
             actions: [
-              if (context.read<SubscriptionService>().isPro)
+              if (isPro)
                 IconButton(
                   icon: const Icon(Icons.tips_and_updates_outlined, size: 20),
                   onPressed: _showProGuide,
@@ -396,7 +440,14 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                 child: Form(
                   key: _formKey,
                   child: ListView(
-                    padding: const EdgeInsets.all(AppSpacing.xl),
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: EdgeInsets.fromLTRB(
+                      AppSpacing.xl,
+                      AppSpacing.xl,
+                      AppSpacing.xl,
+                      MediaQuery.paddingOf(context).bottom + 100,
+                    ),
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -445,6 +496,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                         mentionableUsers: _mentionableUsers,
                         onChanged: context.read<CreateEchoService>().setContent,
                         maxLength: service.contentMaxLength,
+                        isPro: isPro,
                         onUrlDetected: (url) {
                           setState(() {
                             _detectedUrl = url;
@@ -461,6 +513,27 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                           }),
                           onAttach: () {},
                         ),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 220),
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        child: isPro &&
+                                (service.title.trim().isNotEmpty ||
+                                    service.content.trim().isNotEmpty)
+                            ? Padding(
+                                key: const ValueKey('pro-preview'),
+                                padding:
+                                    const EdgeInsets.only(top: AppSpacing.lg),
+                                child: _ProEchoPreviewCard(
+                                  title: service.title,
+                                  content: service.content,
+                                  category: service.category,
+                                ),
+                              )
+                            : const SizedBox.shrink(
+                                key: ValueKey('no-pro-preview'),
+                              ),
+                      ),
                       const SizedBox(height: AppSpacing.xl),
                       Text('Category',
                           style: AppTypography.textTheme.titleSmall),
@@ -555,10 +628,13 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
               icon: Icons.format_bold_rounded,
               title: 'Rich Text Formatting',
               tips: [
-                '**bold text** wraps words in double asterisks',
+                '**bold text** uses exactly two asterisks on each side',
+                '***bold italic*** uses three asterisks on each side',
                 '_italic text_ wraps words in underscores',
                 '~~strikethrough~~ wraps words in double tildes',
-                'Use the B / I / S toolbar above the text field',
+                '[large]large text[/large] and [small]small text[/small] change size',
+                'The editor shows markers while Pro preview shows the final card',
+                'Use the B / I / S / A+ / A- toolbar above the text field',
               ],
             ),
             _GuideSection(
@@ -587,8 +663,8 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
               tips: [
                 'Attach up to 2 images or videos as evidence',
                 'Images are compressed to 1280px max',
-                'Videos must be under 10MB',
-                'AI-generated media is automatically detected and rejected',
+                'Videos must be under 50MB',
+                'File type, size, and file header are validated before upload',
               ],
             ),
             _GuideSection(
@@ -684,6 +760,7 @@ class _ContentMentionField extends StatelessWidget {
     required this.mentionableUsers,
     required this.onChanged,
     required this.maxLength,
+    required this.isPro,
     required this.onUrlDetected,
   });
 
@@ -691,6 +768,7 @@ class _ContentMentionField extends StatelessWidget {
   final List<Map<String, dynamic>> mentionableUsers;
   final void Function(String) onChanged;
   final int maxLength;
+  final bool isPro;
   final void Function(String?) onUrlDetected;
 
   void _extractUrl(String text) {
@@ -729,15 +807,14 @@ class _ContentMentionField extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (context.read<SubscriptionService>().isPro)
+                  if (isPro)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 4),
                       child: _ProRichToolbar(mentionKey: mentionKey),
                     ),
                   FlutterMentions(
                     key: mentionKey,
-                    maxLines:
-                        context.read<SubscriptionService>().isPro ? 20 : 8,
+                    maxLines: isPro ? 20 : 8,
                     minLines: 4,
                     suggestionPosition: SuggestionPosition.Top,
                     onChanged: (v) {
@@ -854,8 +931,153 @@ class _ContentMentionField extends StatelessWidget {
   }
 }
 
+class _ProEchoPreviewCard extends StatelessWidget {
+  const _ProEchoPreviewCard({
+    required this.title,
+    required this.content,
+    required this.category,
+  });
+
+  final String title;
+  final String content;
+  final EchoCategory? category;
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmedTitle = title.trim();
+    final trimmedContent = content.trim();
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.98, end: 1),
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutBack,
+      builder: (context, value, child) =>
+          Transform.scale(scale: value, child: child),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(AppSpacing.md),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          border: Border.all(color: AppColors.borderSubtle),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.035),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: const BoxDecoration(
+                    color: AppColors.fernGreenLight,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.auto_awesome_rounded,
+                    size: 15,
+                    color: AppColors.fernGreen,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    'Pro preview',
+                    style: AppTypography.textTheme.titleSmall,
+                  ),
+                ),
+                if (category != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.softSand,
+                      borderRadius:
+                          BorderRadius.circular(AppSpacing.radiusFull),
+                    ),
+                    child: Text(
+                      category!.displayName,
+                      style: AppTypography.textTheme.bodySmall,
+                    ),
+                  ),
+              ],
+            ),
+            if (trimmedTitle.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.md),
+              RichTextDisplay(
+                text: trimmedTitle,
+                style: AppTypography.textTheme.titleMedium,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+            if (trimmedContent.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.sm),
+              RichTextDisplay(
+                text: trimmedContent,
+                style: AppTypography.textTheme.bodyMedium,
+                maxLines: 5,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+            const SizedBox(height: AppSpacing.sm),
+            Row(
+              children: [
+                _PreviewStat(
+                    icon: Icons.chat_bubble_outline_rounded, text: 'Reply'),
+                _PreviewStat(icon: Icons.arrow_upward_rounded, text: 'Support'),
+                _PreviewStat(
+                    icon: Icons.arrow_downward_rounded, text: 'Challenge'),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PreviewStat extends StatelessWidget {
+  const _PreviewStat({required this.icon, required this.text});
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 14, color: AppColors.textSecondary),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.textTheme.bodySmall?.copyWith(
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ProRichToolbar extends StatelessWidget {
-  const _ProRichToolbar({super.key, required this.mentionKey});
+  const _ProRichToolbar({required this.mentionKey});
   final GlobalKey<FlutterMentionsState> mentionKey;
 
   void _wrap(String open, String close) {
@@ -865,8 +1087,88 @@ class _ProRichToolbar extends StatelessWidget {
     if (!sel.isValid) return;
     final text = ctrl.text;
     final selected = sel.textInside(text);
-    final replacement = '$open$selected$close';
+    final fallback = switch (open) {
+      '**' => 'bold text',
+      '_' => 'italic text',
+      '~~' => 'strikethrough text',
+      '[large]' => 'large text',
+      '[small]' => 'small text',
+      _ => 'text',
+    };
+
+    if (selected.isEmpty) {
+      final replacement = '$open$fallback$close';
+      final newText = text.replaceRange(sel.start, sel.end, replacement);
+      ctrl.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection(
+          baseOffset: sel.start + open.length,
+          extentOffset: sel.start + open.length + fallback.length,
+        ),
+      );
+      return;
+    }
+
+    final leading = RegExp(r'^\s+').firstMatch(selected)?.group(0) ?? '';
+    final trailing = RegExp(r'\s+$').firstMatch(selected)?.group(0) ?? '';
+    final coreStart = sel.start + leading.length;
+    final coreEnd = sel.end - trailing.length;
+    final core = coreEnd > coreStart ? text.substring(coreStart, coreEnd) : '';
+
+    if (core.isEmpty) {
+      final replacement = '$leading$open$fallback$close$trailing';
+      final newText = text.replaceRange(sel.start, sel.end, replacement);
+      ctrl.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection(
+          baseOffset: sel.start + leading.length + open.length,
+          extentOffset:
+              sel.start + leading.length + open.length + fallback.length,
+        ),
+      );
+      return;
+    }
+
+    if (core.startsWith(open) &&
+        core.endsWith(close) &&
+        core.length >= open.length + close.length) {
+      final unwrapped = core.substring(
+        open.length,
+        core.length - close.length,
+      );
+      final replacement = '$leading$unwrapped$trailing';
+      final newText = text.replaceRange(sel.start, sel.end, replacement);
+      ctrl.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection(
+          baseOffset: sel.start + leading.length,
+          extentOffset: sel.start + leading.length + unwrapped.length,
+        ),
+      );
+      return;
+    }
+
+    final hasOuterOpen = coreStart >= open.length &&
+        text.substring(coreStart - open.length, coreStart) == open;
+    final hasOuterClose = coreEnd + close.length <= text.length &&
+        text.substring(coreEnd, coreEnd + close.length) == close;
+    if (hasOuterOpen && hasOuterClose) {
+      final newText = text.replaceRange(coreEnd, coreEnd + close.length, '');
+      final unwrappedText =
+          newText.replaceRange(coreStart - open.length, coreStart, '');
+      ctrl.value = TextEditingValue(
+        text: unwrappedText,
+        selection: TextSelection(
+          baseOffset: coreStart - open.length,
+          extentOffset: coreEnd - open.length,
+        ),
+      );
+      return;
+    }
+
+    final replacement = '$leading$open$core$close$trailing';
     final newText = text.replaceRange(sel.start, sel.end, replacement);
+
     ctrl.value = TextEditingValue(
       text: newText,
       selection:
@@ -881,6 +1183,9 @@ class _ProRichToolbar extends StatelessWidget {
         _TBtn(label: 'B', bold: true, onTap: () => _wrap('**', '**')),
         _TBtn(label: 'I', italic: true, onTap: () => _wrap('_', '_')),
         _TBtn(label: 'S', strikethrough: true, onTap: () => _wrap('~~', '~~')),
+        _TBtn(
+            label: 'A+', bold: true, onTap: () => _wrap('[large]', '[/large]')),
+        _TBtn(label: 'A-', onTap: () => _wrap('[small]', '[/small]')),
         const SizedBox(width: 8),
         Text(
           'Pro rich text',
@@ -1066,17 +1371,6 @@ class _MediaPickerRow extends StatelessWidget {
   final List<String> localPaths;
   final void Function(int) onRemove;
 
-  bool _isVideo(String path) {
-    final lower = path.toLowerCase();
-    return lower.endsWith('.mp4') ||
-        lower.endsWith('.mov') ||
-        lower.endsWith('.avi');
-  }
-
-  String _getName(String path) {
-    return path.split('/').last;
-  }
-
   @override
   Widget build(BuildContext context) {
     final isMax = localPaths.length >= 2;
@@ -1134,110 +1428,134 @@ class _MediaPickerRow extends StatelessWidget {
         if (localPaths.isNotEmpty) ...[
           ...List.generate(localPaths.length, (i) {
             final path = localPaths[i];
-            final isVideo = _isVideo(path);
-            final name = _getName(path);
-            final ext = name.split('.').last.toUpperCase();
+            final isVideo = MediaFileSafety.isVideoPath(path);
+            final name = MediaFileSafety.displayName(path);
+            final ext = MediaFileSafety.extensionOf(name).toUpperCase();
 
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppColors.softSand,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.borderSubtle),
+            return TweenAnimationBuilder<double>(
+              key: ValueKey(path),
+              tween: Tween(begin: 0, end: 1),
+              duration: Duration(milliseconds: 220 + i * 40),
+              curve: Curves.easeOutCubic,
+              builder: (context, value, child) => Opacity(
+                opacity: value,
+                child: Transform.translate(
+                  offset: Offset(0, (1 - value) * 12),
+                  child: child,
                 ),
-                child: Row(
-                  children: [
-                    // 🎬 Thumbnail / Icon
-                    ClipRRect(
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(11),
-                        bottomLeft: Radius.circular(11),
-                      ),
-                      child: isVideo
-                          ? Container(
-                              width: 64,
-                              height: 64,
-                              color: AppColors.charcoal,
-                              child: const Icon(
-                                Icons.play_circle_filled_rounded,
-                                color: Colors.white,
-                                size: 28,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.softSand,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.borderSubtle),
+                  ),
+                  child: Row(
+                    children: [
+                      // 🎬 Thumbnail / Icon
+                      ClipRRect(
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(11),
+                          bottomLeft: Radius.circular(11),
+                        ),
+                        child: isVideo
+                            ? Container(
+                                width: 64,
+                                height: 64,
+                                color: AppColors.charcoal,
+                                child: const Icon(
+                                  Icons.play_circle_filled_rounded,
+                                  color: Colors.white,
+                                  size: 28,
+                                ),
+                              )
+                            : Image.file(
+                                File(path),
+                                width: 64,
+                                height: 64,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(
+                                  width: 64,
+                                  height: 64,
+                                  color: AppColors.softSand,
+                                  child: const Icon(
+                                    Icons.broken_image_outlined,
+                                    color: AppColors.textTertiary,
+                                  ),
+                                ),
                               ),
-                            )
-                          : Image.file(
-                              File(path),
-                              width: 64,
-                              height: 64,
-                              fit: BoxFit.cover,
-                            ),
-                    ),
+                      ),
 
-                    const SizedBox(width: 12),
+                      const SizedBox(width: 12),
 
-                    // 📝 FILE INFO
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            name.length > 30
-                                ? '${name.substring(0, 27)}...'
-                                : name,
-                            style: GoogleFonts.josefinSans(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.charcoal,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 2),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: isVideo
-                                  ? AppColors.charcoal.withValues(alpha: 0.1)
-                                  : AppColors.fernGreen.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              ext,
+                      // 📝 FILE INFO
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              name.length > 30
+                                  ? '${name.substring(0, 27)}...'
+                                  : name,
                               style: GoogleFonts.josefinSans(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.charcoal,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
                                 color: isVideo
-                                    ? AppColors.charcoal
-                                    : AppColors.fernGreenDark,
+                                    ? AppColors.charcoal.withValues(alpha: 0.1)
+                                    : AppColors.fernGreen
+                                        .withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                ext,
+                                style: GoogleFonts.josefinSans(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: isVideo
+                                      ? AppColors.charcoal
+                                      : AppColors.fernGreenDark,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
 
-                    // ❌ REMOVE
-                    GestureDetector(
-                      onTap: () => onRemove(i),
-                      child: Container(
-                        width: 36,
-                        height: 64,
-                        decoration: BoxDecoration(
-                          color: AppColors.sunsetCoral.withValues(alpha: 0.08),
-                          borderRadius: const BorderRadius.only(
-                            topRight: Radius.circular(11),
-                            bottomRight: Radius.circular(11),
+                      // ❌ REMOVE
+                      GestureDetector(
+                        onTap: () => onRemove(i),
+                        child: Container(
+                          width: 36,
+                          height: 64,
+                          decoration: BoxDecoration(
+                            color:
+                                AppColors.sunsetCoral.withValues(alpha: 0.08),
+                            borderRadius: const BorderRadius.only(
+                              topRight: Radius.circular(11),
+                              bottomRight: Radius.circular(11),
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.close_rounded,
+                            size: 18,
+                            color: AppColors.sunsetCoral,
                           ),
                         ),
-                        child: const Icon(
-                          Icons.close_rounded,
-                          size: 18,
-                          color: AppColors.sunsetCoral,
-                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             );

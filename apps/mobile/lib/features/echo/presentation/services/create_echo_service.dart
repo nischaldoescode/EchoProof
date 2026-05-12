@@ -2,12 +2,14 @@
 // manages form state and echo submission
 // replaces: create_echo_provider.dart (riverpod version)
 
+import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../domain/entities/echo_entity.dart';
 import '../../../../core/utils/logger.dart';
-import 'dart:io';
+import '../../../../core/utils/media_file_safety.dart';
 import '../../../../core/utils/sanitizer.dart';
 
 const _kDraftKey = 'echo_draft';
@@ -31,9 +33,11 @@ class CreateEchoService extends ChangeNotifier {
   String? get error => _error;
   int get echoesCreatedThisSession => _echoesCreatedThisSession;
   bool _isPro = false;
+  bool get isPro => _isPro;
 
   // Call this from the screen after subscription status is known.
   void setProStatus(bool isPro) {
+    if (_isPro == isPro) return;
     _isPro = isPro;
     notifyListeners();
   }
@@ -56,14 +60,14 @@ class CreateEchoService extends ChangeNotifier {
   final List<String> _localPaths = [];
   List<String> get localMediaPaths => List.unmodifiable(_localPaths);
 
-  Future<void> addMedia(String localPath, bool isVideo) async {
+  Future<void> addMedia(String localPath) async {
     // upload to supabase storage
     try {
       final client = Supabase.instance.client;
       final userId = client.auth.currentUser?.id;
       if (userId == null) return;
 
-      final ext = localPath.split('.').last.toLowerCase();
+      final ext = MediaFileSafety.extensionOf(localPath);
       // Rename to UUID to strip original filename metadata
       final uuid = DateTime.now().millisecondsSinceEpoch.toRadixString(16);
       final name = '$uuid.$ext';
@@ -74,7 +78,7 @@ class CreateEchoService extends ChangeNotifier {
             path,
             await file.readAsBytes(),
             fileOptions: FileOptions(
-              contentType: isVideo ? 'video/mp4' : 'image/jpeg',
+              contentType: MediaFileSafety.contentTypeForExtension(ext),
               upsert: false,
             ),
           );
@@ -86,6 +90,7 @@ class CreateEchoService extends ChangeNotifier {
       AppLogger.info('echo: media uploaded $url');
     } catch (e) {
       AppLogger.error('echo: media upload failed $e');
+      throw Exception('media upload failed');
     }
   }
 
@@ -129,11 +134,6 @@ class CreateEchoService extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool _isVideoPath(String path) {
-    final lower = path.toLowerCase();
-    return lower.endsWith('.mp4') || lower.endsWith('.mov');
-  }
-
   void setCategory(EchoCategory c) {
     _category = c;
     notifyListeners();
@@ -174,20 +174,26 @@ class CreateEchoService extends ChangeNotifier {
       final userId = client.auth.currentUser?.id;
       if (userId == null) throw Exception('not authenticated');
 
+      _mediaUrls.clear();
       for (final path in List<String>.from(_localPaths)) {
-        if (_mediaUrls.length >= _localPaths.length) break;
-        await addMedia(path, _isVideoPath(path));
+        await addMedia(path);
       }
 
-      await client.from('echoes').insert({
-        'user_id': userId,
-        'title': Sanitizer.text(_title),
-        'content': Sanitizer.text(_content),
-        'category': _category!.dbValue,
-        'verification_required': _requiresVerification,
-        'status': 'pending_verification',
-        'media_urls': _mediaUrls,
-      });
+      final inserted = await client
+          .from('echoes')
+          .insert({
+            'user_id': userId,
+            'title': Sanitizer.text(_title),
+            'content': Sanitizer.text(_content),
+            'category': _category!.dbValue,
+            'verification_required': _requiresVerification,
+            'status': 'pending_verification',
+            'media_urls': _mediaUrls,
+          })
+          .select('id')
+          .single();
+
+      unawaited(_anchorEchoOnChain(client, inserted['id'] as String));
 
       _echoesCreatedThisSession++;
 
@@ -208,6 +214,21 @@ class CreateEchoService extends ChangeNotifier {
 
     _isSubmitting = false;
     notifyListeners();
+  }
+
+  Future<void> _anchorEchoOnChain(SupabaseClient client, String echoId) async {
+    try {
+      final response = await client.functions.invoke(
+        'solana-memo',
+        body: {
+          'kind': 'echo_created',
+          'echo_id': echoId,
+        },
+      );
+      AppLogger.info('echo: solana anchor requested ${response.data}');
+    } catch (e) {
+      AppLogger.warn('echo: solana anchor will remain pending $e');
+    }
   }
 
   void _saveDraft() {

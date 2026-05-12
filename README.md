@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/images/logo.png" alt="Echoproof" width="96" height="96" style="border-radius: 22px;" />
+<img src="apps/mobile/assets/images/logo.png" alt="Echoproof" width="96" height="96" style="border-radius: 22px;" />
 
 # Echoproof
 
@@ -16,7 +16,7 @@ High-signal echoes get verified on-chain. Built with Flutter + Supabase.
 [![License](https://img.shields.io/badge/license-private-gray?style=flat-square)](LICENSE)
 
 </div>
-----
+
 
 ## What makes this different
 

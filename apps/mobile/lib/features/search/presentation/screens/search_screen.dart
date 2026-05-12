@@ -10,7 +10,9 @@ import '../../../../app/theme/typography.dart';
 import '../../../../core/utils/logger.dart';
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key});
+  const SearchScreen({super.key, this.initialQuery});
+
+  final String? initialQuery;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -38,6 +40,12 @@ class _SearchScreenState extends State<SearchScreen>
     _tabs = TabController(length: 3, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focus.requestFocus();
+      final initial = widget.initialQuery?.trim();
+      if (initial != null && initial.isNotEmpty) {
+        _ctrl.text = initial;
+        _ctrl.selection = TextSelection.collapsed(offset: initial.length);
+        _search(initial);
+      }
     });
   }
 
@@ -102,10 +110,11 @@ class _SearchScreenState extends State<SearchScreen>
           .select(
             'id, user_id, title, content, category, status, media_urls, '
             'support_count, challenge_count, reply_count, created_at, '
-            'users_public!inner(username, trust_tier, avatar_url, is_pro)',
+            'users_public!inner(username, display_name, trust_tier, avatar_url, is_pro, is_public)',
           )
           .or('title.ilike.$pattern,content.ilike.$pattern')
           .not('status', 'in', '("hidden","rejected")')
+          .eq('users_public.is_public', true)
           .order('created_at', ascending: false)
           .limit(20);
 
@@ -563,6 +572,10 @@ class _EchoResultCard extends StatelessWidget {
     final replies = (echo['reply_count'] as num?)?.toInt() ?? 0;
     final status = echo['status'] as String? ?? 'active';
     final username = user['username'] as String? ?? 'unknown';
+    final displayName =
+        (user['display_name'] as String?)?.trim().isNotEmpty == true
+            ? user['display_name'] as String
+            : username;
     final avatarUrl = user['avatar_url'] as String?;
     final tierStr = user['trust_tier'] as String? ?? 'unverified';
     final mediaUrls = (echo['media_urls'] as List?)?.cast<String>() ?? const [];
@@ -604,13 +617,14 @@ class _EchoResultCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '@$username',
+                          displayName,
                           style: AppTypography.textTheme.titleSmall,
                           overflow: TextOverflow.ellipsis,
                         ),
                         Text(
-                          echo['category'] as String? ?? '',
+                          '@$username · ${echo['category'] as String? ?? ''}',
                           style: AppTypography.textTheme.labelMedium,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),

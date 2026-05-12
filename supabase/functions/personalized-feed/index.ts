@@ -22,6 +22,17 @@ const CORS_HEADERS: Record<string, string> = {
 
 const CACHE_TTL_SECONDS = 120; // 2 minutes per user per page
 
+const ECHO_SELECT = `
+  id, title, content, category, status, version,
+  user_id, media_urls, reply_count, proof_count,
+  trust_score, confidence_score, controversy_score, report_score,
+  support_count, challenge_count, bond_count, response_count, created_at,
+  created_record_tx, created_record_at, solana_status, solana_error,
+  verified_record_tx, verified_record_at,
+  verified_record_status, verified_record_error,
+  users_public!inner(username, display_name, avatar_url, trust_tier, is_pro, is_public)
+`;
+
 // lightweight upstash redis client using the rest api
 // no npm package needed — just http calls
 async function redisGet(key: string): Promise<string | null> {
@@ -120,8 +131,39 @@ serve(async (req: Request): Promise<Response> => {
     // check if client requests a forced refresh (after user interaction)
     const forceRefresh = url.searchParams.get("refresh") === "1";
 
+    const [{ data: feedbackRows }, { data: blockRows }] = await Promise.all([
+      serviceClient
+        .from("user_feed_feedback")
+        .select("echo_id, author_id, feedback_type")
+        .eq("user_id", user.id)
+        .in("feedback_type", ["not_interested", "report", "block_author"]),
+      serviceClient
+        .from("user_blocks")
+        .select("blocked_id")
+        .eq("blocker_id", user.id),
+    ]);
+
+    const hiddenEchoIds = new Set(
+      (feedbackRows ?? [])
+        .map((row: { echo_id?: string | null }) => row.echo_id)
+        .filter(Boolean) as string[],
+    );
+    const hiddenAuthorIds = new Set([
+      ...((feedbackRows ?? [])
+        .filter(
+          (row: { feedback_type?: string }) =>
+            row.feedback_type === "block_author",
+        )
+        .map((row: { author_id?: string | null }) => row.author_id)
+        .filter(Boolean) as string[]),
+      ...((blockRows ?? [])
+        .map((row: { blocked_id?: string | null }) => row.blocked_id)
+        .filter(Boolean) as string[]),
+    ]);
+    const feedbackVersion = hiddenEchoIds.size + hiddenAuthorIds.size;
+
     // redis cache key — unique per user, per page
-    const cacheKey = `feed:${user.id}:${offset}:${limit}`;
+    const cacheKey = `feed:${user.id}:${offset}:${limit}:${feedbackVersion}`;
 
     // try cache first (skip if force refresh)
     if (!forceRefresh) {
@@ -158,12 +200,38 @@ serve(async (req: Request): Promise<Response> => {
       return error(500, "feed ranking failed");
     }
 
-    const echoIds = (ranked ?? []).map((r: { echo_id: string }) => r.echo_id);
+    const echoIds = (ranked ?? [])
+      .map((r: { echo_id: string }) => r.echo_id)
+      .filter((id: string) => !hiddenEchoIds.has(id));
 
     if (echoIds.length === 0) {
-      const emptyResponse = JSON.stringify({ echoes: [], has_more: false });
-      await redisSet(cacheKey, emptyResponse, CACHE_TTL_SECONDS);
-      return new Response(emptyResponse, {
+      console.warn("feed: ranker returned no ids, falling back to recency");
+
+      const { data: fallbackEchoes, error: fallbackError } = await serviceClient
+        .from("echoes")
+        .select(ECHO_SELECT)
+        .not("status", "in", '("hidden","rejected")')
+        .eq("users_public.is_public", true)
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1);
+
+      if (fallbackError) {
+        console.error("feed fallback fetch error:", fallbackError);
+        return error(500, "echo fallback failed");
+      }
+
+      const filteredFallback = (fallbackEchoes ?? []).filter(
+        (echo: { id: string; user_id: string }) =>
+          !hiddenEchoIds.has(echo.id) && !hiddenAuthorIds.has(echo.user_id),
+      );
+
+      const fallbackResponse = JSON.stringify({
+        echoes: filteredFallback,
+        has_more: (fallbackEchoes ?? []).length === limit,
+      });
+
+      await redisSet(cacheKey, fallbackResponse, CACHE_TTL_SECONDS);
+      return new Response(fallbackResponse, {
         headers: {
           ...CORS_HEADERS,
           "Content-Type": "application/json",
@@ -176,14 +244,7 @@ serve(async (req: Request): Promise<Response> => {
     // fetch full echo data for ranked ids
     const { data: echoes, error: echoError } = await serviceClient
       .from("echoes")
-      .select(`
-          id, title, content, category, status, version,
-          media_urls, reply_count,
-          trust_score, confidence_score, controversy_score, report_score,
-          support_count, challenge_count, bond_count, response_count, created_at,
-          verified_record_tx,
-          users_public(username, avatar_url, trust_tier, is_pro)
-      `)
+      .select(ECHO_SELECT)
       .in("id", echoIds);
 
     if (echoError) {
@@ -195,7 +256,14 @@ serve(async (req: Request): Promise<Response> => {
     const echoMap = new Map(
       (echoes ?? []).map((e: { id: string }) => [e.id, e]),
     );
-    const sorted = echoIds.map((id: string) => echoMap.get(id)).filter(Boolean);
+    const sorted = echoIds
+      .map((id: string) => echoMap.get(id))
+      .filter(
+        (
+          echo: { id: string; user_id: string; category: string } | undefined,
+        ): echo is { id: string; user_id: string; category: string } =>
+          echo !== undefined && !hiddenAuthorIds.has(echo.user_id),
+      );
 
     // record passive category signals for feed learning
     // fire and forget — never block feed response

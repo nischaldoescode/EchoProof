@@ -11,6 +11,7 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sha256Hex, writeSolanaMemo } from "../_shared/solana.ts";
 
 const CORS_HEADERS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -49,60 +50,40 @@ serve(async (req: Request): Promise<Response> => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    const solanaRpc = Deno.env.get("SOLANA_RPC_URL") ?? "https://api.devnet.solana.com";
+    await serviceClient
+      .from("echoes")
+      .update({
+        verified_record_status: "recording",
+        verified_record_error: null,
+      })
+      .eq("id", payload.record.id);
 
     // create a simple sha-256 hash of the content for the on-chain record
-    const encoder    = new TextEncoder();
-    const contentBytes = encoder.encode(payload.record.content);
-    const hashBuffer = await crypto.subtle.digest("SHA-256", contentBytes);
-    const hashArray  = Array.from(new Uint8Array(hashBuffer));
-    const contentHash = hashArray.map(b => b.toString(16).padStart(2, "0")).join("").slice(0, 32);
+    const contentHash = (await sha256Hex(payload.record.content)).slice(0, 32);
 
     // build the memo data
     // format: echoproof:verified:{echoId}:{contentHash}:{confidence}
     const memoData = `echoproof:verified:${payload.record.id}:${contentHash}:${Math.round(payload.record.confidence_score)}`;
 
-    // get latest blockhash from solana
-    const blockhashRes = await fetch(`${solanaRpc}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "getLatestBlockhash",
-        params: [{ commitment: "confirmed" }],
-      }),
+    const result = await writeSolanaMemo(memoData).catch(async (err) => {
+      await serviceClient
+        .from("echoes")
+        .update({
+          verified_record_status: "failed",
+          verified_record_error: toErrorMessage(err),
+        })
+        .eq("id", payload.record.id);
+      throw err;
     });
 
-    const blockhashData = await blockhashRes.json() as {
-      result: { value: { blockhash: string; lastValidBlockHeight: number } };
-    };
-
-    const blockhash = blockhashData.result?.value?.blockhash;
-
-    if (!blockhash) {
-      console.error("could not get solana blockhash");
-      return ok({ skipped: "solana rpc unavailable — record will retry" });
-    }
-
-    // for the hackathon demo: simulate a transaction signature
-    // in production: sign and send a real memo transaction using a server keypair
-    // stored in SOLANA_SERVER_KEYPAIR env var (base58 encoded private key)
-    //
-    // the demo signature is deterministic from the echo id so it looks real
-    // and can be used to show the explorer link (it won't resolve on chain
-    // but demonstrates the UX flow perfectly for judging)
-    const demoSignature = Array.from(encoder.encode(payload.record.id + blockhash))
-      .map(b => b.toString(16).padStart(2, "0"))
-      .join("")
-      .slice(0, 88);
-
-    // store the signature and timestamp in the echo row
+    // store the real signature and timestamp in the echo row
     const { error } = await serviceClient
       .from("echoes")
       .update({
-        verified_record_tx: demoSignature,
+        verified_record_tx: result.signature,
         verified_record_at: new Date().toISOString(),
+        verified_record_status: "anchored",
+        verified_record_error: null,
       })
       .eq("id", payload.record.id);
 
@@ -114,7 +95,9 @@ serve(async (req: Request): Promise<Response> => {
     return ok({
       processed: true,
       echo_id: payload.record.id,
-      signature: demoSignature,
+      signature: result.signature,
+      explorer_url: result.explorerUrl,
+      cluster: result.cluster,
       memo: memoData,
     });
 
@@ -136,4 +119,9 @@ function errorResponse(status: number, message: string): Response {
     headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
     status,
   });
+}
+
+function toErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
 }

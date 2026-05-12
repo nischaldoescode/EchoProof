@@ -85,15 +85,15 @@ abstract final class Sanitizer {
   }
 
   static String displayName(String input) {
-    final cleaned = _basicClean(input)
-        .replaceAll(RegExp(r'[<>"\\/]'), '')
-        .trim();
+    final cleaned =
+        _basicClean(input).replaceAll(RegExp(r'[<>"\\/]'), '').trim();
 
     return _safeSubstring(cleaned, 50);
   }
 
   static String stripMarkdown(String input) {
     return input
+        .replaceAll(RegExp(r'\*\*\*(.+?)\*\*\*'), r'$1')
         .replaceAll(RegExp(r'\*\*(.+?)\*\*'), r'$1')
         .replaceAll(RegExp(r'_(.+?)_'), r'$1')
         .replaceAll(RegExp(r'~~(.+?)~~'), r'$1');

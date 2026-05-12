@@ -175,9 +175,9 @@ class AuthService extends ChangeNotifier {
       await _client.auth.signInWithOtp(
         email: email,
         shouldCreateUser: true,
-        // The magic link in the email points to this URL.
-        // When tapped on Android, the app intercepts it via the intent filter.
-        // emailRedirectTo: 'https://echoproof.online/auth-callback',
+        // If the email template includes a link, it should come back to the
+        // app. The 6-digit code still works independently of the link.
+        emailRedirectTo: _authRedirectUrl,
       );
       AppLogger.info('auth: OTP sent to $email');
       _setLoading(false);
@@ -200,10 +200,9 @@ class AuthService extends ChangeNotifier {
     _setLoading(true);
     _error = null;
     try {
-      final res = await _client.auth.verifyOTP(
+      final res = await _verifyEmailOtpWithSignupFallback(
         email: email,
-        token: otp,
-        type: OtpType.email,
+        otp: otp,
       );
       if (res.user == null) {
         _error = 'Verification failed. Try again.';
@@ -223,6 +222,72 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<bool> resendOtp({required String email}) => sendOtp(email: email);
+
+  Future<AuthResponse> _verifyEmailOtpWithSignupFallback({
+    required String email,
+    required String otp,
+  }) async {
+    try {
+      return await _client.auth.verifyOTP(
+        email: email,
+        token: otp,
+        type: OtpType.email,
+      );
+    } on AuthException catch (e) {
+      final message = e.message.toLowerCase();
+      final canRetryAsSignup = message.contains('token') ||
+          message.contains('otp') ||
+          message.contains('invalid') ||
+          message.contains('expired');
+
+      if (!canRetryAsSignup) rethrow;
+
+      return _client.auth.verifyOTP(
+        email: email,
+        token: otp,
+        type: OtpType.signup,
+      );
+    }
+  }
+
+  Future<bool> handleAuthCallback(Uri uri) async {
+    _setLoading(true);
+    _error = null;
+    try {
+      final tokenHash = uri.queryParameters['token_hash'];
+
+      if (tokenHash != null && tokenHash.isNotEmpty) {
+        await _client.auth.verifyOTP(
+          tokenHash: tokenHash,
+          type: _otpTypeFromRedirect(uri.queryParameters['type']),
+        );
+      } else if (_hasAuthPayload(uri)) {
+        await _client.auth.getSessionFromUrl(uri);
+      }
+
+      final user = _client.auth.currentUser;
+      if (user == null) {
+        _error = 'Sign-in link could not be completed. Enter the code instead.';
+        _setLoading(false);
+        return false;
+      }
+
+      await _prepareLocalStateForUser(user.id);
+      await checkUsername();
+      _setLoading(false);
+      return true;
+    } on AuthException catch (e) {
+      AppLogger.error('auth: callback failed ${e.message}');
+      _error = _friendly(e.message);
+      _setLoading(false);
+      return false;
+    } catch (e) {
+      AppLogger.error('auth: callback failed $e');
+      _error = 'Sign-in link could not be completed. Enter the code instead.';
+      _setLoading(false);
+      return false;
+    }
+  }
 
   Future<bool> signInWithGoogle() async {
     _setLoading(true);
@@ -444,6 +509,18 @@ class AuthService extends ChangeNotifier {
     final m = message.toLowerCase();
     if (m.contains('otp') && m.contains('invalid'))
       return 'Incorrect code. Try again.';
+    if (m.contains('rate limit') ||
+        m.contains('too many') ||
+        m.contains('over_email_send_rate_limit')) {
+      return 'Please wait a minute before requesting another code.';
+    }
+    if (m.contains('code verifier')) {
+      return 'This sign-in link can only be opened on the device that requested it. Enter the code instead.';
+    }
+    if (m.contains('one-time token') ||
+        (m.contains('email link') && m.contains('invalid'))) {
+      return 'This sign-in link has expired. Request a new code.';
+    }
     if (m.contains('expired')) return 'Code expired. Request a new one.';
     if (m.contains('invalid_credentials'))
       return 'Incorrect email or password.';
@@ -455,5 +532,30 @@ class AuthService extends ChangeNotifier {
       return 'Too many attempts. Wait a moment.';
     if (m.contains('network')) return 'Network error. Check your connection.';
     return message;
+  }
+
+  bool _hasAuthPayload(Uri uri) {
+    return uri.queryParameters.containsKey('code') ||
+        uri.queryParameters.containsKey('error_description') ||
+        uri.fragment.contains('access_token') ||
+        uri.fragment.contains('error_description');
+  }
+
+  OtpType _otpTypeFromRedirect(String? type) {
+    switch (type) {
+      case 'signup':
+        return OtpType.signup;
+      case 'invite':
+        return OtpType.invite;
+      case 'magiclink':
+        return OtpType.magiclink;
+      case 'recovery':
+        return OtpType.recovery;
+      case 'email_change':
+        return OtpType.emailChange;
+      case 'email':
+      default:
+        return OtpType.email;
+    }
   }
 }

@@ -25,7 +25,6 @@ import '../features/echo/presentation/screens/echo_replies_screen.dart';
 import '../core/utils/logger.dart';
 import '../features/subscription/presentation/screens/purchase_history_screen.dart';
 import 'package:hyper_snackbar/hyper_snackbar.dart';
-import '../core/utils/snack.dart';
 
 CustomTransitionPage<void> _slidePage(Widget child) {
   return CustomTransitionPage<void>(
@@ -50,6 +49,35 @@ CustomTransitionPage<void> _slidePage(Widget child) {
       );
     },
     transitionDuration: const Duration(milliseconds: 280),
+  );
+}
+
+CustomTransitionPage<void> _profilePage(Widget child) {
+  return CustomTransitionPage<void>(
+    child: child,
+    transitionDuration: const Duration(milliseconds: 340),
+    reverseTransitionDuration: const Duration(milliseconds: 230),
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final curve = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      );
+
+      return FadeTransition(
+        opacity: curve,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 0.035),
+            end: Offset.zero,
+          ).animate(curve),
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.985, end: 1).animate(curve),
+            child: child,
+          ),
+        ),
+      );
+    },
   );
 }
 
@@ -238,15 +266,17 @@ GoRouter createRouter({
       ),
       GoRoute(
         path: '/search',
-        pageBuilder: (_, __) => _slidePage(const SearchScreen()),
+        pageBuilder: (_, s) => _slidePage(
+          SearchScreen(initialQuery: s.uri.queryParameters['q']),
+        ),
       ),
       GoRoute(
         path: '/profile',
-        builder: (_, __) => const ProfileScreen(),
+        pageBuilder: (_, __) => _profilePage(const ProfileScreen()),
       ),
       GoRoute(
         path: '/profile/:username',
-        pageBuilder: (_, s) => _slidePage(
+        pageBuilder: (_, s) => _profilePage(
           ProfileScreen(
             username: s.pathParameters['username'],
           ),

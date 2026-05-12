@@ -109,6 +109,31 @@ serve(async (req: Request) => {
       .update({ status: newStatus })
       .eq("id", echo.id);
 
+    if (newStatus !== "hidden") {
+      const anchorRes = await fetch(
+        `${Deno.env.get("SUPABASE_URL")}/functions/v1/solana-memo`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          },
+          body: JSON.stringify({
+            kind: "echo_created",
+            echo_id: echo.id,
+          }),
+        },
+      );
+
+      if (!anchorRes.ok) {
+        console.error(
+          "on-echo-created: solana anchor failed",
+          anchorRes.status,
+          await anchorRes.text(),
+        );
+      }
+    }
+
     // If high spam score, notify user.
     if (spamScore >= 80) {
       await serviceClient.from("notifications").insert({
