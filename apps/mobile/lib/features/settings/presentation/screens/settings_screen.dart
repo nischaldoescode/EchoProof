@@ -260,6 +260,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     final adService = context.read<AdService>();
     final isAdFree = adService.isAdFreeActive;
     final minsLeft = adService.adFreeMinutesRemaining;
+    final feedStatus = adService.feedRoutineStatusText;
 
     showGeneralDialog(
       context: context,
@@ -318,7 +319,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   Text(
                     isAdFree
                         ? 'You earned $minsLeft more minutes of ad-free browsing by watching a video. Ads will resume after your session ends.'
-                        : 'Echoproof is free to use. Ads help keep the platform running. You can remove ads by going Pro, or earn 1 hour ad-free by watching a short video from the feed.',
+                        : 'Echoproof is free to use. Feed ads are limited to 2 per hour while you are actively on the feed. $feedStatus You can remove ads by going Pro, or earn 1 hour ad-free by watching a short video.',
                     style: GoogleFonts.josefinSans(
                       fontSize: 13,
                       color: AppColors.textSecondary,
@@ -660,8 +661,18 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
             child: OutlinedButton.icon(
               onPressed: () async {
-                await context.read<AuthService>().signOut();
-                if (context.mounted) context.go('/login');
+                final auth = context.read<AuthService>();
+                final signedOut = await auth.signOut();
+                if (!context.mounted) return;
+                if (signedOut) {
+                  context.go('/login');
+                } else {
+                  showErrorSnack(
+                    context,
+                    auth.error ?? 'Could not sign out. Please try again.',
+                  );
+                  auth.clearError();
+                }
               },
               icon: const Icon(Icons.logout_rounded, size: 18),
               label: Text(
@@ -970,7 +981,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       await client.from('users_private').delete().eq('id', userId);
 
       AppLogger.info('settings: user data deleted, signing out');
-      await auth.signOut();
+      await auth.signOut(enforceCooldown: false);
 
       if (context.mounted) {
         context.go('/login');

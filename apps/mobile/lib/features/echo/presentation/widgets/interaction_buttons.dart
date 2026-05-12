@@ -52,10 +52,10 @@ class InteractionButtons extends StatelessWidget {
           Expanded(
             child: _InteractionButton(
               count: echo.supportCount,
-              label: 'Support',
-              icon: Icons.arrow_upward_rounded,
+              label: 'Like',
+              icon: Icons.favorite_border_rounded,
               onTap: () => _interact(context, 'support'),
-              flashColor: AppColors.sunsetCoral,
+              flashColor: AppColors.fernGreen,
             ),
           ),
           Expanded(
@@ -251,18 +251,32 @@ class _InteractionButtonState extends State<_InteractionButton>
               ),
               const SizedBox(width: 4),
               Flexible(
-                child: AnimatedDefaultTextStyle(
-                  duration: const Duration(milliseconds: 160),
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: _isFlashing ? FontWeight.w700 : FontWeight.w600,
-                    color: color,
-                    fontFamily: AppTypography.fontFamily,
-                  ),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  transitionBuilder: (child, animation) {
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0, 0.25),
+                          end: Offset.zero,
+                        ).animate(animation),
+                        child: child,
+                      ),
+                    );
+                  },
                   child: Text(
                     label,
+                    key: ValueKey(label),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight:
+                          _isFlashing ? FontWeight.w700 : FontWeight.w600,
+                      color: color,
+                      fontFamily: AppTypography.fontFamily,
+                    ),
                   ),
                 ),
               ),

@@ -23,7 +23,7 @@ const CORS_HEADERS: Record<string, string> = {
 const CACHE_TTL_SECONDS = 120; // 2 minutes per user per page
 
 const ECHO_SELECT = `
-  id, title, content, category, status, version,
+  id, title, content, category, category_detail, status, version,
   user_id, media_urls, reply_count, proof_count,
   trust_score, confidence_score, controversy_score, report_score,
   support_count, challenge_count, bond_count, response_count, created_at,

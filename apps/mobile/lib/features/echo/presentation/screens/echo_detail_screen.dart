@@ -24,6 +24,9 @@ import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../core/utils/media_file_safety.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../../../core/services/video_playback_coordinator.dart';
+import '../widgets/echo_video_player.dart';
+import '../widgets/link_preview_card.dart';
 
 class EchoDetailScreen extends StatefulWidget {
   const EchoDetailScreen({super.key, required this.echoId});
@@ -79,7 +82,7 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
     try {
       final client = Supabase.instance.client;
       final row = await client.from('echoes').select('''
-              id, user_id, title, content, category, status, media_urls, reply_count,
+              id, user_id, title, content, category, category_detail, status, media_urls, reply_count,
               trust_score, confidence_score, controversy_score,
               support_count, challenge_count, created_at,
               created_record_tx, created_record_at, solana_status, solana_error,
@@ -230,6 +233,7 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
       userAvatarUrl: user['avatar_url'] as String?,
       userId: row['user_id'] as String? ?? '',
       category: EchoCategory.fromString(row['category'] as String),
+      categoryDetail: row['category_detail'] as String?,
       status: _parseStatus(row['status'] as String),
       confidenceScore: (row['confidence_score'] as num?)?.toDouble() ?? 0.0,
       trustScore: (row['trust_score'] as num?)?.toInt() ?? 0,
@@ -300,6 +304,9 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
           _liveVerifiedRecordStatus ?? _echo!.verifiedRecordStatus,
       bondCount: _liveBondCount ?? _echo!.bondCount,
     );
+
+    final previewUrl =
+        extractFirstUrl('${displayed.title}\n${displayed.content}');
 
     return Scaffold(
       backgroundColor: AppColors.white,
@@ -397,12 +404,23 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                       style: AppTypography.textTheme.bodyLarge,
                     ),
 
+                    if (previewUrl != null)
+                      EchoLinkPreview(
+                        url: previewUrl,
+                        variant: EchoLinkPreviewVariant.detail,
+                      ),
+
                     if (displayed.mediaUrls.isNotEmpty) ...[
                       const SizedBox(height: AppSpacing.lg),
-                      _EchoDetailMediaGallery(urls: displayed.mediaUrls),
+                      _EchoDetailMediaGallery(
+                        echoId: displayed.id,
+                        urls: displayed.mediaUrls,
+                      ),
                     ],
 
                     const SizedBox(height: AppSpacing.xl),
+                    _DetailCategoryChip(echo: displayed),
+                    const SizedBox(height: AppSpacing.lg),
                     const Divider(),
                     const SizedBox(height: AppSpacing.lg),
 
@@ -483,8 +501,9 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
 }
 
 class _EchoDetailMediaGallery extends StatelessWidget {
-  const _EchoDetailMediaGallery({required this.urls});
+  const _EchoDetailMediaGallery({required this.echoId, required this.urls});
 
+  final String echoId;
   final List<String> urls;
 
   bool _isVideo(String url) {
@@ -505,6 +524,7 @@ class _EchoDetailMediaGallery extends StatelessWidget {
             for (int i = 0; i < visible.length; i++) ...[
               Expanded(
                 child: _EchoDetailMediaTile(
+                  echoId: echoId,
                   url: visible[i],
                   isVideo: _isVideo(visible[i]),
                   onTap: !_isVideo(visible[i])
@@ -530,11 +550,13 @@ class _EchoDetailMediaGallery extends StatelessWidget {
 
 class _EchoDetailMediaTile extends StatelessWidget {
   const _EchoDetailMediaTile({
+    required this.echoId,
     required this.url,
     required this.isVideo,
     this.onTap,
   });
 
+  final String echoId;
   final String url;
   final bool isVideo;
   final VoidCallback? onTap;
@@ -542,15 +564,16 @@ class _EchoDetailMediaTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (isVideo) {
-      return Container(
-        color: AppColors.charcoal,
-        child: const Center(
-          child: Icon(
-            Icons.play_circle_fill_rounded,
-            color: AppColors.white,
-            size: 44,
-          ),
-        ),
+      return EchoVideoPlayer(
+        url: url,
+        playbackId: 'detail_${echoId}_${url.hashCode}',
+        compact: false,
+        onOpen: () {
+          VideoPlaybackCoordinator.instance.pauseAll();
+          context.push(
+            '/feed/echo/$echoId/video?url=${Uri.encodeComponent(url)}',
+          );
+        },
       );
     }
 
@@ -612,6 +635,40 @@ class _LiveScoreSection extends StatelessWidget {
         const SizedBox(height: AppSpacing.md),
         InteractionButtons(echo: echo, onEchoHidden: onEchoHidden),
       ],
+    );
+  }
+}
+
+class _DetailCategoryChip extends StatelessWidget {
+  const _DetailCategoryChip({required this.echo});
+  final EchoEntity echo;
+
+  @override
+  Widget build(BuildContext context) {
+    final detail = echo.categoryDetail?.trim();
+    final label = echo.category == EchoCategory.other &&
+            detail != null &&
+            detail.isNotEmpty
+        ? 'Other: $detail'
+        : echo.category.displayName;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceSecondary,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Text(
+        label,
+        style: AppTypography.textTheme.labelLarge?.copyWith(
+          color: AppColors.textSecondary,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
     );
   }
 }

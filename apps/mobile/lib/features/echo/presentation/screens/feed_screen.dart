@@ -1,5 +1,7 @@
 // TO DO: check at the line for 33 the _computeItemCount function
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -24,6 +26,8 @@ import '../services/create_echo_service.dart';
 import '../../../../shared/widgets/birthday_celebration.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/storage_keys.dart';
+import '../../../../core/services/ad_service.dart';
+import '../../../subscription/presentation/services/subscription_service.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
@@ -47,6 +51,7 @@ class FeedScreen extends StatefulWidget {
 class _FeedScreenState extends State<FeedScreen> {
   final _scrollCtrl = ScrollController();
   FeedFilter _filter = const FeedFilter();
+  Timer? _feedAdTimer;
 
   Future<void> _maybeTriggerBirthdayEaster() async {
     // Only check once per app session using Hive.
@@ -82,6 +87,7 @@ class _FeedScreenState extends State<FeedScreen> {
       if (feed.echoes.isEmpty) feed.loadFeed();
       _maybeShowPermissionsOverlay();
       _maybeTriggerBirthdayEaster();
+      _startFeedAdRoutine();
       // Show rating prompt after sufficient use — uses progressive schedule.
       Future.delayed(const Duration(seconds: 3), () {
         if (mounted) RatingPrompt.maybeShow(context);
@@ -122,8 +128,54 @@ class _FeedScreenState extends State<FeedScreen> {
 
   @override
   void dispose() {
+    _feedAdTimer?.cancel();
     _scrollCtrl.dispose();
     super.dispose();
+  }
+
+  void _startFeedAdRoutine() {
+    context.read<AdService>().prepareFeedRoutine();
+    _scheduleFeedAdCheck(const Duration(seconds: 45));
+  }
+
+  void _scheduleFeedAdCheck(Duration delay) {
+    _feedAdTimer?.cancel();
+    _feedAdTimer = Timer(delay, _tryShowFeedRoutineAd);
+  }
+
+  Future<void> _tryShowFeedRoutineAd() async {
+    if (!mounted) return;
+
+    final routeIsCurrent = ModalRoute.of(context)?.isCurrent ?? false;
+    if (!routeIsCurrent) {
+      _scheduleFeedAdCheck(const Duration(minutes: 1));
+      return;
+    }
+
+    final subscription = context.read<SubscriptionService>();
+    final adService = context.read<AdService>();
+    adService.prepareFeedRoutine();
+
+    if (subscription.isPro || adService.isAdFreeActive) {
+      _scheduleFeedAdCheck(const Duration(minutes: 5));
+      return;
+    }
+
+    if (adService.canShowFeedRoutineAd) {
+      final shown = await adService.showFeedRoutineAd();
+      if (!mounted) return;
+      _scheduleFeedAdCheck(
+        shown ? const Duration(minutes: 30) : const Duration(minutes: 1),
+      );
+      return;
+    }
+
+    final cooldown = adService.feedRoutineCooldownRemaining;
+    _scheduleFeedAdCheck(
+      cooldown > Duration.zero
+          ? cooldown + const Duration(seconds: 10)
+          : const Duration(minutes: 1),
+    );
   }
 
   void _onScroll() {

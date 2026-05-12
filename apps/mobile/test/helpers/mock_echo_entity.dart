@@ -25,6 +25,7 @@ MockEchoEntity makeMockEcho({
   when(() => mock.userIsVerified).thenReturn(true);
   when(() => mock.userAvatarUrl).thenReturn(null);
   when(() => mock.category).thenReturn(EchoCategory.tech);
+  when(() => mock.categoryDetail).thenReturn(null);
   when(() => mock.status).thenReturn(status);
   when(() => mock.confidenceScore).thenReturn(confidence);
   when(() => mock.trustScore).thenReturn(30);

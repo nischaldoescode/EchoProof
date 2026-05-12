@@ -56,7 +56,7 @@ function extractMeta(html: string, baseUrl: string): Record<string, string> {
     get(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/i) ||
     get(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i);
 
-  const image =
+  const rawImage =
     get(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ||
     get(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
 
@@ -70,6 +70,9 @@ function extractMeta(html: string, baseUrl: string): Record<string, string> {
     get(/<link[^>]+href=["']([^"']+)["'][^>]+rel=["'](?:shortcut )?icon["']/i);
 
   const parsed = new URL(baseUrl);
+  const image = rawImage
+    ? (rawImage.startsWith('http') ? rawImage : new URL(rawImage, parsed.origin).toString())
+    : '';
   const favicon = faviconRel
     ? (faviconRel.startsWith('http') ? faviconRel : `${parsed.origin}${faviconRel.startsWith('/') ? '' : '/'}${faviconRel}`)
     : `${parsed.origin}/favicon.ico`;

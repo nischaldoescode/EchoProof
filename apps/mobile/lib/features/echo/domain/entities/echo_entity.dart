@@ -108,6 +108,7 @@ class EchoEntity extends Equatable {
     this.version = 1,
     this.replyCount = 0,
     this.mediaUrls = const [],
+    this.categoryDetail,
     this.userId = '',
     this.createdRecordTx,
     this.createdRecordAt,
@@ -129,6 +130,7 @@ class EchoEntity extends Equatable {
   final bool userIsVerified;
   final String? userAvatarUrl;
   final EchoCategory category;
+  final String? categoryDetail;
   final EchoStatus status;
   final bool userIsPro;
 
@@ -175,6 +177,7 @@ class EchoEntity extends Equatable {
       userIsVerified: json['user_is_verified'] as bool,
       userAvatarUrl: json['user_avatar_url'] as String?,
       category: EchoCategory.fromString(json['category'] as String),
+      categoryDetail: json['category_detail'] as String?,
       status: EchoStatus.fromString(json['status'] as String),
       confidenceScore: (json['confidence_score'] as num).toDouble(),
       trustScore: json['trust_score'] as int,
@@ -217,6 +220,7 @@ class EchoEntity extends Equatable {
     bool? userIsVerified,
     String? userAvatarUrl,
     EchoCategory? category,
+    String? categoryDetail,
     EchoStatus? status,
     double? confidenceScore,
     int? trustScore,
@@ -251,6 +255,7 @@ class EchoEntity extends Equatable {
       userIsVerified: userIsVerified ?? this.userIsVerified,
       userAvatarUrl: userAvatarUrl ?? this.userAvatarUrl,
       category: category ?? this.category,
+      categoryDetail: categoryDetail ?? this.categoryDetail,
       status: status ?? this.status,
       confidenceScore: confidenceScore ?? this.confidenceScore,
       trustScore: trustScore ?? this.trustScore,
@@ -288,6 +293,7 @@ class EchoEntity extends Equatable {
         userIsVerified,
         userAvatarUrl,
         category,
+        categoryDetail,
         status,
         confidenceScore,
         trustScore,

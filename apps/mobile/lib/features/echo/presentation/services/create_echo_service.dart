@@ -18,6 +18,7 @@ class CreateEchoService extends ChangeNotifier {
   String _title = '';
   String _content = '';
   EchoCategory? _category;
+  String _categoryDetail = '';
   bool _requiresVerification = true;
   bool _isSubmitting = false;
   bool _success = false;
@@ -27,6 +28,7 @@ class CreateEchoService extends ChangeNotifier {
   String get title => _title;
   String get content => _content;
   EchoCategory? get category => _category;
+  String get categoryDetail => _categoryDetail;
   bool get requiresVerification => _requiresVerification;
   bool get isSubmitting => _isSubmitting;
   bool get success => _success;
@@ -49,6 +51,9 @@ class CreateEchoService extends ChangeNotifier {
       _title.trim().isNotEmpty &&
       _content.trim().isNotEmpty &&
       _category != null &&
+      (_category != EchoCategory.other ||
+          (_categoryDetail.trim().isNotEmpty &&
+              _categoryDetail.trim().length <= 10)) &&
       !_isSubmitting &&
       _content.length <= contentMaxLength &&
       _title.length <= titleMaxLength;
@@ -136,6 +141,19 @@ class CreateEchoService extends ChangeNotifier {
 
   void setCategory(EchoCategory c) {
     _category = c;
+    if (c != EchoCategory.other && _categoryDetail.isNotEmpty) {
+      _categoryDetail = '';
+    }
+    _saveDraft();
+    notifyListeners();
+  }
+
+  void setCategoryDetail(String value) {
+    _categoryDetail = Sanitizer.text(value).trim();
+    if (_categoryDetail.length > 10) {
+      _categoryDetail = _categoryDetail.substring(0, 10);
+    }
+    _saveDraft();
     notifyListeners();
   }
 
@@ -149,10 +167,17 @@ class CreateEchoService extends ChangeNotifier {
     notifyListeners();
   }
 
+  void clearError() {
+    if (_error == null) return;
+    _error = null;
+    notifyListeners();
+  }
+
   void reset() {
     _title = '';
     _content = '';
     _category = null;
+    _categoryDetail = '';
     _mediaUrls.clear();
     _localPaths.clear();
     _error = null;
@@ -174,6 +199,19 @@ class CreateEchoService extends ChangeNotifier {
       final userId = client.auth.currentUser?.id;
       if (userId == null) throw Exception('not authenticated');
 
+      final cooldown = await _getCooldownStatus(
+        client,
+        action: 'create_echo',
+        subject: userId,
+        windowSeconds: 20 * 60,
+        maxActions: 1,
+      );
+      if (cooldown.retryAfterSeconds > 0) {
+        throw _CooldownException(
+          'You can post another echo in ${_formatCooldown(cooldown.retryAfterSeconds)}.',
+        );
+      }
+
       _mediaUrls.clear();
       for (final path in List<String>.from(_localPaths)) {
         await addMedia(path);
@@ -186,6 +224,9 @@ class CreateEchoService extends ChangeNotifier {
             'title': Sanitizer.text(_title),
             'content': Sanitizer.text(_content),
             'category': _category!.dbValue,
+            'category_detail': _category == EchoCategory.other
+                ? Sanitizer.text(_categoryDetail).trim()
+                : null,
             'verification_required': _requiresVerification,
             'status': 'pending_verification',
             'media_urls': _mediaUrls,
@@ -204,9 +245,16 @@ class CreateEchoService extends ChangeNotifier {
       _mediaUrls.clear();
       _localPaths.clear();
       _category = null;
+      _categoryDetail = '';
       _success = true;
 
       AppLogger.info('echo: created successfully');
+    } on _CooldownException catch (e) {
+      _error = e.message;
+      AppLogger.warn('echo: create cooldown ${e.message}');
+    } on PostgrestException catch (e) {
+      _error = _friendlyCreateError(e);
+      AppLogger.error('echo: create failed', e);
     } catch (e) {
       _error = 'failed to create echo, try again';
       AppLogger.error('echo: create failed', e);
@@ -235,6 +283,8 @@ class CreateEchoService extends ChangeNotifier {
     Hive.box('app_settings').put(_kDraftKey, {
       'title': _title,
       'content': _content,
+      'category': _category?.dbValue,
+      'category_detail': _categoryDetail,
     });
   }
 
@@ -243,6 +293,59 @@ class CreateEchoService extends ChangeNotifier {
     if (draft != null) {
       _title = draft['title'] as String? ?? '';
       _content = draft['content'] as String? ?? '';
+      final category = draft['category'] as String?;
+      if (category != null) _category = EchoCategory.fromString(category);
+      _categoryDetail = draft['category_detail'] as String? ?? '';
     }
   }
+
+  Future<_CooldownStatus> _getCooldownStatus(
+    SupabaseClient client, {
+    required String action,
+    required String subject,
+    required int windowSeconds,
+    required int maxActions,
+  }) async {
+    final response = await client.rpc('get_action_cooldown_status', params: {
+      'p_action': action,
+      'p_subject': subject,
+      'p_window_seconds': windowSeconds,
+      'p_max_actions': maxActions,
+      'p_include_ip': false,
+    });
+    final map = Map<String, dynamic>.from(response as Map);
+    final retryAfter = (map['retry_after_seconds'] as num?)?.toInt() ?? 0;
+    return _CooldownStatus(retryAfterSeconds: retryAfter);
+  }
+
+  String _friendlyCreateError(PostgrestException e) {
+    final message = e.message.toLowerCase();
+    final details = e.details?.toString() ?? '';
+    if (message.contains('create_echo_cooldown')) {
+      final seconds = int.tryParse(RegExp(r'\d+').stringMatch(details) ?? '');
+      return seconds == null || seconds <= 0
+          ? 'Please wait before posting another echo.'
+          : 'You can post another echo in ${_formatCooldown(seconds)}.';
+    }
+    if (message.contains('echo_category_detail')) {
+      return 'When category is Other, add a short field name under 10 characters.';
+    }
+    return 'failed to create echo, try again';
+  }
+
+  String _formatCooldown(int seconds) {
+    final minutes = (seconds / 60).ceil();
+    if (minutes <= 1) return '$seconds seconds';
+    return '$minutes minutes';
+  }
+}
+
+class _CooldownStatus {
+  const _CooldownStatus({required this.retryAfterSeconds});
+  final int retryAfterSeconds;
+}
+
+class _CooldownException implements Exception {
+  const _CooldownException(this.message);
+  final String message;
 }

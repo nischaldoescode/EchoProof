@@ -7,10 +7,25 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
+import '../../../../core/utils/link_launcher.dart';
 import '../../../../core/utils/logger.dart';
+
+String? extractFirstUrl(String text) {
+  final urlPattern = RegExp(
+    r'https?://[^\s<>"{}|\\^`\[\]]+',
+    caseSensitive: false,
+  );
+  final match = urlPattern.firstMatch(text);
+  return match?.group(0);
+}
+
+String _hostFor(String url) {
+  final uri = Uri.tryParse(url);
+  if (uri == null || uri.host.isEmpty) return url;
+  return uri.host.replaceFirst(RegExp(r'^www\.'), '');
+}
 
 class LinkPreviewCard extends StatefulWidget {
   const LinkPreviewCard({
@@ -31,7 +46,6 @@ class LinkPreviewCard extends StatefulWidget {
 class _LinkPreviewCardState extends State<LinkPreviewCard> {
   Map<String, dynamic>? _meta;
   bool _isLoading = true;
-  bool _attached = false;
   String? _error;
 
   @override
@@ -58,6 +72,13 @@ class _LinkPreviewCardState extends State<LinkPreviewCard> {
 
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
+        if (data['error'] != null) {
+          setState(() {
+            _error = 'Preview unavailable';
+            _isLoading = false;
+          });
+          return;
+        }
         setState(() {
           _meta = data;
           _isLoading = false;
@@ -100,8 +121,8 @@ class _LinkPreviewCardState extends State<LinkPreviewCard> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: _attached ? AppColors.fernGreen : AppColors.borderSubtle,
-          width: _attached ? 1.5 : 1,
+          color: AppColors.fernGreen.withValues(alpha: 0.24),
+          width: 1.2,
         ),
       ),
       child: Column(
@@ -110,7 +131,8 @@ class _LinkPreviewCardState extends State<LinkPreviewCard> {
           // OG image if present.
           if (imageUrl != null && imageUrl.isNotEmpty)
             ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(11)),
               child: Image.network(
                 imageUrl,
                 height: 140,
@@ -177,29 +199,21 @@ class _LinkPreviewCardState extends State<LinkPreviewCard> {
                 // Action row: attach / dismiss / open.
                 Row(
                   children: [
-                    GestureDetector(
-                      onTap: () {
-                        setState(() => _attached = !_attached);
-                        if (_attached) widget.onAttach();
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: _attached
-                              ? AppColors.fernGreenLight
-                              : AppColors.softSand,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          _attached ? 'Preview attached ✓' : 'Attach preview',
-                          style: GoogleFonts.josefinSans(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: _attached
-                                ? AppColors.fernGreenDark
-                                : AppColors.textSecondary,
-                          ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.fernGreenLight,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        'Preview attached',
+                        style: GoogleFonts.josefinSans(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.fernGreenDark,
                         ),
                       ),
                     ),
@@ -234,45 +248,370 @@ class _LinkPreviewCardState extends State<LinkPreviewCard> {
   }
 
   void _showOpenOptions(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    showOpenLinkSheet(
+      context,
+      url: widget.url,
+      title: _meta?['title'] as String?,
+    );
+  }
+}
+
+enum EchoLinkPreviewVariant { compact, detail }
+
+class EchoLinkPreview extends StatefulWidget {
+  const EchoLinkPreview({
+    super.key,
+    required this.url,
+    this.variant = EchoLinkPreviewVariant.compact,
+  });
+
+  final String url;
+  final EchoLinkPreviewVariant variant;
+
+  @override
+  State<EchoLinkPreview> createState() => _EchoLinkPreviewState();
+}
+
+class _EchoLinkPreviewState extends State<EchoLinkPreview> {
+  Map<String, dynamic>? _meta;
+  bool _isLoading = true;
+
+  bool get _isDetail => widget.variant == EchoLinkPreviewVariant.detail;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch();
+  }
+
+  @override
+  void didUpdateWidget(covariant EchoLinkPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url) {
+      setState(() {
+        _meta = null;
+        _isLoading = true;
+      });
+      _fetch();
+    }
+  }
+
+  Future<void> _fetch() async {
+    try {
+      final client = Supabase.instance.client;
+      final session = client.auth.currentSession;
+      if (session == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      final supabaseUrl = const String.fromEnvironment('SUPABASE_URL');
+      final res = await http.post(
+        Uri.parse('$supabaseUrl/functions/v1/fetch-link-preview'),
+        headers: {
+          'Authorization': 'Bearer ${session.accessToken}',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'url': widget.url}),
+      );
+
+      if (!mounted) return;
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        setState(() {
+          _meta = data['error'] == null ? data : null;
+          _isLoading = false;
+        });
+      } else {
+        setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      AppLogger.warn('echo link preview: fetch failed $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return _InlinePreviewSkeleton(isDetail: _isDetail);
+    }
+
+    final title = (_meta?['title'] as String?)?.trim() ?? '';
+    final description = (_meta?['description'] as String?)?.trim() ?? '';
+    final imageUrl = (_meta?['image'] as String?)?.trim();
+    final siteName =
+        ((_meta?['site_name'] as String?)?.trim().isNotEmpty == true
+                ? (_meta!['site_name'] as String).trim()
+                : _hostFor(widget.url))
+            .trim();
+    final displayTitle = title.isNotEmpty ? title : widget.url;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => showOpenLinkSheet(
+        context,
+        url: widget.url,
+        title: displayTitle,
       ),
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.open_in_browser_rounded),
-              title: Text(
-                'Open in browser',
-                style: GoogleFonts.josefinSans(),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        margin: EdgeInsets.only(top: _isDetail ? AppSpacing.lg : AppSpacing.md),
+        decoration: BoxDecoration(
+          color: _isDetail ? AppColors.surfaceSecondary : Colors.white,
+          borderRadius: BorderRadius.circular(_isDetail ? 16 : 12),
+          border: Border.all(
+            color: _isDetail
+                ? AppColors.fernGreen.withValues(alpha: 0.24)
+                : AppColors.borderSubtle,
+            width: _isDetail ? 1.2 : 1,
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: _isDetail
+            ? _DetailPreviewLayout(
+                url: widget.url,
+                title: displayTitle,
+                description: description,
+                siteName: siteName,
+                imageUrl: imageUrl,
+              )
+            : _CompactPreviewLayout(
+                title: displayTitle,
+                description: description,
+                siteName: siteName,
+                imageUrl: imageUrl,
               ),
-              onTap: () async {
-                Navigator.pop(context);
-                final uri = Uri.tryParse(widget.url);
-                if (uri != null) {
-                  await launchUrl(uri, mode: LaunchMode.externalApplication);
-                }
-              },
+      ),
+    );
+  }
+}
+
+class _CompactPreviewLayout extends StatelessWidget {
+  const _CompactPreviewLayout({
+    required this.title,
+    required this.description,
+    required this.siteName,
+    required this.imageUrl,
+  });
+
+  final String title;
+  final String description;
+  final String siteName;
+  final String? imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 86,
+          height: 86,
+          color: AppColors.softSand,
+          child: imageUrl != null && imageUrl!.isNotEmpty
+              ? Image.network(
+                  imageUrl!,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const Icon(
+                    Icons.link_rounded,
+                    color: AppColors.textTertiary,
+                  ),
+                )
+              : const Icon(Icons.link_rounded, color: AppColors.textTertiary),
+        ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  siteName.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.josefinSans(
+                    fontSize: 10,
+                    color: AppColors.fernGreenDark,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.josefinSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.charcoal,
+                    height: 1.25,
+                  ),
+                ),
+                if (description.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    description,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.josefinSans(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ],
             ),
-            ListTile(
-              leading: const Icon(Icons.web_rounded),
-              title: Text(
-                'Open in app',
-                style: GoogleFonts.josefinSans(),
+          ),
+        ),
+        const Padding(
+          padding: EdgeInsets.only(right: AppSpacing.md),
+          child: Icon(
+            Icons.open_in_new_rounded,
+            size: 16,
+            color: AppColors.textTertiary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DetailPreviewLayout extends StatelessWidget {
+  const _DetailPreviewLayout({
+    required this.url,
+    required this.title,
+    required this.description,
+    required this.siteName,
+    required this.imageUrl,
+  });
+
+  final String url;
+  final String title;
+  final String description;
+  final String siteName;
+  final String? imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (imageUrl != null && imageUrl!.isNotEmpty)
+          SizedBox(
+            height: 178,
+            width: double.infinity,
+            child: Image.network(
+              imageUrl!,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.link_rounded,
+                    size: 15,
+                    color: AppColors.fernGreenDark,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      siteName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.josefinSans(
+                        fontSize: 12,
+                        color: AppColors.fernGreenDark,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              onTap: () async {
-                Navigator.pop(context);
-                final uri = Uri.tryParse(widget.url);
-                if (uri != null) {
-                  await launchUrl(uri, mode: LaunchMode.inAppWebView);
-                }
-              },
-            ),
-          ],
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                title,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.josefinSans(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.charcoal,
+                  height: 1.22,
+                ),
+              ),
+              if (description.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  description,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.josefinSans(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                    height: 1.45,
+                  ),
+                ),
+              ],
+              const SizedBox(height: AppSpacing.md),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      url,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.josefinSans(
+                        fontSize: 11,
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  const Icon(
+                    Icons.open_in_new_rounded,
+                    size: 17,
+                    color: AppColors.textTertiary,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _InlinePreviewSkeleton extends StatelessWidget {
+  const _InlinePreviewSkeleton({required this.isDetail});
+
+  final bool isDetail;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: isDetail ? 124 : 86,
+      margin: EdgeInsets.only(top: isDetail ? AppSpacing.lg : AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceSecondary,
+        borderRadius: BorderRadius.circular(isDetail ? 16 : 12),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: const Center(
+        child: SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: AppColors.fernGreen,
+          ),
         ),
       ),
     );
@@ -296,22 +635,23 @@ class _PreviewSkeleton extends StatelessWidget {
       child: Row(
         children: [
           const SizedBox(
-            width: 16, height: 16,
+            width: 16,
+            height: 16,
             child: CircularProgressIndicator(
-              strokeWidth: 2, color: AppColors.fernGreen),
+                strokeWidth: 2, color: AppColors.fernGreen),
           ),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Text(
               'Loading preview...',
               style: GoogleFonts.josefinSans(
-                fontSize: 12, color: AppColors.textTertiary),
+                  fontSize: 12, color: AppColors.textTertiary),
             ),
           ),
           GestureDetector(
             onTap: onDismiss,
             child: const Icon(Icons.close_rounded,
-              size: 16, color: AppColors.textTertiary),
+                size: 16, color: AppColors.textTertiary),
           ),
         ],
       ),
