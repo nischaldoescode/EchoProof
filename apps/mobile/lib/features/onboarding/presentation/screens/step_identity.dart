@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
+import '../../../../core/localization/app_copy.dart';
 import '../services/onboarding_service.dart';
 import '../widgets/onboarding_progress.dart';
 
@@ -50,28 +51,30 @@ class StepIdentity extends StatelessWidget {
                     ),
                     const SizedBox(height: AppSpacing.xxl),
                     Text(
-                      'You stay anonymous.',
+                      context.l('You stay anonymous.'),
                       style: AppTypography.textTheme.headlineMedium,
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     Text(
-                      'We verify your identity privately. Your real name never appears publicly — only your trust level does.',
+                      context.l(
+                        'We verify your identity privately. Your real name never appears publicly — only your trust level does.',
+                      ),
                       style: AppTypography.textTheme.bodyLarge?.copyWith(
                         color: AppColors.textSecondary,
                       ),
                     ),
                     const SizedBox(height: AppSpacing.xxl),
-                    ...const [
+                    ...[
                       (
-                        'Your identity is verified privately',
+                        context.l('Your identity is verified privately'),
                         Icons.verified_user_outlined
                       ),
                       (
-                        'Your public profile stays anonymous',
+                        context.l('Your public profile stays anonymous'),
                         Icons.person_outline
                       ),
                       (
-                        'Your trust level grows with your activity',
+                        context.l('Your trust level grows with your activity'),
                         Icons.trending_up_outlined
                       ),
                     ].map((item) => Padding(
@@ -96,7 +99,7 @@ class StepIdentity extends StatelessWidget {
                       child: ElevatedButton(
                         onPressed: () =>
                             context.read<OnboardingService>().nextStep(),
-                        child: const Text('Got it, continue'),
+                        child: Text(context.l('Got it, continue')),
                       ),
                     ),
                     const SizedBox(height: AppSpacing.xl),

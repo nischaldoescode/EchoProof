@@ -40,11 +40,12 @@ export function DashboardStats({
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-      {stats.map((s) => (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-7">
+      {stats.map((s, index) => (
         <div
           key={s.label}
-          className="bg-white rounded-xl border border-[#E6E6E6] p-4 transition-all duration-200 hover:shadow-sm hover:-translate-y-0.5"
+          className="admin-soft-card rounded-xl border border-[#E6E6E6] bg-white p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm"
+          style={{ animationDelay: `${Math.min(index * 35, 220)}ms` }}
         >
           <p className="text-xs text-gray-400 mb-1">{s.label}</p>
           <p className={`text-2xl font-semibold ${s.color}`}>

@@ -11,6 +11,7 @@ import '../../../echo/presentation/widgets/echo_card.dart';
 import '../../../../shared/widgets/shimmer_loader.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/logger.dart';
+import '../../../../core/localization/app_copy.dart';
 import '../widgets/reputation_card.dart';
 import '../../../settings/presentation/widgets/solana_info_card.dart';
 import 'package:flutter/foundation.dart';
@@ -198,19 +199,21 @@ class _ProfileScreenState extends State<ProfileScreen>
                   ),
                   const SizedBox(height: AppSpacing.lg),
                   Text(
-                    'Edit profile',
+                    context.l('Edit profile'),
                     style: AppTypography.textTheme.titleMedium,
                   ),
                   const SizedBox(height: AppSpacing.xs),
                   Text(
-                    'Username and date of birth changes require email verification.',
+                    context.l(
+                      'Username and date of birth changes require email verification.',
+                    ),
                     style: AppTypography.textTheme.bodySmall,
                   ),
                   const SizedBox(height: AppSpacing.lg),
 
                   // display name
                   Text(
-                    'Display name',
+                    context.l('Display name'),
                     style: GoogleFonts.josefinSans(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -228,7 +231,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                         null,
                     style: AppTypography.textTheme.bodyMedium,
                     decoration: InputDecoration(
-                      hintText: 'Your display name',
+                      hintText: context.l('Your display name'),
                       filled: true,
                       fillColor: AppColors.softSand,
                       border: OutlineInputBorder(
@@ -248,7 +251,7 @@ class _ProfileScreenState extends State<ProfileScreen>
 
                   // username
                   Text(
-                    'Username',
+                    context.l('Username'),
                     style: GoogleFonts.josefinSans(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -268,7 +271,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                       style: AppTypography.textTheme.bodyMedium,
                       decoration: InputDecoration(
                         prefixText: '@',
-                        hintText: 'username',
+                        hintText: context.l('username'),
                         errorText: usernameError,
                         suffixIcon: isCheckingUsername
                             ? const Padding(
@@ -321,7 +324,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                             setSheet(() {
                               isCheckingUsername = false;
                               usernameAvailable = false;
-                              usernameError = 'At least 3 characters';
+                              usernameError =
+                                  context.l('At least 3 characters');
                             });
                             return;
                           }
@@ -334,8 +338,9 @@ class _ProfileScreenState extends State<ProfileScreen>
                           setSheet(() {
                             isCheckingUsername = false;
                             usernameAvailable = available;
-                            usernameError =
-                                available ? null : 'Username already taken';
+                            usernameError = available
+                                ? null
+                                : context.l('Username already taken');
                           });
                         });
                       }),
@@ -343,7 +348,7 @@ class _ProfileScreenState extends State<ProfileScreen>
 
                   // date of birth — requires otp to change
                   Text(
-                    'Date of birth',
+                    context.l('Date of birth'),
                     style: GoogleFonts.josefinSans(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -360,7 +365,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                             DateTime(now.year - 18, now.month, now.day),
                         firstDate: DateTime(now.year - 120, now.month, now.day),
                         lastDate: DateTime(now.year - 13, now.month, now.day),
-                        helpText: 'select your date of birth',
+                        helpText: context.l('select your date of birth'),
                         builder: (dateCtx, child) => Theme(
                           data: Theme.of(dateCtx).copyWith(
                             colorScheme: ColorScheme.light(
@@ -408,7 +413,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                             child: Text(
                               selectedDob != null
                                   ? formatDob(selectedDob!)
-                                  : 'Not set',
+                                  : context.l('Not set'),
                               style: GoogleFonts.josefinSans(
                                 fontSize: 14,
                                 color: selectedDob != null
@@ -430,7 +435,7 @@ class _ProfileScreenState extends State<ProfileScreen>
 
                   // gender selector
                   Text(
-                    'Gender',
+                    context.l('Gender'),
                     style: GoogleFonts.josefinSans(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -477,7 +482,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                               const SizedBox(width: 5),
                               Flexible(
                                 child: Text(
-                                  g.label,
+                                  context.l(g.label),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: GoogleFonts.josefinSans(
@@ -527,7 +532,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                         elevation: 0,
                       ),
                       child: Text(
-                        'Save changes',
+                        context.l('Save changes'),
                         style: GoogleFonts.josefinSans(
                             fontWeight: FontWeight.w600),
                       ),
@@ -569,7 +574,8 @@ class _ProfileScreenState extends State<ProfileScreen>
         if (mounted) {
           showInfoSnack(
             context,
-            'Profile changes are cooling down. Try again in ${_formatCooldown(retryAfter)}.',
+            context.l('Profile changes are cooling down. Try again in {time}.',
+                {'time': _formatCooldown(retryAfter)}),
           );
         }
         return;
@@ -653,7 +659,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       });
 
       if (mounted) {
-        showSuccessSnack(context, 'Profile updated.');
+        showSuccessSnack(context, context.l('Profile updated.'));
       }
     } catch (e) {
       AppLogger.error('profile: save changes failed $e');
@@ -691,11 +697,15 @@ class _ProfileScreenState extends State<ProfileScreen>
       final detail = error.details?.toString() ?? '';
       final seconds = int.tryParse(RegExp(r'\d+').stringMatch(detail) ?? '');
       if (seconds != null && seconds > 0) {
-        return 'Profile changes are cooling down. Try again in ${_formatCooldown(seconds)}.';
+        return context.l(
+          'Profile changes are cooling down. Try again in {time}.',
+          {'time': _formatCooldown(seconds)},
+        );
       }
-      return 'Profile changes are cooling down. Please try again later.';
+      return context
+          .l('Profile changes are cooling down. Please try again later.');
     }
-    return 'Failed to save changes. Please try again.';
+    return context.l('Failed to save changes. Please try again.');
   }
 
   String _formatCooldown(int seconds) {
@@ -719,14 +729,17 @@ class _ProfileScreenState extends State<ProfileScreen>
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16)),
               title: Text(
-                'Verify your email',
+                context.l('Verify your email'),
                 style: GoogleFonts.josefinSans(fontWeight: FontWeight.w700),
               ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'A verification code was sent to $email. Enter it to confirm the username change.',
+                    context.l(
+                      'A verification code was sent to {email}. Enter it to confirm the username change.',
+                      {'email': email},
+                    ),
                     style: GoogleFonts.josefinSans(fontSize: 13, height: 1.5),
                   ),
                   const SizedBox(height: 16),
@@ -765,7 +778,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                     result = false;
                     Navigator.pop(ctx);
                   },
-                  child: Text('Cancel',
+                  child: Text(context.l('Cancel'),
                       style: GoogleFonts.josefinSans(
                           color: AppColors.textSecondary)),
                 ),
@@ -797,7 +810,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                           ),
                         )
                       : Text(
-                          'Verify',
+                          context.l('Verify'),
                           style: GoogleFonts.josefinSans(
                             color: AppColors.fernGreen,
                             fontWeight: FontWeight.w600,
@@ -1037,7 +1050,7 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   Future<void> _toggleFollow() async {
     if (_isBlockedByMe) {
-      showInfoSnack(context, 'Unblock this user before following.');
+      showInfoSnack(context, context.l('Unblock this user before following.'));
       return;
     }
 
@@ -1068,7 +1081,9 @@ class _ProfileScreenState extends State<ProfileScreen>
               .eq('requester_id', myId)
               .eq('target_id', targetId)
               .eq('status', 'pending');
-          if (mounted) showInfoSnack(context, 'Follow request canceled');
+          if (mounted) {
+            showInfoSnack(context, context.l('Follow request canceled'));
+          }
         } else {
           setState(() => _followRequestStatus = 'pending');
           await client.from('follow_requests').upsert({
@@ -1076,7 +1091,9 @@ class _ProfileScreenState extends State<ProfileScreen>
             'target_id': targetId,
             'status': 'pending',
           }, onConflict: 'requester_id,target_id');
-          if (mounted) showSuccessSnack(context, 'Follow request sent');
+          if (mounted) {
+            showSuccessSnack(context, context.l('Follow request sent'));
+          }
         }
       } else {
         setState(() {
@@ -1095,7 +1112,9 @@ class _ProfileScreenState extends State<ProfileScreen>
         _isFollowing = wasFollowing;
         _followRequestStatus = previousRequestStatus;
       });
-      if (mounted) showErrorSnack(context, 'Could not update follow status.');
+      if (mounted) {
+        showErrorSnack(context, context.l('Could not update follow status.'));
+      }
     }
   }
 
@@ -1145,7 +1164,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                   const SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Text(
-                      'Block @$username?',
+                      context.l('Block @{username}?', {'username': username}),
                       style: AppTypography.textTheme.titleMedium,
                     ),
                   ),
@@ -1153,7 +1172,9 @@ class _ProfileScreenState extends State<ProfileScreen>
               ),
               const SizedBox(height: AppSpacing.md),
               Text(
-                'You will stop seeing each other in profiles, feeds, replies, and interactions. Existing follow links are removed.',
+                context.l(
+                  'You will stop seeing each other in profiles, feeds, replies, and interactions. Existing follow links are removed.',
+                ),
                 style: AppTypography.textTheme.bodySmall
                     ?.copyWith(color: AppColors.textSecondary, height: 1.45),
               ),
@@ -1163,7 +1184,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                   Expanded(
                     child: OutlinedButton(
                       onPressed: () => Navigator.pop(sheetContext, false),
-                      child: const Text('Cancel'),
+                      child: Text(context.l('Cancel')),
                     ),
                   ),
                   const SizedBox(width: AppSpacing.sm),
@@ -1174,7 +1195,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                         backgroundColor: AppColors.sunsetCoral,
                         foregroundColor: Colors.white,
                       ),
-                      child: const Text('Block'),
+                      child: Text(context.l('Block')),
                     ),
                   ),
                 ],
@@ -1209,11 +1230,11 @@ class _ProfileScreenState extends State<ProfileScreen>
         _echoes = [];
       });
 
-      if (mounted) showSuccessSnack(context, 'User blocked');
+      if (mounted) showSuccessSnack(context, context.l('User blocked'));
       await _loadProfile();
     } catch (e) {
       AppLogger.error('profile: block failed $e');
-      if (mounted) showErrorSnack(context, 'Could not block user.');
+      if (mounted) showErrorSnack(context, context.l('Could not block user.'));
     }
   }
 
@@ -1235,10 +1256,12 @@ class _ProfileScreenState extends State<ProfileScreen>
         await _loadProfile();
       }
 
-      if (mounted) showSuccessSnack(context, 'User unblocked');
+      if (mounted) showSuccessSnack(context, context.l('User unblocked'));
     } catch (e) {
       AppLogger.error('profile: unblock failed $e');
-      if (mounted) showErrorSnack(context, 'Could not unblock user.');
+      if (mounted) {
+        showErrorSnack(context, context.l('Could not unblock user.'));
+      }
     }
   }
 
@@ -1267,7 +1290,8 @@ class _ProfileScreenState extends State<ProfileScreen>
       if (mounted) {
         showInfoSnack(
           context,
-          'Profile changes are cooling down. Try again in ${_formatCooldown(retryAfter)}.',
+          context.l('Profile changes are cooling down. Try again in {time}.',
+              {'time': _formatCooldown(retryAfter)}),
         );
       }
       return;
@@ -1324,10 +1348,11 @@ class _ProfileScreenState extends State<ProfileScreen>
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
-            Text('Edit bio', style: AppTypography.textTheme.titleMedium),
+            Text(context.l('Edit bio'),
+                style: AppTypography.textTheme.titleMedium),
             const SizedBox(height: AppSpacing.xs),
             Text(
-              'Visible on your public profile.',
+              context.l('Visible on your public profile.'),
               style: AppTypography.textTheme.bodySmall,
             ),
             const SizedBox(height: AppSpacing.lg),
@@ -1338,7 +1363,7 @@ class _ProfileScreenState extends State<ProfileScreen>
               autofocus: true,
               style: AppTypography.textTheme.bodyMedium,
               decoration: InputDecoration(
-                hintText: 'Write something about yourself...',
+                hintText: context.l('Write something about yourself...'),
                 hintStyle: GoogleFonts.josefinSans(
                   fontSize: 14,
                   color: AppColors.textTertiary,
@@ -1372,7 +1397,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                   elevation: 0,
                 ),
                 child: Text(
-                  'Save bio',
+                  context.l('Save bio'),
                   style: GoogleFonts.josefinSans(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
@@ -1393,13 +1418,13 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const EchoLogoLoader(label: 'Loading profile');
+      return EchoLogoLoader(label: context.l('Loading profile'));
     }
 
     if (_profile == null) {
       return Center(
         child: Text(
-          'Could not load profile',
+          context.l('Could not load profile'),
           style: AppTypography.textTheme.bodyMedium,
         ),
       );
@@ -1407,12 +1432,12 @@ class _ProfileScreenState extends State<ProfileScreen>
 
     final locked = !_canViewProfileContent;
     final tabs = locked
-        ? <Widget>[const Tab(text: 'Private')]
+        ? <Widget>[Tab(text: context.l('Private'))]
         : <Widget>[
-            const Tab(text: 'Echoes'),
-            const Tab(text: 'Replies'),
-            const Tab(text: 'Media'),
-            if (_isOwnProfile && userIsPro) const Tab(text: 'Analytics'),
+            Tab(text: context.l('Echoes')),
+            Tab(text: context.l('Replies')),
+            Tab(text: context.l('Media')),
+            if (_isOwnProfile && userIsPro) Tab(text: context.l('Analytics')),
           ];
 
     final tabViews = locked
@@ -1548,7 +1573,8 @@ class _ProfileScreenState extends State<ProfileScreen>
   Future<void> _showFollowList({required String mode}) async {
     if (_profile == null || !_canViewProfileContent) return;
 
-    final title = mode == 'followers' ? 'Followers' : 'Following';
+    final title =
+        mode == 'followers' ? context.l('Followers') : context.l('Following');
     final client = Supabase.instance.client;
     final targetId = _profile!['id'] as String;
 
@@ -1605,7 +1631,11 @@ class _ProfileScreenState extends State<ProfileScreen>
                       : users.isEmpty
                           ? Center(
                               child: Text(
-                                'No ${mode == 'followers' ? 'followers' : 'following'} yet.',
+                                context.l('No {kind} yet.', {
+                                  'kind': mode == 'followers'
+                                      ? context.l('followers')
+                                      : context.l('following'),
+                                }),
                                 style: AppTypography.textTheme.bodySmall
                                     ?.copyWith(color: AppColors.textSecondary),
                               ),
@@ -1750,8 +1780,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                 const SizedBox(height: AppSpacing.xl),
                 _ProfileMenuTile(
                   icon: Icons.edit_outlined,
-                  title: 'Edit profile',
-                  subtitle: 'Name, username, birthday, and gender',
+                  title: context.l('Edit profile'),
+                  subtitle: context.l('Name, username, birthday, and gender'),
                   onTap: () {
                     Navigator.pop(sheetContext);
                     _showEditProfileSheet();
@@ -1761,10 +1791,12 @@ class _ProfileScreenState extends State<ProfileScreen>
                   icon: _isPublic
                       ? Icons.public_rounded
                       : Icons.lock_outline_rounded,
-                  title: _isPublic ? 'Public profile' : 'Private profile',
+                  title: _isPublic
+                      ? context.l('Public profile')
+                      : context.l('Private profile'),
                   subtitle: _isPublic
-                      ? 'Anyone can view your profile'
-                      : 'Only accepted followers can view it',
+                      ? context.l('Anyone can view your profile')
+                      : context.l('Only accepted followers can view it'),
                   trailing: Switch.adaptive(
                     value: _isPublic,
                     activeThumbColor: AppColors.fernGreen,
@@ -1778,8 +1810,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                 ),
                 _ProfileMenuTile(
                   icon: Icons.block_rounded,
-                  title: 'Blocked users',
-                  subtitle: 'Review and unblock accounts',
+                  title: context.l('Blocked users'),
+                  subtitle: context.l('Review and unblock accounts'),
                   onTap: () {
                     Navigator.pop(sheetContext);
                     _showBlockedUsersSheet();
@@ -1787,8 +1819,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                 ),
                 _ProfileMenuTile(
                   icon: Icons.settings_outlined,
-                  title: 'Settings',
-                  subtitle: 'Account, ads, privacy, and support',
+                  title: context.l('Settings'),
+                  subtitle: context.l('Account, ads, privacy, and support'),
                   onTap: () {
                     Navigator.pop(sheetContext);
                     context.push('/settings');
@@ -1872,7 +1904,9 @@ class _ProfileScreenState extends State<ProfileScreen>
                 scrolledUnderElevation: 0.5,
                 shadowColor: AppColors.borderSubtle,
                 title: Text(
-                  _profile != null ? '@${_profile!['username']}' : 'Profile',
+                  _profile != null
+                      ? '@${_profile!['username']}'
+                      : context.l('Profile'),
                   style: AppTypography.textTheme.titleLarge,
                 ),
                 actions: [
@@ -1881,13 +1915,13 @@ class _ProfileScreenState extends State<ProfileScreen>
                       icon: const Icon(Icons.edit_outlined, size: 20),
                       onPressed: () => _showEditProfileSheet(),
                       color: AppColors.charcoal,
-                      tooltip: 'Edit profile',
+                      tooltip: context.l('Edit profile'),
                     ),
                     IconButton(
                       icon: const Icon(Icons.more_horiz_rounded, size: 24),
                       onPressed: _showOwnProfileMenu,
                       color: AppColors.charcoal,
-                      tooltip: 'Profile menu',
+                      tooltip: context.l('Profile menu'),
                     ),
                   ] else if (_profile != null) ...[
                     IconButton(
@@ -1903,7 +1937,9 @@ class _ProfileScreenState extends State<ProfileScreen>
                       color: _isBlockedByMe
                           ? AppColors.fernGreen
                           : AppColors.sunsetCoral,
-                      tooltip: _isBlockedByMe ? 'Unblock user' : 'Block user',
+                      tooltip: _isBlockedByMe
+                          ? context.l('Unblock user')
+                          : context.l('Block user'),
                     ),
                   ],
                   const SizedBox(width: 4),
@@ -2010,7 +2046,7 @@ class _ProfileFollowButton extends StatelessWidget {
         onPressed: onPressed,
         icon: Icon(icon, size: 16),
         label: Text(
-          label,
+          context.l(label),
           style: GoogleFonts.josefinSans(
             fontWeight: FontWeight.w600,
             fontSize: 13,
@@ -2047,7 +2083,7 @@ class _UnblockButton extends StatelessWidget {
         onPressed: onPressed,
         icon: const Icon(Icons.lock_open_rounded, size: 16),
         label: Text(
-          'Unblock',
+          context.l('Unblock'),
           style: GoogleFonts.josefinSans(
             fontWeight: FontWeight.w700,
             fontSize: 13,
@@ -2174,13 +2210,15 @@ class _BlockedProfileNotice extends StatelessWidget {
             ),
             const SizedBox(height: AppSpacing.md),
             Text(
-              'You blocked @$username',
+              context.l('You blocked @{username}', {'username': username}),
               style: AppTypography.textTheme.titleMedium,
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 4),
             Text(
-              'You cannot view their echoes, replies, followers, or interact until you unblock them.',
+              context.l(
+                'You cannot view their echoes, replies, followers, or interact until you unblock them.',
+              ),
               style: AppTypography.textTheme.bodySmall
                   ?.copyWith(color: AppColors.textSecondary),
               textAlign: TextAlign.center,
@@ -2258,7 +2296,7 @@ class _BlockedUsersSheetState extends State<_BlockedUsersSheet> {
               ),
               child: Row(
                 children: [
-                  Text('Blocked users',
+                  Text(context.l('Blocked users'),
                       style: AppTypography.textTheme.titleMedium),
                   const Spacer(),
                   IconButton(
@@ -2285,8 +2323,8 @@ class _BlockedUsersSheetState extends State<_BlockedUsersSheet> {
                   if (users.isEmpty) {
                     return _ProfileEmptyTab(
                       icon: Icons.block_rounded,
-                      title: 'No blocked users',
-                      message: 'Blocked accounts will appear here.',
+                      title: context.l('No blocked users'),
+                      message: context.l('Blocked accounts will appear here.'),
                     );
                   }
 
@@ -2354,7 +2392,7 @@ class _BlockedUsersSheetState extends State<_BlockedUsersSheet> {
                                       color: AppColors.fernGreen,
                                     ),
                                   )
-                                : const Text('Unblock'),
+                                : Text(context.l('Unblock')),
                           ),
                         ),
                       );
@@ -2492,7 +2530,7 @@ class _AvatarCard extends StatelessWidget {
                     ] else if (isOwnProfile) ...[
                       const SizedBox(height: 6),
                       Text(
-                        'No bio yet.',
+                        context.l('No bio yet.'),
                         style: GoogleFonts.josefinSans(
                           fontSize: 13,
                           color: AppColors.textTertiary,
@@ -2514,7 +2552,9 @@ class _AvatarCard extends StatelessWidget {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              hasBio ? 'Edit bio' : 'Add bio',
+                              hasBio
+                                  ? context.l('Edit bio')
+                                  : context.l('Add bio'),
                               style: GoogleFonts.josefinSans(
                                 fontSize: 12,
                                 color: AppColors.fernGreen,
@@ -2535,16 +2575,16 @@ class _AvatarCard extends StatelessWidget {
           if (showStats)
             Row(
               children: [
-                _StatItem(label: 'Echoes', value: echoCount),
+                _StatItem(label: context.l('Echoes'), value: echoCount),
                 _StatDivider(),
                 _StatItem(
-                  label: 'Followers',
+                  label: context.l('Followers'),
                   value: followerCount,
                   onTap: onOpenFollowers,
                 ),
                 _StatDivider(),
                 _StatItem(
-                  label: 'Following',
+                  label: context.l('Following'),
                   value: followingCount,
                   onTap: onOpenFollowing,
                 ),
@@ -2560,7 +2600,9 @@ class _AvatarCard extends StatelessWidget {
                 border: Border.all(color: AppColors.borderSubtle),
               ),
               child: Text(
-                'Follow request required to view echoes, replies, followers, and following.',
+                context.l(
+                  'Follow request required to view echoes, replies, followers, and following.',
+                ),
                 textAlign: TextAlign.center,
                 style: AppTypography.textTheme.bodySmall
                     ?.copyWith(color: AppColors.textSecondary),
@@ -2754,14 +2796,16 @@ class _AvatarZoomPageState extends State<_AvatarZoomPage> {
                                 : Icons.zoom_in_rounded,
                           ),
                           color: AppColors.charcoal,
-                          tooltip: _zoomed ? 'Reset zoom' : 'Zoom in',
+                          tooltip: _zoomed
+                              ? context.l('Reset zoom')
+                              : context.l('Zoom in'),
                         ),
                         const SizedBox(width: AppSpacing.xs),
                         IconButton(
                           onPressed: _resetZoom,
                           icon: const Icon(Icons.center_focus_strong_rounded),
                           color: AppColors.charcoal,
-                          tooltip: 'Center image',
+                          tooltip: context.l('Center image'),
                         ),
                       ],
                     ),
@@ -3044,7 +3088,9 @@ class _VisibilityToggle extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  isPublic ? 'Public profile' : 'Private profile',
+                  isPublic
+                      ? context.l('Public profile')
+                      : context.l('Private profile'),
                   style: GoogleFonts.josefinSans(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -3053,8 +3099,8 @@ class _VisibilityToggle extends StatelessWidget {
                 ),
                 Text(
                   isPublic
-                      ? 'Anyone can see your echoes'
-                      : 'Only you can see your echoes',
+                      ? context.l('Anyone can see your echoes')
+                      : context.l('Only you can see your echoes'),
                   style: GoogleFonts.josefinSans(
                     fontSize: 11,
                     color: color,
@@ -3086,8 +3132,10 @@ class _PrivateProfileNotice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statusText = requestStatus == 'pending'
-        ? 'Your follow request is pending.'
-        : 'Send a follow request to view their echoes and social graph.';
+        ? context.l('Your follow request is pending.')
+        : context.l(
+            'Send a follow request to view their echoes and social graph.',
+          );
 
     return Container(
       padding: const EdgeInsets.all(AppSpacing.xl),
@@ -3105,12 +3153,15 @@ class _PrivateProfileNotice extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.md),
           Text(
-            'This account is private',
+            context.l('This account is private'),
             style: AppTypography.textTheme.titleMedium,
           ),
           const SizedBox(height: 4),
           Text(
-            '@$username has set their profile to private.',
+            context.l(
+              '@{username} has set their profile to private.',
+              {'username': username},
+            ),
             style: AppTypography.textTheme.bodySmall,
             textAlign: TextAlign.center,
           ),
@@ -3160,8 +3211,12 @@ class _VerifyPrompt extends StatelessWidget {
             Expanded(
               child: Text(
                 isPending
-                    ? 'Verification in progress — usually takes a few minutes'
-                    : 'Verify your identity to increase your trust weight',
+                    ? context.l(
+                        'Verification in progress — usually takes a few minutes',
+                      )
+                    : context.l(
+                        'Verify your identity to increase your trust weight',
+                      ),
                 style: GoogleFonts.josefinSans(
                   fontSize: 13,
                   color: isPending
@@ -3190,10 +3245,10 @@ class _EchoesTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (echoes.isEmpty) {
-      return const _ProfileEmptyTab(
+      return _ProfileEmptyTab(
         icon: Icons.record_voice_over_outlined,
-        title: 'No echoes yet.',
-        message: 'Published echoes will appear here.',
+        title: context.l('No echoes yet.'),
+        message: context.l('Published echoes will appear here.'),
       );
     }
 
@@ -3267,10 +3322,10 @@ class _RepliesTabState extends State<_RepliesTab>
     }
 
     if (_replies.isEmpty) {
-      return const _ProfileEmptyTab(
+      return _ProfileEmptyTab(
         icon: Icons.chat_bubble_outline_rounded,
-        title: 'No replies yet.',
-        message: 'Replies to other echoes will appear here.',
+        title: context.l('No replies yet.'),
+        message: context.l('Replies to other echoes will appear here.'),
       );
     }
 
@@ -3308,7 +3363,9 @@ class _RepliesTabState extends State<_RepliesTab>
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
-                        'Replying to "$echoTitle"',
+                        context.l('Replying to "{title}"', {
+                          'title': echoTitle,
+                        }),
                         style: GoogleFonts.josefinSans(
                           fontSize: 11,
                           color: AppColors.textTertiary,
@@ -3402,13 +3459,13 @@ class _ProfileEmptyTab extends StatelessWidget {
                       ),
                       const SizedBox(height: AppSpacing.md),
                       Text(
-                        title,
+                        context.l(title),
                         textAlign: TextAlign.center,
                         style: AppTypography.textTheme.titleSmall,
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        message,
+                        context.l(message),
                         textAlign: TextAlign.center,
                         style: AppTypography.textTheme.bodySmall
                             ?.copyWith(color: AppColors.textTertiary),
@@ -3458,13 +3515,17 @@ class _LockedProfileTab extends StatelessWidget {
                   ),
                   const SizedBox(height: AppSpacing.md),
                   Text(
-                    '@$username is private',
+                    context.l('@{username} is private', {
+                      'username': username,
+                    }),
                     style: AppTypography.textTheme.titleSmall,
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'Accepted followers can view echoes, replies, media, followers, and following.',
+                    context.l(
+                      'Accepted followers can view echoes, replies, media, followers, and following.',
+                    ),
                     style: AppTypography.textTheme.bodySmall
                         ?.copyWith(color: AppColors.textSecondary),
                     textAlign: TextAlign.center,
@@ -3535,10 +3596,10 @@ class _MediaTabState extends State<_MediaTab>
     }
 
     if (_mediaEchoes.isEmpty) {
-      return const _ProfileEmptyTab(
+      return _ProfileEmptyTab(
         icon: Icons.photo_library_outlined,
-        title: 'No media yet.',
-        message: 'Echoes with photos or videos will appear here.',
+        title: context.l('No media yet.'),
+        message: context.l('Echoes with photos or videos will appear here.'),
       );
     }
 

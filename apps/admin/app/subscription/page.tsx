@@ -1,7 +1,7 @@
 // subscriptions management page
 // admin can: grant/revoke subscriptions, change pricing, see all subscribers
 
-import { createServerClient } from "@/lib/supabase/client";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   Heading,
   Card,
@@ -18,7 +18,7 @@ import { Topbar } from "@/components/layout/topbar";
 export const dynamic = "force-dynamic";
 
 export default async function SubscriptionsPage() {
-  const supabase = createServerClient();
+  const supabase = createAdminClient();
 
   const { data: subscribers } = await supabase
     .from("subscriptions")

@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../core/services/video_playback_coordinator.dart';
+import '../../../../core/localization/app_copy.dart';
 import '../../../../core/utils/snack.dart';
 import '../widgets/echo_video_player.dart';
 
@@ -27,7 +28,9 @@ class _EchoVideoScreenState extends State<EchoVideoScreen> {
     VideoPlaybackCoordinator.instance.pauseAll();
     if (widget.videoUrl.trim().isEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) showErrorSnack(context, 'Video link is missing.');
+        if (mounted) {
+          showErrorSnack(context, context.l('Video link is missing.'));
+        }
       });
     }
   }
@@ -74,7 +77,7 @@ class _EchoVideoScreenState extends State<EchoVideoScreen> {
                 style: IconButton.styleFrom(
                   backgroundColor: Colors.black.withValues(alpha: 0.34),
                 ),
-                tooltip: 'Back to echo',
+                tooltip: context.l('Back to echo'),
               ),
             ),
           ],

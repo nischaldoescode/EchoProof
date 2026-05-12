@@ -4,8 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../../app/theme/colors.dart';
-import '../../../../app/theme/spacing.dart';
 import '../../../../core/constants/storage_keys.dart';
+import '../../../../core/localization/app_copy.dart';
 import '../../../../core/services/push_notification_service.dart';
 
 class PermissionsSheet extends StatefulWidget {
@@ -128,7 +128,7 @@ class _PermissionsSheetState extends State<PermissionsSheet> {
                 size: 40, color: AppColors.fernGreen),
             const SizedBox(height: 12),
             Text(
-              'A few permissions',
+              context.l('A few permissions'),
               style: GoogleFonts.josefinSans(
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
@@ -137,7 +137,9 @@ class _PermissionsSheetState extends State<PermissionsSheet> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Echoproof needs these to work properly. You can change them anytime in your phone settings.',
+              context.l(
+                'Echoproof needs these to work properly. You can change them anytime in your phone settings.',
+              ),
               style: GoogleFonts.josefinSans(
                 fontSize: 13,
                 color: AppColors.textSecondary,
@@ -148,22 +150,24 @@ class _PermissionsSheetState extends State<PermissionsSheet> {
             const SizedBox(height: 24),
             _PermRow(
               icon: Icons.notifications_outlined,
-              title: 'Notifications',
-              desc: 'Get notified when your echoes are supported or challenged',
+              title: context.l('Notifications'),
+              desc: context.l(
+                  'Get notified when your echoes are supported or challenged'),
               granted: _notificationsGranted,
             ),
             const SizedBox(height: 12),
             _PermRow(
               icon: Icons.camera_alt_outlined,
-              title: 'Camera',
-              desc: 'Take photos to attach as evidence to your echoes',
+              title: context.l('Camera'),
+              desc:
+                  context.l('Take photos to attach as evidence to your echoes'),
               granted: _cameraGranted,
             ),
             const SizedBox(height: 12),
             _PermRow(
               icon: Icons.photo_library_outlined,
-              title: 'Photos',
-              desc: 'Attach images from your gallery',
+              title: context.l('Photos'),
+              desc: context.l('Attach images from your gallery'),
               granted: _photosGranted,
             ),
             const SizedBox(height: 24),
@@ -189,7 +193,7 @@ class _PermissionsSheetState extends State<PermissionsSheet> {
                         ),
                       )
                     : Text(
-                        'Allow permissions',
+                        context.l('Allow permissions'),
                         style: GoogleFonts.josefinSans(
                           fontWeight: FontWeight.w600,
                         ),
@@ -203,7 +207,7 @@ class _PermissionsSheetState extends State<PermissionsSheet> {
                 if (context.mounted) Navigator.pop(context);
               },
               child: Text(
-                'Skip for now',
+                context.l('Skip for now'),
                 style: GoogleFonts.josefinSans(
                   color: AppColors.textSecondary,
                   fontSize: 13,

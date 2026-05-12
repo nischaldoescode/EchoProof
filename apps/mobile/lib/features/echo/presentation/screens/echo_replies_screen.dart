@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
+import '../../../../core/localization/app_copy.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../shared/widgets/rich_text_display.dart';
@@ -198,7 +199,8 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
         elevation: 0,
         scrolledUnderElevation: 0.5,
         shadowColor: AppColors.borderSubtle,
-        title: Text('Thread', style: AppTypography.textTheme.titleLarge),
+        title: Text(context.l('Thread'),
+            style: AppTypography.textTheme.titleLarge),
         foregroundColor: AppColors.charcoal,
       ),
       body: Column(
@@ -316,7 +318,7 @@ class _OriginalEchoHeader extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.md),
           Text(
-            'Replies',
+            context.l('Replies'),
             style: AppTypography.textTheme.labelMedium,
           ),
         ],
@@ -424,7 +426,7 @@ class _ReplyThread extends StatelessWidget {
                       GestureDetector(
                         onTap: () => onReply(reply['id'] as String, username),
                         child: Text(
-                          'Reply',
+                          context.l('Reply'),
                           style: GoogleFonts.josefinSans(
                             fontSize: 12,
                             color: AppColors.textTertiary,
@@ -548,7 +550,7 @@ class _NestedReply extends StatelessWidget {
                 GestureDetector(
                   onTap: () => onReply(reply['id'] as String, username),
                   child: Text(
-                    'Reply',
+                    context.l('Reply'),
                     style: GoogleFonts.josefinSans(
                       fontSize: 12,
                       color: AppColors.textTertiary,
@@ -621,7 +623,9 @@ class _ReplyInput extends StatelessWidget {
                 child: Row(
                   children: [
                     Text(
-                      'Replying to @$replyingToUsername',
+                      context.l('Replying to @{username}', {
+                        'username': replyingToUsername!,
+                      }),
                       style: GoogleFonts.josefinSans(
                         fontSize: 12,
                         color: AppColors.fernGreenDark,
@@ -682,8 +686,10 @@ class _ReplyInput extends StatelessWidget {
                         style: AppTypography.textTheme.bodyMedium,
                         decoration: InputDecoration(
                           hintText: replyingToUsername != null
-                              ? 'Reply to @$replyingToUsername...'
-                              : 'Add a reply...',
+                              ? context.l('Reply to @{username}...', {
+                                  'username': replyingToUsername!,
+                                })
+                              : context.l('Add a reply...'),
                           hintStyle: GoogleFonts.josefinSans(
                             fontSize: 14,
                             color: AppColors.textTertiary,
@@ -758,7 +764,7 @@ class _ReplyInput extends StatelessWidget {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Text(
-                                    'Reply',
+                                    context.l('Reply'),
                                     style: GoogleFonts.josefinSans(
                                       color: AppColors.white,
                                       fontSize: 13,

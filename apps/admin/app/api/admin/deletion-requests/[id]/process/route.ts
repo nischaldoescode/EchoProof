@@ -1,4 +1,5 @@
-import { createServerClient } from "@/lib/supabase/client";
+import { requireAdmin } from "@/lib/auth/require-admin";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 
 type RouteContext = {
@@ -6,12 +7,15 @@ type RouteContext = {
 };
 
 export async function POST(req: NextRequest, context: RouteContext) {
+  const admin = await requireAdmin();
+  if (!admin.ok) return admin.response;
+
   const { id } = await Promise.resolve(context.params);
   const body = (await req.json().catch(() => ({}))) as {
     delete_account?: boolean;
   };
 
-  const supabase = createServerClient();
+  const supabase = createAdminClient();
 
   const { data: request, error: requestError } = await supabase
     .from("deletion_requests")
@@ -51,7 +55,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
 }
 
 async function deleteUserAccount(
-  supabase: ReturnType<typeof createServerClient>,
+  supabase: ReturnType<typeof createAdminClient>,
   userId: string,
 ) {
   await supabase.functions

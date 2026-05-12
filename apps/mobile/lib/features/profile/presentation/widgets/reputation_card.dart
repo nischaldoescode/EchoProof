@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
+import '../../../../core/localization/app_copy.dart';
 import '../../../../shared/widgets/trust_tier_label.dart';
 import '../../../../shared/widgets/verified_badge.dart';
 
@@ -97,11 +98,11 @@ class ReputationCard extends StatelessWidget {
           // stats row
           Row(
             children: [
-              _Stat(label: 'Echoes', value: echoCount),
+              _Stat(label: context.l('Echoes'), value: echoCount),
               _VerticalDivider(),
-              _Stat(label: 'Proofs', value: proofCount),
+              _Stat(label: context.l('Proofs'), value: proofCount),
               _VerticalDivider(),
-              _Stat(label: 'Score', value: trustScore),
+              _Stat(label: context.l('Score'), value: trustScore),
             ],
           ),
 
@@ -111,19 +112,19 @@ class ReputationCard extends StatelessWidget {
           Row(
             children: [
               _BondStat(
-                label: 'Settled',
+                label: context.l('Settled'),
                 value: settledBonds,
                 color: AppColors.fernGreen,
               ),
               const SizedBox(width: AppSpacing.md),
               _BondStat(
-                label: 'Active',
+                label: context.l('Active'),
                 value: activeBonds,
                 color: AppColors.textTertiary,
               ),
               const SizedBox(width: AppSpacing.md),
               _BondStat(
-                label: 'Contested',
+                label: context.l('Contested'),
                 value: contestedBonds,
                 color: AppColors.sunsetCoral,
               ),

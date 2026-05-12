@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
+import '../../../../core/localization/app_copy.dart';
 import '../services/onboarding_service.dart';
 import '../widgets/onboarding_progress.dart';
 
@@ -18,8 +19,7 @@ class StepGuide extends StatefulWidget {
   State<StepGuide> createState() => _StepGuideState();
 }
 
-class _StepGuideState extends State<StepGuide>
-    with TickerProviderStateMixin {
+class _StepGuideState extends State<StepGuide> with TickerProviderStateMixin {
   late PageController _pageController;
   late AnimationController _entryAnim;
   late Animation<double> _fade;
@@ -117,7 +117,10 @@ class _StepGuideState extends State<StepGuide>
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.xl, AppSpacing.xl, AppSpacing.xl, 0,
+                    AppSpacing.xl,
+                    AppSpacing.xl,
+                    AppSpacing.xl,
+                    0,
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -125,12 +128,12 @@ class _StepGuideState extends State<StepGuide>
                       const OnboardingProgress(currentStep: 5, totalSteps: 6),
                       const SizedBox(height: AppSpacing.xxl),
                       Text(
-                        'Here\'s how it works',
+                        context.l('Here\'s how it works'),
                         style: AppTypography.textTheme.headlineMedium,
                       ),
                       const SizedBox(height: AppSpacing.xs),
                       Text(
-                        'Swipe through to see what you can do.',
+                        context.l('Swipe through to see what you can do.'),
                         style: AppTypography.textTheme.bodyMedium?.copyWith(
                           color: AppColors.textSecondary,
                         ),
@@ -175,7 +178,10 @@ class _StepGuideState extends State<StepGuide>
                 const Spacer(),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.xl, 0, AppSpacing.xl, AppSpacing.xl,
+                    AppSpacing.xl,
+                    0,
+                    AppSpacing.xl,
+                    AppSpacing.xl,
                   ),
                   child: Row(
                     children: [
@@ -186,7 +192,7 @@ class _StepGuideState extends State<StepGuide>
                               duration: const Duration(milliseconds: 300),
                               curve: Curves.easeInOut,
                             ),
-                            child: const Text('Back'),
+                            child: Text(context.l('Back')),
                           ),
                         ),
                       if (_page > 0) const SizedBox(width: 12),
@@ -196,8 +202,8 @@ class _StepGuideState extends State<StepGuide>
                           onPressed: _next,
                           child: Text(
                             _page == _cards.length - 1
-                                ? 'Let\'s go!'
-                                : 'Next',
+                                ? context.l('Let\'s go!')
+                                : context.l('Next'),
                           ),
                         ),
                       ),
@@ -262,14 +268,14 @@ class _GuideCardWidget extends StatelessWidget {
           ),
           const SizedBox(height: 20),
           Text(
-            card.title,
+            context.l(card.title),
             style: AppTypography.textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            card.body,
+            context.l(card.body),
             style: AppTypography.textTheme.bodyMedium?.copyWith(
               color: AppColors.textSecondary,
               height: 1.5,

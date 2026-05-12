@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
+import '../../../../core/localization/app_copy.dart';
 import '../services/onboarding_service.dart';
 import '../widgets/onboarding_progress.dart';
 import '../../../echo/domain/entities/echo_entity.dart';
@@ -106,12 +107,14 @@ class _StepFirstEchoState extends State<StepFirstEcho> {
                         const OnboardingProgress(currentStep: 6, totalSteps: 6),
                         const SizedBox(height: AppSpacing.xxl),
                         Text(
-                          'Share your first Echo',
+                          context.l('Share your first Echo'),
                           style: AppTypography.textTheme.headlineMedium,
                         ),
                         const SizedBox(height: AppSpacing.sm),
                         Text(
-                          'Optional — you can always create one later from the feed.',
+                          context.l(
+                            'Optional — you can always create one later from the feed.',
+                          ),
                           style: AppTypography.textTheme.bodyMedium?.copyWith(
                             color: AppColors.textSecondary,
                           ),
@@ -139,9 +142,9 @@ class _StepFirstEchoState extends State<StepFirstEcho> {
                                           required isFocused,
                                           maxLength}) =>
                                       const SizedBox.shrink(),
-                                  decoration: const InputDecoration(
-                                    hintText:
-                                        'What do you want the community to verify?',
+                                  decoration: InputDecoration(
+                                    hintText: context.l(
+                                        'What do you want the community to verify?'),
                                     alignLabelWithHint: true,
                                   ),
                                   style: AppTypography.textTheme.bodyMedium,
@@ -222,7 +225,7 @@ class _StepFirstEchoState extends State<StepFirstEcho> {
                                     ),
                                   ),
                                   child: Text(
-                                    cat.displayName,
+                                    context.l(cat.displayName),
                                     style: TextStyle(
                                       fontSize: 13,
                                       fontWeight: selected
@@ -264,7 +267,7 @@ class _StepFirstEchoState extends State<StepFirstEcho> {
                                             color: AppColors.white,
                                           ),
                                         )
-                                      : const Text('Publish and enter'),
+                                      : Text(context.l('Publish and enter')),
                                 ),
                               ),
                             );
@@ -284,7 +287,7 @@ class _StepFirstEchoState extends State<StepFirstEcho> {
                                     ),
                                   )
                                 : Text(
-                                    'Skip for now',
+                                    context.l('Skip for now'),
                                     style: AppTypography.textTheme.bodyMedium
                                         ?.copyWith(
                                             color: AppColors.textSecondary),
@@ -317,7 +320,7 @@ class _StepFirstEchoState extends State<StepFirstEcho> {
                     ),
                     const SizedBox(height: AppSpacing.lg),
                     Text(
-                      'Setting up your account...',
+                      context.l('Setting up your account...'),
                       style: GoogleFonts.josefinSans(
                         fontSize: 14,
                         color: AppColors.textSecondary,

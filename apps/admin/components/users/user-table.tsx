@@ -86,12 +86,12 @@ export function UserTable({ users }: UserTableProps) {
   return (
     <div className="space-y-4">
       {/* search + filter bar */}
-      <div className="flex flex-wrap gap-3 items-center">
+      <div className="flex flex-wrap items-center gap-3">
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by username or name..."
-          className="border border-[#E6E6E6] rounded-lg px-3 py-2 text-xs w-56 focus:outline-none focus:border-[#1A1A1A] transition-colors"
+          className="w-full rounded-lg border border-[#E6E6E6] px-3 py-2 text-xs transition-colors focus:border-[#1A1A1A] focus:outline-none sm:w-64"
         />
         <div className="flex gap-2 flex-wrap">
           {(
@@ -117,12 +117,12 @@ export function UserTable({ users }: UserTableProps) {
             </button>
           ))}
         </div>
-        <span className="text-xs text-gray-400 ml-auto">
+        <span className="w-full text-xs text-gray-400 sm:ml-auto sm:w-auto">
           {filtered.length} user{filtered.length !== 1 ? "s" : ""}
         </span>
       </div>
 
-      <div className="bg-white rounded-xl border border-[#E6E6E6] overflow-hidden">
+      <div className="admin-soft-card overflow-hidden rounded-xl border border-[#E6E6E6] bg-white">
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[900px]">
             <thead>

@@ -9,6 +9,7 @@ import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../../../core/utils/logger.dart';
+import '../../../../core/localization/app_copy.dart';
 import '../../../../shared/widgets/app_bottom_nav.dart';
 import '../../../../app/app.dart';
 import '../../../../shared/widgets/shimmer_loader.dart';
@@ -162,7 +163,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
             child: Scaffold(
           backgroundColor: AppColors.white,
           appBar: AppBar(
-            title: Text('Discover', style: AppTypography.textTheme.titleLarge),
+            title: Text(context.l('Discover'),
+                style: AppTypography.textTheme.titleLarge),
           ),
           bottomNavigationBar: const AppBottomNav(currentLocation: '/discover'),
           body: Column(
@@ -204,7 +206,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                           ),
                         ),
                         child: Text(
-                          c.label,
+                          context.l(c.label),
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight:
@@ -230,8 +232,12 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                 ),
                 child: Text(
                   _selectedCountry != null
-                      ? 'Trending signals in ${_countries.firstWhere((c) => c.code == _selectedCountry).label}'
-                      : 'Trending signals globally',
+                      ? context.l('Trending signals in {country}', {
+                          'country': context.l(_countries
+                              .firstWhere((c) => c.code == _selectedCountry)
+                              .label),
+                        })
+                      : context.l('Trending signals globally'),
                   style: AppTypography.textTheme.titleSmall,
                 ),
               ),
@@ -243,9 +249,9 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                   child: _isLoading
                       ? ListView(
                           physics: const AlwaysScrollableScrollPhysics(),
-                          children: const [
-                            SizedBox(height: 180),
-                            EchoLogoLoader(label: 'Finding signals'),
+                          children: [
+                            const SizedBox(height: 180),
+                            EchoLogoLoader(label: context.l('Finding signals')),
                           ],
                         )
                       : _signals.isEmpty
@@ -264,7 +270,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                       ),
                                       const SizedBox(height: AppSpacing.md),
                                       Text(
-                                        'No signals trending yet',
+                                        context.l('No signals trending yet'),
                                         style: AppTypography
                                             .textTheme.bodyMedium
                                             ?.copyWith(
@@ -373,7 +379,10 @@ class _SignalRow extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    '${_formatCount(signal.echoCount)} echoes - ${_formatCount(signal.authorCount)} voices',
+                    context.l('{echoes} echoes · {voices} voices', {
+                      'echoes': _formatCount(signal.echoCount),
+                      'voices': _formatCount(signal.authorCount),
+                    }),
                     style: AppTypography.textTheme.labelMedium,
                   ),
                 ],
@@ -390,7 +399,9 @@ class _SignalRow extends StatelessWidget {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  'Fair ${signal.fairScore.toStringAsFixed(1)}',
+                  context.l('Fair {score}', {
+                    'score': signal.fairScore.toStringAsFixed(1),
+                  }),
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w600,

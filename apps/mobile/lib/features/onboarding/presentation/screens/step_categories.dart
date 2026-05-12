@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
+import '../../../../core/localization/app_copy.dart';
 import '../services/onboarding_service.dart';
 import '../widgets/onboarding_progress.dart';
 import '../widgets/category_chip.dart';
@@ -51,12 +52,15 @@ class StepCategories extends StatelessWidget {
                     const OnboardingProgress(currentStep: 2, totalSteps: 5),
                     const SizedBox(height: AppSpacing.xxl),
                     Text(
-                      'What matters to you?',
+                      context.l('What matters to you?'),
                       style: AppTypography.textTheme.headlineMedium,
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     Text(
-                      'Pick at least $_minRequired areas. Your feed will show echoes from these communities.',
+                      context.l(
+                        'Pick at least {count} areas. Your feed will show echoes from these communities.',
+                        {'count': _minRequired},
+                      ),
                       style: AppTypography.textTheme.bodyMedium?.copyWith(
                         color: AppColors.textSecondary,
                       ),
@@ -67,7 +71,7 @@ class StepCategories extends StatelessWidget {
                       runSpacing: AppSpacing.sm,
                       children: _categories.map((cat) {
                         return CategoryChip(
-                          label: cat.label,
+                          label: context.l(cat.label),
                           isSelected: selected.contains(cat.value),
                           onTap: () => context
                               .read<OnboardingService>()
@@ -80,12 +84,16 @@ class StepCategories extends StatelessWidget {
                       duration: const Duration(milliseconds: 200),
                       child: selected.length < _minRequired
                           ? Text(
-                              'Select ${_minRequired - selected.length} more',
+                              context.l('Select {count} more', {
+                                'count': _minRequired - selected.length,
+                              }),
                               key: const ValueKey('need_more'),
                               style: AppTypography.textTheme.bodySmall,
                             )
                           : Text(
-                              '${selected.length} selected',
+                              context.l('{count} selected', {
+                                'count': selected.length,
+                              }),
                               key: const ValueKey('selected'),
                               style: TextStyle(
                                 fontSize: 12,
@@ -106,7 +114,7 @@ class StepCategories extends StatelessWidget {
                               ? () =>
                                   context.read<OnboardingService>().nextStep()
                               : null,
-                          child: const Text('Continue'),
+                          child: Text(context.l('Continue')),
                         ),
                       ),
                     ),

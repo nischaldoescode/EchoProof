@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
+import '../../../../core/localization/app_copy.dart';
 import '../../domain/entities/echo_status.dart';
 import '../../domain/entities/echo_entity.dart';
 import '../../domain/entities/feed_filter.dart';
@@ -129,7 +130,8 @@ class _FeedFilterSheetState extends State<_FeedFilterSheet> {
             ),
             child: Row(
               children: [
-                Text('Filter feed', style: AppTypography.textTheme.titleMedium),
+                Text(context.l('Filter feed'),
+                    style: AppTypography.textTheme.titleMedium),
                 const Spacer(),
                 TextButton(
                   onPressed: _reset,
@@ -143,13 +145,13 @@ class _FeedFilterSheetState extends State<_FeedFilterSheet> {
                     color: AppColors.sunsetCoral,
                     fontWeight: FontWeight.w600,
                   ).toString().isEmpty
-                      ? Text('Reset',
+                      ? Text(context.l('Reset'),
                           style: GoogleFonts.josefinSans(
                             fontSize: 13,
                             color: AppColors.sunsetCoral,
                             fontWeight: FontWeight.w600,
                           ))
-                      : Text('Reset',
+                      : Text(context.l('Reset'),
                           style: GoogleFonts.josefinSans(
                             fontSize: 13,
                             color: AppColors.sunsetCoral,
@@ -167,7 +169,7 @@ class _FeedFilterSheetState extends State<_FeedFilterSheet> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // sort by
-                  _SectionTitle('Sort by'),
+                  _SectionTitle(context.l('Sort by')),
                   const SizedBox(height: AppSpacing.sm),
                   Wrap(
                     spacing: AppSpacing.sm,
@@ -175,7 +177,7 @@ class _FeedFilterSheetState extends State<_FeedFilterSheet> {
                     children: FeedSortBy.values.map((s) {
                       final active = _sortBy == s;
                       return _FilterChip(
-                        label: s.label,
+                        label: context.l(s.label),
                         active: active,
                         activeColor: AppColors.charcoal,
                         onTap: () => setState(() => _sortBy = s),
@@ -186,13 +188,13 @@ class _FeedFilterSheetState extends State<_FeedFilterSheet> {
                   const SizedBox(height: AppSpacing.xl),
 
                   // quick filters
-                  _SectionTitle('Quick filters'),
+                  _SectionTitle(context.l('Quick filters')),
                   const SizedBox(height: AppSpacing.sm),
                   Row(
                     children: [
                       Expanded(
                         child: _ToggleTile(
-                          label: 'Verified only',
+                          label: context.l('Verified only'),
                           icon: Icons.verified_outlined,
                           color: AppColors.fernGreen,
                           value: _verifiedOnly,
@@ -205,7 +207,7 @@ class _FeedFilterSheetState extends State<_FeedFilterSheet> {
                       const SizedBox(width: AppSpacing.sm),
                       Expanded(
                         child: _ToggleTile(
-                          label: 'Unverified only',
+                          label: context.l('Unverified only'),
                           icon: Icons.hourglass_empty_rounded,
                           color: const Color(0xFF6B4FA0),
                           value: _unverifiedOnly,
@@ -221,7 +223,7 @@ class _FeedFilterSheetState extends State<_FeedFilterSheet> {
                   const SizedBox(height: AppSpacing.xl),
 
                   // status filters
-                  _SectionTitle('Status'),
+                  _SectionTitle(context.l('Status')),
                   const SizedBox(height: AppSpacing.sm),
                   Wrap(
                     spacing: AppSpacing.sm,
@@ -229,7 +231,7 @@ class _FeedFilterSheetState extends State<_FeedFilterSheet> {
                     children: _statusOptions.map((opt) {
                       final active = _statuses.contains(opt.status);
                       return _FilterChip(
-                        label: opt.label,
+                        label: context.l(opt.label),
                         active: active,
                         activeColor: opt.color,
                         onTap: () => _toggleStatus(opt.status),
@@ -240,7 +242,7 @@ class _FeedFilterSheetState extends State<_FeedFilterSheet> {
                   const SizedBox(height: AppSpacing.xl),
 
                   // category filters
-                  _SectionTitle('Categories'),
+                  _SectionTitle(context.l('Categories')),
                   const SizedBox(height: AppSpacing.sm),
                   Wrap(
                     spacing: AppSpacing.sm,
@@ -248,7 +250,7 @@ class _FeedFilterSheetState extends State<_FeedFilterSheet> {
                     children: EchoCategory.values.map((cat) {
                       final active = _categories.contains(cat);
                       return _FilterChip(
-                        label: cat.displayName,
+                        label: context.l(cat.displayName),
                         active: active,
                         activeColor: AppColors.charcoal,
                         onTap: () => _toggleCategory(cat),
@@ -281,7 +283,7 @@ class _FeedFilterSheetState extends State<_FeedFilterSheet> {
                   elevation: 0,
                 ),
                 child: Text(
-                  'Apply filters',
+                  context.l('Apply filters'),
                   style: GoogleFonts.josefinSans(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,

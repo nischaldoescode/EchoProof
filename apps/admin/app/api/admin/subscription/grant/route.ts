@@ -1,8 +1,12 @@
-import { createServerClient } from '@/lib/supabase/client';
+import { requireAdmin } from '@/lib/auth/require-admin';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
-  const supabase = createServerClient();
+  const admin = await requireAdmin();
+  if (!admin.ok) return admin.response;
+
+  const supabase = createAdminClient();
   const body     = await req.formData();
   const username = (body.get('username') as string)?.replace('@', '');
   const days     = parseInt(body.get('days') as string ?? '30', 10);

@@ -10,6 +10,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
+import '../../../../core/localization/app_copy.dart';
 import '../services/auth_service.dart';
 
 class AgeGenderScreen extends StatefulWidget {
@@ -84,18 +85,20 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(
-          'Cancel account setup?',
+          context.l('Cancel account setup?'),
           style: GoogleFonts.josefinSans(fontWeight: FontWeight.w700),
         ),
         content: Text(
-          'If you leave now, your account setup will not be complete. You will need to start again next time.',
+          context.l(
+            'If you leave now, your account setup will not be complete. You will need to start again next time.',
+          ),
           style: GoogleFonts.josefinSans(fontSize: 14, height: 1.5),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(
-              'Stay',
+              context.l('Stay'),
               style: GoogleFonts.josefinSans(color: AppColors.fernGreen),
             ),
           ),
@@ -105,7 +108,7 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
               foregroundColor: AppColors.sunsetCoral,
             ),
             child: Text(
-              'Leave',
+              context.l('Leave'),
               style: GoogleFonts.josefinSans(fontWeight: FontWeight.w600),
             ),
           ),
@@ -132,8 +135,8 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
       initialDate: _dob ?? DateTime(now.year - 18, now.month, now.day),
       firstDate: firstDate,
       lastDate: lastDate,
-      helpText: 'select your date of birth',
-      fieldLabelText: 'date of birth',
+      helpText: context.l('select your date of birth'),
+      fieldLabelText: context.l('date of birth'),
       builder: (ctx, child) {
         return Theme(
           data: Theme.of(ctx).copyWith(
@@ -192,11 +195,13 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
       barrierDismissible: false,
       builder: (_) => AlertDialog(
         title: Text(
-          'Age requirement',
+          context.l('Age requirement'),
           style: GoogleFonts.josefinSans(fontWeight: FontWeight.w700),
         ),
         content: Text(
-          'Echoproof requires users to be at least 13 years old. We cannot create an account for you at this time.',
+          context.l(
+            'Echoproof requires users to be at least 13 years old. We cannot create an account for you at this time.',
+          ),
           style: GoogleFonts.josefinSans(fontSize: 14),
         ),
         actions: [
@@ -207,7 +212,7 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
               if (mounted) context.go('/login');
             },
             child: Text(
-              'Understood',
+              context.l('Understood'),
               style: GoogleFonts.josefinSans(color: AppColors.fernGreen),
             ),
           ),
@@ -314,7 +319,7 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
                           const SizedBox(height: AppSpacing.xl),
 
                           Text(
-                            'Quick profile setup',
+                            context.l('Quick profile setup'),
                             style: GoogleFonts.josefinSans(
                               fontSize: 26,
                               fontWeight: FontWeight.w700,
@@ -326,7 +331,9 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
                           const SizedBox(height: AppSpacing.sm),
 
                           Text(
-                            'This helps us keep Echoproof safe and relevant. None of this is public.',
+                            context.l(
+                              'This helps us keep Echoproof safe and relevant. None of this is public.',
+                            ),
                             style: GoogleFonts.josefinSans(
                               fontSize: 14,
                               color: AppColors.textSecondary,
@@ -338,7 +345,7 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
 
                           // date of birth label
                           Text(
-                            'Date of birth',
+                            context.l('Date of birth'),
                             style: GoogleFonts.josefinSans(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
@@ -393,7 +400,8 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
                                     child: Text(
                                       _dob != null
                                           ? _formatDob(_dob!)
-                                          : 'Select your date of birth',
+                                          : context
+                                              .l('Select your date of birth'),
                                       style: GoogleFonts.josefinSans(
                                         fontSize: _dob != null ? 15 : 14,
                                         fontWeight: _dob != null
@@ -417,7 +425,7 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
                                         borderRadius: BorderRadius.circular(20),
                                       ),
                                       child: Text(
-                                        '$age yrs',
+                                        context.l('{age} yrs', {'age': age}),
                                         style: GoogleFonts.josefinSans(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w600,
@@ -440,7 +448,7 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
 
                           // gender label
                           Text(
-                            'Gender',
+                            context.l('Gender'),
                             style: GoogleFonts.josefinSans(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
@@ -491,7 +499,7 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
                                       const SizedBox(width: 6),
                                       Flexible(
                                         child: Text(
-                                          g.label,
+                                          context.l(g.label),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: GoogleFonts.josefinSans(
@@ -541,7 +549,7 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
                                         ),
                                       )
                                     : Text(
-                                        'Continue',
+                                        context.l('Continue'),
                                         style: GoogleFonts.josefinSans(
                                           fontSize: 15,
                                           fontWeight: FontWeight.w600,
