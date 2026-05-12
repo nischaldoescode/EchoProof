@@ -220,9 +220,39 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
     return _filter.apply(echoes);
   }
 
-  int _itemCount(List<EchoEntity> filtered, bool hasMore) {
-    final adCount = filtered.length ~/ 7;
+  int _itemCount(List<EchoEntity> filtered, bool hasMore, bool showAds) {
+    final adCount = showAds ? filtered.length ~/ 7 : 0;
     return filtered.length + adCount + (hasMore ? 1 : 0);
+  }
+
+  bool _isAdSlot(int index, bool showAds) {
+    return showAds && (index + 1) % 8 == 0;
+  }
+
+  int _echoIndexFor(int index, bool showAds) {
+    if (!showAds) return index;
+    return index - ((index + 1) ~/ 8);
+  }
+
+  Widget _refreshableState(Widget child) {
+    final minHeight = MediaQuery.sizeOf(context).height -
+        kToolbarHeight -
+        MediaQuery.paddingOf(context).top -
+        MediaQuery.paddingOf(context).bottom -
+        96;
+    return RefreshIndicator(
+      color: AppColors.fernGreen,
+      onRefresh: () => context.read<EchoFeedService>().refresh(),
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          SizedBox(
+            height: minHeight.clamp(360.0, double.infinity).toDouble(),
+            child: child,
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -250,22 +280,31 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
 
   Widget _buildBody(EchoFeedService feed, bool isTablet) {
     if (feed.isLoading && feed.echoes.isEmpty) {
-      return EchoLogoLoader(label: context.l('Loading feed'));
+      return _refreshableState(
+          EchoLogoLoader(label: context.l('Loading feed')));
     }
 
     if (feed.loadState == FeedLoadState.error && feed.echoes.isEmpty) {
-      return _ErrorState(
-        onRetry: () => context.read<EchoFeedService>().loadFeed(),
+      return _refreshableState(
+        _ErrorState(
+          onRetry: () => context.read<EchoFeedService>().loadFeed(),
+        ),
       );
     }
 
     final filtered = _filtered(feed.echoes);
+    final subscription = context.watch<SubscriptionService>();
+    final adService = context.watch<AdService>();
+    final showAds = !subscription.isPro && !adService.isAdFreeActive;
 
-    if (feed.echoes.isEmpty) return const _EmptyFeed();
+    if (feed.echoes.isEmpty) return _refreshableState(const _EmptyFeed());
 
     if (filtered.isEmpty && _filter.isActive) {
-      return _EmptyFilter(
-          onClear: () => setState(() => _filter = const FeedFilter()));
+      return _refreshableState(
+        _EmptyFilter(
+          onClear: () => setState(() => _filter = const FeedFilter()),
+        ),
+      );
     }
 
     return Column(
@@ -281,6 +320,7 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
                 )
               : const SizedBox.shrink(),
         ),
+        _RefreshHint(onTap: () => context.read<EchoFeedService>().refresh()),
         Expanded(
           child: RefreshIndicator(
             color: AppColors.fernGreen,
@@ -289,17 +329,16 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
               controller: _scrollCtrl,
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.only(top: AppSpacing.xs, bottom: 120),
-              itemCount: _itemCount(filtered, feed.hasMore),
+              itemCount: _itemCount(filtered, feed.hasMore, showAds),
               itemBuilder: (ctx, index) {
-                if (index > 0 && index % 7 == 6) {
+                if (_isAdSlot(index, showAds)) {
                   return const Padding(
                     padding: EdgeInsets.only(bottom: AppSpacing.sm),
                     child: AdCard(),
                   );
                 }
 
-                final adsBefore = index ~/ 7;
-                final echoIndex = index - adsBefore;
+                final echoIndex = _echoIndexFor(index, showAds);
 
                 if (echoIndex >= filtered.length) {
                   if (!feed.hasMore) return const SizedBox.shrink();
@@ -320,6 +359,48 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _RefreshHint extends StatelessWidget {
+  const _RefreshHint({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.white,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            AppSpacing.xs,
+            AppSpacing.lg,
+            AppSpacing.sm,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.keyboard_double_arrow_down_rounded,
+                size: 15,
+                color: AppColors.textTertiary,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                context.l('Pull down or tap to refresh'),
+                style: GoogleFonts.josefinSans(
+                  fontSize: 11,
+                  color: AppColors.textTertiary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -122,14 +122,7 @@ class _OtpScreenState extends State<OtpScreen>
         context.go('/age-gender');
       }
     } else {
-      // Trigger error state before clearing the field to avoid a
-      // mid-animation rebuild caused by simultaneous setState + triggerError.
       _shakeCtrl.forward(from: 0);
-      await Future.delayed(const Duration(milliseconds: 80));
-      if (!mounted) return;
-      _ctrl.triggerError();
-      await Future.delayed(const Duration(milliseconds: 320));
-      if (!mounted) return;
       setState(() {
         _isVerifying = false;
         _hasError = true;
@@ -241,7 +234,7 @@ class _OtpScreenState extends State<OtpScreen>
                               color: AppColors.charcoal,
                             ),
                             entryAnimation: MaterialPinAnimation.scale,
-                            enableErrorShake: true,
+                            enableErrorShake: false,
                           ),
                           onChanged: (v) {
                             if (_hasError) setState(() => _hasError = false);

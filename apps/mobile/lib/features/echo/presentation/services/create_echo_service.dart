@@ -203,8 +203,8 @@ class CreateEchoService extends ChangeNotifier {
         client,
         action: 'create_echo',
         subject: userId,
-        windowSeconds: 20 * 60,
-        maxActions: 1,
+        windowSeconds: 10 * 60,
+        maxActions: 3,
       );
       if (cooldown.retryAfterSeconds > 0) {
         throw _CooldownException(
@@ -306,16 +306,22 @@ class CreateEchoService extends ChangeNotifier {
     required int windowSeconds,
     required int maxActions,
   }) async {
-    final response = await client.rpc('get_action_cooldown_status', params: {
-      'p_action': action,
-      'p_subject': subject,
-      'p_window_seconds': windowSeconds,
-      'p_max_actions': maxActions,
-      'p_include_ip': false,
-    });
-    final map = Map<String, dynamic>.from(response as Map);
-    final retryAfter = (map['retry_after_seconds'] as num?)?.toInt() ?? 0;
-    return _CooldownStatus(retryAfterSeconds: retryAfter);
+    try {
+      final response = await client.rpc('get_action_cooldown_status', params: {
+        'p_action': action,
+        'p_subject': subject,
+        'p_window_seconds': windowSeconds,
+        'p_max_actions': maxActions,
+        'p_include_ip': false,
+      });
+      final map = Map<String, dynamic>.from(response as Map);
+      final retryAfter = (map['retry_after_seconds'] as num?)?.toInt() ?? 0;
+      return _CooldownStatus(retryAfterSeconds: retryAfter);
+    } catch (e) {
+      AppLogger.warn(
+          'echo: cooldown status unavailable, relying on insert guard $e');
+      return const _CooldownStatus(retryAfterSeconds: 0);
+    }
   }
 
   String _friendlyCreateError(PostgrestException e) {
