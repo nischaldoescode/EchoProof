@@ -14,6 +14,7 @@ import '../../../../core/utils/logger.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../onboarding/presentation/services/onboarding_service.dart';
 import '../../../../core/services/ad_service.dart';
+import '../../../../core/localization/app_copy.dart';
 import 'package:flutter/services.dart';
 import '../../../../core/utils/snack.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -169,7 +170,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 Padding(
                   padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
                   child: Text(
-                    'Choose language',
+                    context.l('Choose language'),
                     style: GoogleFonts.josefinSans(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
@@ -225,10 +226,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                       onPressed: () {
                         onboarding.setLanguage(selected);
                         Navigator.pop(ctx);
-                        // Notify user the change applies on next restart
-                        // because flutter_localizations requires app rebuild
-                        showInfoSnack(context,
-                            'Language updated. Restart the app to apply.');
+                        showInfoSnack(context, context.l('Language updated.'));
                         setState(() {});
                       },
                       style: ElevatedButton.styleFrom(
@@ -240,7 +238,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                         elevation: 0,
                       ),
                       child: Text(
-                        'Apply',
+                        context.l('Apply'),
                         style: GoogleFonts.josefinSans(
                           fontWeight: FontWeight.w600,
                         ),
@@ -334,7 +332,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                       onPressed: () {
                         Navigator.pop(ctx);
 
-                        showInfoSnack(context, 'Coming soon! Stay tuned.');
+                        showInfoSnack(
+                            context, context.l('Coming soon! Stay tuned.'));
                         // context.push('/subscribe');
                       },
                       style: ElevatedButton.styleFrom(
@@ -427,7 +426,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       backgroundColor: const Color(0xFFF5FAF7),
       appBar: AppBar(
         title: Text(
-          'Settings',
+          context.l('Settings'),
           style: GoogleFonts.josefinSans(
             fontSize: 18,
             fontWeight: FontWeight.w600,
@@ -465,18 +464,18 @@ class _SettingsScreenState extends State<SettingsScreen>
       ),
       body: ListView(
         children: [
-          _Section(title: 'Language', tiles: [
+          _Section(title: context.l('Language'), tiles: [
             _Tile(
               icon: Icons.language_rounded,
-              label: 'App language',
+              label: context.l('App language'),
               subtitle: _currentLanguageLabel(context),
               onTap: () => _showLanguageSheet(context),
             ),
           ]),
-          _Section(title: 'Account', tiles: [
+          _Section(title: context.l('Account'), tiles: [
             _Tile(
               icon: Icons.person_outline_rounded,
-              label: 'Edit profile',
+              label: context.l('Edit profile'),
               onTap: () => context.push('/profile'),
             ),
             _Tile(
@@ -486,14 +485,14 @@ class _SettingsScreenState extends State<SettingsScreen>
                       ? Icons.pending_outlined
                       : Icons.verified_user_outlined,
               label: _isVerified
-                  ? 'Identity verified ✓'
+                  ? context.l('Identity verified')
                   : _isVerificationPending
-                      ? 'Verification in progress...'
-                      : 'Verify identity',
+                      ? context.l('Verification in progress...')
+                      : context.l('Verify identity'),
               subtitle: _isVerified
-                  ? 'Your identity has been confirmed'
+                  ? context.l('Your identity has been confirmed')
                   : _isVerificationPending
-                      ? 'Usually takes a few minutes'
+                      ? context.l('Usually takes a few minutes')
                       : null,
               color: _isVerified ? AppColors.fernGreen : null,
               showChevron: !_isVerified && !_isVerificationPending,
@@ -514,10 +513,10 @@ class _SettingsScreenState extends State<SettingsScreen>
             //   },
             // ),
           ]),
-          _Section(title: 'Subscription', tiles: [
+          _Section(title: context.l('Subscription'), tiles: [
             _Tile(
                 icon: Icons.star_outline_rounded,
-                label: 'Echoproof Pro',
+                label: context.l('Echoproof Pro'),
                 trailing: const _ProBadge(),
                 onTap: () => {
                       showInfoSnack(
@@ -529,112 +528,115 @@ class _SettingsScreenState extends State<SettingsScreen>
                 // context.push('/subscribe'),
                 ),
           ]),
-          _Section(title: 'Notifications', tiles: [
+          _Section(title: context.l('Notifications'), tiles: [
             _SwitchTile(
               icon: Icons.notifications_outlined,
-              label: 'Push notifications',
+              label: context.l('Push notifications'),
               value: _pushEnabled,
               onChanged: _setPushEnabled,
             ),
             // In-app notifications are always on — shown greyed out.
             _Tile(
               icon: Icons.notifications_active_outlined,
-              label: 'In-app notifications',
-              subtitle: 'Always enabled (required)',
+              label: context.l('In-app notifications'),
+              subtitle: context.l('Always enabled (required)'),
               color: AppColors.textTertiary,
-              onTap: () => showInfoSnack(
-                  context, 'In-app notifications cannot be disabled.'),
+              onTap: () => showInfoSnack(context,
+                  context.l('In-app notifications cannot be disabled.')),
             ),
             if (_pushEnabled) ...[
               _SwitchTile(
                 icon: Icons.verified_outlined,
-                label: 'Echo verified',
+                label: context.l('Echo verified'),
                 value: _notifPrefs['echo_verified'] ?? true,
                 onChanged: (v) => _setNotifPref('echo_verified', v),
               ),
               _SwitchTile(
                 icon: Icons.people_outline,
-                label: 'New echo from someone I follow',
+                label: context.l('New echo from someone I follow'),
                 value: _notifPrefs['new_follower_echo'] ?? true,
                 onChanged: (v) => _setNotifPref('new_follower_echo', v),
               ),
               _SwitchTile(
                 icon: Icons.arrow_upward_rounded,
-                label: 'Someone supported my echo',
+                label: context.l('Someone supported my echo'),
                 value: _notifPrefs['someone_supported'] ?? false,
                 onChanged: (v) => _setNotifPref('someone_supported', v),
               ),
             ],
           ]),
 
-          _Section(title: 'App Permissions', tiles: [
+          _Section(title: context.l('App Permissions'), tiles: [
             _PermissionTile(
               icon: Icons.notifications_outlined,
-              label: 'Notifications',
+              label: context.l('Notifications'),
               permission: Permission.notification,
             ),
             _PermissionTile(
               icon: Icons.photo_library_outlined,
-              label: 'Photo library',
+              label: context.l('Photo library'),
               permission: Permission.photos,
             ),
             _PermissionTile(
               icon: Icons.camera_alt_outlined,
-              label: 'Camera',
+              label: context.l('Camera'),
               permission: Permission.camera,
             ),
           ]),
-          _Section(title: 'Privacy', tiles: [
+          _Section(title: context.l('Privacy'), tiles: [
             _Tile(
               icon: Icons.shield_outlined,
-              label: 'End-to-end encryption',
-              subtitle: 'All echoes encrypted in transit and at rest',
+              label: context.l('End-to-end encryption'),
+              subtitle:
+                  context.l('All echoes encrypted in transit and at rest'),
               showChevron: false,
               onTap: () {},
             ),
             _Tile(
               icon: Icons.delete_outline_rounded,
-              label: 'Delete account',
+              label: context.l('Delete account'),
               color: AppColors.sunsetCoral,
               onTap: () => _showDeleteAccount(context),
             ),
           ]),
-          _Section(title: 'Ads', tiles: [
+          _Section(title: context.l('Ads'), tiles: [
             _AdStatusTile(onTap: () => _showAdInfoModal(context)),
           ]),
-          _Section(title: 'About', tiles: [
+          _Section(title: context.l('About'), tiles: [
             _Tile(
               icon: Icons.info_outline_rounded,
-              label: 'About Echoproof',
+              label: context.l('About Echoproof'),
               onTap: () => _showLinkChoiceSheet(
                 url: 'https://echoproof.online/',
-                title: 'About Echoproof',
+                title: context.l('About Echoproof'),
               ),
             ),
             _Tile(
               icon: Icons.description_outlined,
-              label: 'Terms of service',
+              label: context.l('Terms of service'),
               onTap: () => _showLinkChoiceSheet(
                 url: 'https://echoproof.online/terms',
-                title: 'Terms of service',
+                title: context.l('Terms of service'),
               ),
             ),
             _Tile(
               icon: Icons.privacy_tip_outlined,
-              label: 'Privacy policy',
+              label: context.l('Privacy policy'),
               onTap: () => _showLinkChoiceSheet(
                 url: 'https://echoproof.online/privacy',
-                title: 'Privacy policy',
+                title: context.l('Privacy policy'),
               ),
             ),
             _Tile(
               icon: Icons.support_agent_rounded,
-              label: 'Contact support',
+              label: context.l('Contact support'),
               onTap: () => _showContactSheet(context),
             ),
             _Tile(
               icon: Icons.code_rounded,
-              label: _version.isEmpty ? 'Version...' : 'Version $_version',
+              label: _version.isEmpty
+                  ? context.l('Version...')
+                  : '${context.l('Version')} $_version',
               showChevron: false,
               onTap: () {},
             ),
@@ -676,7 +678,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               },
               icon: const Icon(Icons.logout_rounded, size: 18),
               label: Text(
-                'Sign out',
+                context.l('Sign out'),
                 style: GoogleFonts.josefinSans(fontWeight: FontWeight.w600),
               ),
               style: OutlinedButton.styleFrom(
@@ -757,7 +759,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Open $title?',
+                      context.l('Open {title}?', {'title': title}),
                       style: GoogleFonts.josefinSans(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
@@ -778,8 +780,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               const SizedBox(height: AppSpacing.lg),
               _OpenLinkAction(
                 icon: Icons.open_in_browser_rounded,
-                title: 'Open in app',
-                subtitle: 'Use a secure in-app browser',
+                title: context.l('Open in app'),
+                subtitle: context.l('Use a secure in-app browser'),
                 onTap: () {
                   Navigator.pop(ctx);
                   _launchUrl(url, mode: LaunchMode.inAppBrowserView);
@@ -787,8 +789,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               _OpenLinkAction(
                 icon: Icons.north_east_rounded,
-                title: 'Open in browser',
-                subtitle: 'Switch to your default browser',
+                title: context.l('Open in browser'),
+                subtitle: context.l('Switch to your default browser'),
                 onTap: () {
                   Navigator.pop(ctx);
                   _launchUrl(url);
@@ -825,12 +827,12 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
             ),
             const SizedBox(height: AppSpacing.xl),
-            Text('Contact support',
+            Text(context.l('Contact support'),
                 style: GoogleFonts.josefinSans(
                     fontSize: 18, fontWeight: FontWeight.w700)),
             const SizedBox(height: AppSpacing.md),
             Text(
-              'For support, bug reports, or general questions:',
+              context.l('For support, bug reports, or general questions:'),
               style: GoogleFonts.josefinSans(
                   fontSize: 14, color: AppColors.textSecondary),
             ),
@@ -862,7 +864,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
             const SizedBox(height: AppSpacing.sm),
             Text(
-              'This is our only support channel at this time.',
+              context.l('This is our only support channel at this time.'),
               style: GoogleFonts.josefinSans(
                   fontSize: 12, color: AppColors.textTertiary),
             ),
@@ -884,19 +886,21 @@ class _SettingsScreenState extends State<SettingsScreen>
         builder: (ctx, setDialogState) => AlertDialog(
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text('Delete account?',
+          title: Text(context.l('Delete account?'),
               style: GoogleFonts.josefinSans(fontWeight: FontWeight.w700)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'This permanently deletes your account, echoes, and trust history. This cannot be undone.',
+                context.l(
+                  'This permanently deletes your account, echoes, and trust history. This cannot be undone.',
+                ),
                 style: GoogleFonts.josefinSans(fontSize: 14, height: 1.5),
               ),
               const SizedBox(height: 16),
               Text(
-                'Type your email address to confirm:',
+                context.l('Type your email address to confirm:'),
                 style: GoogleFonts.josefinSans(
                     fontSize: 13, fontWeight: FontWeight.w600),
               ),
@@ -907,7 +911,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 autofocus: true,
                 style: GoogleFonts.josefinSans(fontSize: 14),
                 decoration: InputDecoration(
-                  hintText: 'your email address',
+                  hintText: context.l('your email address'),
                   hintStyle:
                       GoogleFonts.josefinSans(color: AppColors.textTertiary),
                   border: OutlineInputBorder(
@@ -923,7 +927,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: Text('Cancel',
+              child: Text(context.l('Cancel'),
                   style: GoogleFonts.josefinSans(color: AppColors.charcoal)),
             ),
             TextButton(
@@ -934,7 +938,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     }
                   : null,
               child: Text(
-                'Delete permanently',
+                context.l('Delete permanently'),
                 style: GoogleFonts.josefinSans(
                   color: emailCtrl.text.trim() == currentEmail
                       ? AppColors.sunsetCoral
@@ -989,7 +993,10 @@ class _SettingsScreenState extends State<SettingsScreen>
     } catch (e) {
       AppLogger.error('settings: delete account failed: $e');
       if (context.mounted) {
-        showErrorSnack(context, 'Failed to delete account. Please try again.');
+        showErrorSnack(
+          context,
+          context.l('Failed to delete account. Please try again.'),
+        );
       }
     }
   }
@@ -1083,10 +1090,10 @@ class _PermissionTileState extends State<_PermissionTile>
                   ),
                   Text(
                     _granted
-                        ? 'Allowed'
+                        ? context.l('Allowed')
                         : _status == PermissionStatus.permanentlyDenied
-                            ? 'Denied — tap to open settings'
-                            : 'Not granted',
+                            ? context.l('Denied — tap to open settings')
+                            : context.l('Not granted'),
                     style: GoogleFonts.josefinSans(
                       fontSize: 12,
                       color: _granted
@@ -1680,7 +1687,7 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'New password',
+            context.l('New password'),
             style: GoogleFonts.josefinSans(
               fontSize: 18,
               fontWeight: FontWeight.w700,
@@ -1691,7 +1698,7 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
             controller: _controller,
             obscureText: true,
             decoration: InputDecoration(
-              hintText: 'Enter new password (min 8 chars)',
+              hintText: context.l('Enter new password (min 8 chars)'),
               hintStyle: GoogleFonts.josefinSans(color: AppColors.textTertiary),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
@@ -1722,7 +1729,7 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
                 ),
               ),
               child: Text(
-                'Update password',
+                context.l('Update password'),
                 style: GoogleFonts.josefinSans(fontWeight: FontWeight.w600),
               ),
             ),

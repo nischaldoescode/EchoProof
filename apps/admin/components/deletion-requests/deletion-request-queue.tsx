@@ -74,7 +74,7 @@ export function DeletionRequestQueue({ requests }: DeletionRequestQueueProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2 items-center">
+      <div className="flex flex-wrap items-center gap-2">
         {(["pending", "processed", "all"] as const).map((f) => (
           <button
             key={f}
@@ -88,7 +88,7 @@ export function DeletionRequestQueue({ requests }: DeletionRequestQueueProps) {
             {f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)}
           </button>
         ))}
-        <span className="text-xs text-gray-400 ml-auto">
+        <span className="w-full text-xs text-gray-400 sm:ml-auto sm:w-auto">
           {filtered.filter((r) => r.status === "pending").length} pending
         </span>
       </div>
@@ -103,7 +103,7 @@ export function DeletionRequestQueue({ requests }: DeletionRequestQueueProps) {
         {filtered.map((request) => (
           <div
             key={request.id}
-            className="bg-white rounded-xl border border-[#E6E6E6] overflow-hidden transition-all duration-200"
+            className="admin-soft-card overflow-hidden rounded-xl border border-[#E6E6E6] bg-white transition-all duration-200"
           >
             <div
               className="p-4 cursor-pointer hover:bg-[#F8F7F5] transition-colors"
@@ -111,7 +111,7 @@ export function DeletionRequestQueue({ requests }: DeletionRequestQueueProps) {
                 setExpandedId(expandedId === request.id ? null : request.id)
               }
             >
-              <div className="flex items-start justify-between gap-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <span
@@ -145,14 +145,14 @@ export function DeletionRequestQueue({ requests }: DeletionRequestQueueProps) {
                 </div>
 
                 {request.status === "pending" && (
-                  <div className="flex gap-2 flex-shrink-0">
+                  <div className="grid w-full flex-shrink-0 grid-cols-1 gap-2 sm:w-auto sm:grid-cols-2">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         deleteAccount(request);
                       }}
                       disabled={deleting === request.id}
-                      className="text-xs px-3 py-1.5 bg-[#FF7759] text-white rounded-lg hover:bg-[#e05e40] transition-all duration-200 cursor-pointer hover:scale-95 disabled:opacity-40 font-semibold"
+                      className="rounded-lg bg-[#FF7759] px-3 py-2 text-xs font-semibold text-white transition-all duration-200 hover:scale-95 hover:bg-[#e05e40] disabled:opacity-40"
                     >
                       {deleting === request.id
                         ? "Deleting..."
@@ -164,7 +164,7 @@ export function DeletionRequestQueue({ requests }: DeletionRequestQueueProps) {
                         markProcessed(request.id);
                       }}
                       disabled={loading === request.id}
-                      className="text-xs px-3 py-1.5 bg-[#F8F7F5] text-gray-600 rounded-lg hover:bg-gray-200 transition-all duration-200 cursor-pointer hover:scale-95 disabled:opacity-40"
+                      className="rounded-lg bg-[#F8F7F5] px-3 py-2 text-xs text-gray-600 transition-all duration-200 hover:scale-95 hover:bg-gray-200 disabled:opacity-40"
                     >
                       {loading === request.id ? "Saving..." : "Mark processed"}
                     </button>

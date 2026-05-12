@@ -12,6 +12,28 @@ interface Props {
   params: Promise<{ username: string }>;
 }
 
+function normalizeUsernameParam(value: string) {
+  let decoded = value;
+  try {
+    decoded = decodeURIComponent(value);
+  } catch {
+    decoded = value;
+  }
+
+  return decoded.trim().replace(/^@+/, "").toLowerCase();
+}
+
+function isValidUsername(value: string) {
+  return /^[a-z0-9_]{1,32}$/.test(value);
+}
+
+function publicSiteUrl() {
+  return (process.env.NEXT_PUBLIC_SITE_URL || "https://echoproof.online").replace(
+    /\/$/,
+    "",
+  );
+}
+
 const tierConfig: Record<string, { label: string; color: string; bg: string }> =
   {
     elite: { label: "Elite", color: "#2D7A4A", bg: "#E8F5EE" },
@@ -22,7 +44,15 @@ const tierConfig: Record<string, { label: string; color: string; bg: string }> =
   };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { username } = await params;
+  const { username: rawUsername } = await params;
+  const username = normalizeUsernameParam(rawUsername);
+
+  if (!isValidUsername(username)) {
+    return {
+      title: "User not found | Echoproof",
+      description: "This profile doesn't exist on Echoproof.",
+    };
+  }
 
   const { data } = await supabase
     .from("users_public")
@@ -44,7 +74,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     : data.bio ||
     `${displayName} has posted ${data.echo_count ?? 0} echo${(data.echo_count ?? 0) === 1 ? "" : "s"} on Echoproof — the community-verified truth platform.`;
   const image = data.avatar_url || "/og-image.png";
-  const url = `${process.env.NEXT_PUBLIC_SITE_URL}/user/${username}`;
+  const url = `${publicSiteUrl()}/user/${username}`;
 
   return {
     title: `${displayName} (@${data.username}) | Echoproof`,
@@ -73,7 +103,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function UserProfilePage({ params }: Props) {
-  const { username } = await params;
+  const { username: rawUsername } = await params;
+  const username = normalizeUsernameParam(rawUsername);
+
+  if (!isValidUsername(username)) notFound();
 
   const { data: profile } = await supabase
     .from("users_public")
@@ -100,7 +133,7 @@ export default async function UserProfilePage({ params }: Props) {
             "@context": "https://schema.org",
             "@type": "Person",
             name: displayName,
-            url: `${process.env.NEXT_PUBLIC_SITE_URL}/user/${username}`,
+            url: `${publicSiteUrl()}/user/${username}`,
             image: profile.avatar_url,
             description: profile.bio,
             additionalType: isPrivate ? "PrivateProfile" : undefined,
@@ -111,6 +144,7 @@ export default async function UserProfilePage({ params }: Props) {
       <Nav />
 
       <main
+        className="ep-page-enter"
         style={{
           flex: 1,
           background: "#F8F7F5",
@@ -123,6 +157,7 @@ export default async function UserProfilePage({ params }: Props) {
         >
           {/* profile card */}
           <div
+            className="ep-card-in"
             style={{
               background: "#fff",
               borderRadius: 20,
@@ -193,7 +228,7 @@ export default async function UserProfilePage({ params }: Props) {
                     fontSize: 18,
                     fontWeight: 700,
                     color: "#1A1A1A",
-                    letterSpacing: "-0.02em",
+                    letterSpacing: 0,
                     margin: "0 0 2px",
                   }}
                 >
@@ -301,7 +336,7 @@ export default async function UserProfilePage({ params }: Props) {
                         fontWeight: 700,
                         color: "#1A1A1A",
                         margin: "0 0 2px",
-                        letterSpacing: "-0.02em",
+                        letterSpacing: 0,
                       }}
                     >
                       {stat.value}

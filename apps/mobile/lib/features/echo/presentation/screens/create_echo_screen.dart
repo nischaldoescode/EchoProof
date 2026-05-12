@@ -23,6 +23,7 @@ import '../../../../core/utils/snack.dart';
 import '../../../../core/services/tflite_spam_checker.dart';
 import '../../../../core/utils/media_file_safety.dart';
 import '../../../../core/utils/sanitizer.dart';
+import '../../../../core/localization/app_copy.dart';
 import '../widgets/link_preview_card.dart';
 import '../../../../shared/widgets/rich_text_display.dart';
 
@@ -117,7 +118,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
     final service = context.read<CreateEchoService>();
 
     if (service.localMediaPaths.length >= 2) {
-      showInfoSnack(context, 'Maximum 2 attachments allowed');
+      showInfoSnack(context, context.l('Maximum 2 attachments allowed'));
       return;
     }
 
@@ -147,7 +148,10 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
 
     if (!mounted) return;
     if (!validation.isValid) {
-      showInfoSnack(context, validation.error ?? 'File could not be attached');
+      showInfoSnack(
+        context,
+        validation.error ?? context.l('File could not be attached'),
+      );
       return;
     }
 
@@ -156,7 +160,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
       (path) => File(path).absolute.path == selectedPath,
     );
     if (alreadyAttached) {
-      showInfoSnack(context, 'That attachment is already selected');
+      showInfoSnack(context, context.l('That attachment is already selected'));
       return;
     }
 
@@ -202,23 +206,24 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: Text(
-            'Content warning',
+            context.l('Content warning'),
             style: GoogleFonts.josefinSans(fontWeight: FontWeight.w700),
           ),
           content: Text(
-            'Your echo looks like it might be flagged by our community filters. '
-            'Review your content and make sure it follows our guidelines before posting.',
+            context.l(
+              'Your echo looks like it might be flagged by our community filters. Review your content and make sure it follows our guidelines before posting.',
+            ),
             style: GoogleFonts.josefinSans(fontSize: 13, height: 1.5),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Edit', style: GoogleFonts.josefinSans()),
+              child: Text(context.l('Edit'), style: GoogleFonts.josefinSans()),
             ),
             TextButton(
               onPressed: () => Navigator.pop(ctx, true),
               child: Text(
-                'Post anyway',
+                context.l('Post anyway'),
                 style: GoogleFonts.josefinSans(color: AppColors.sunsetCoral),
               ),
             ),
@@ -254,7 +259,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
               ),
               const SizedBox(height: 20),
               Text(
-                'Save this draft?',
+                context.l('Save this draft?'),
                 style: GoogleFonts.josefinSans(
                   fontSize: 17,
                   fontWeight: FontWeight.w700,
@@ -263,7 +268,9 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
               ),
               const SizedBox(height: 8),
               Text(
-                'Your echo is not published. You can save it as a draft or discard it.',
+                context.l(
+                  'Your echo is not published. You can save it as a draft or discard it.',
+                ),
                 style: GoogleFonts.josefinSans(
                   fontSize: 13,
                   color: AppColors.textSecondary,
@@ -285,7 +292,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                     elevation: 0,
                   ),
                   child: Text(
-                    'Save draft',
+                    context.l('Save draft'),
                     style: GoogleFonts.josefinSans(fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -299,7 +306,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                   child: Text(
-                    'Discard',
+                    context.l('Discard'),
                     style: GoogleFonts.josefinSans(
                       fontWeight: FontWeight.w600,
                       color: AppColors.sunsetCoral,
@@ -357,8 +364,11 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
           if (!isPro && count % 3 == 0) {
             context.read<AdService>().showRewardedInterstitial(
               onRewarded: () {
-                showSuccessSnack(context,
-                    '🎉 Thanks for supporting Echoproof — 1 hour ad-free!');
+                showSuccessSnack(
+                  context,
+                  context
+                      .l('Thanks for supporting Echoproof — 1 hour ad-free!'),
+                );
               },
             );
           }
@@ -366,7 +376,9 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
           context.pop();
           HapticFeedback.mediumImpact();
           showSuccessSnack(
-              context, 'Echo created — awaiting community signals');
+            context,
+            context.l('Echo created — awaiting community signals'),
+          );
         }
       });
     }
@@ -394,8 +406,8 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
         child: Scaffold(
           backgroundColor: AppColors.white,
           appBar: AppBar(
-            title:
-                Text('Create Echo', style: AppTypography.textTheme.titleLarge),
+            title: Text(context.l('Create Echo'),
+                style: AppTypography.textTheme.titleLarge),
             leading: IconButton(
               icon: const Icon(Icons.close, size: 22),
               onPressed: () async {
@@ -419,7 +431,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                   icon: const Icon(Icons.tips_and_updates_outlined, size: 20),
                   onPressed: _showProGuide,
                   color: AppColors.fernGreen,
-                  tooltip: 'Pro writing guide',
+                  tooltip: context.l('Pro writing guide'),
                 ),
               Padding(
                 padding: const EdgeInsets.only(right: AppSpacing.md),
@@ -466,7 +478,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Title',
+                          Text(context.l('Title'),
                               style: AppTypography.textTheme.titleSmall),
                           _CharCounter(
                             current: service.title.length,
@@ -484,19 +496,19 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                                 maxLength}) =>
                             null,
                         onChanged: context.read<CreateEchoService>().setTitle,
-                        decoration: const InputDecoration(
-                          hintText: 'Short, clear claim or opinion',
+                        decoration: InputDecoration(
+                          hintText: context.l('Short, clear claim or opinion'),
                         ),
                         style: AppTypography.textTheme.bodyLarge,
                         validator: (v) => (v == null || v.trim().isEmpty)
-                            ? 'title cannot be empty'
+                            ? context.l('title cannot be empty')
                             : null,
                       ),
                       const SizedBox(height: AppSpacing.xl),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('Content',
+                          Text(context.l('Content'),
                               style: AppTypography.textTheme.titleSmall),
                           _CharCounter(
                             current: service.content.length,
@@ -549,7 +561,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                               ),
                       ),
                       const SizedBox(height: AppSpacing.xl),
-                      Text('Category',
+                      Text(context.l('Category'),
                           style: AppTypography.textTheme.titleSmall),
                       const SizedBox(height: AppSpacing.sm),
                       _CategoryPicker(
@@ -648,7 +660,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                     color: AppColors.fernGreen, size: 20),
                 const SizedBox(width: 8),
                 Text(
-                  'Pro Writing Guide',
+                  context.l('Pro Writing Guide'),
                   style: GoogleFonts.josefinSans(
                       fontSize: 18, fontWeight: FontWeight.w700),
                 ),
@@ -657,55 +669,64 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
             const SizedBox(height: AppSpacing.xl),
             _GuideSection(
               icon: Icons.format_bold_rounded,
-              title: 'Rich Text Formatting',
+              title: context.l('Rich Text Formatting'),
               tips: [
-                '**bold text** uses exactly two asterisks on each side',
-                '***bold italic*** uses three asterisks on each side',
-                '_italic text_ wraps words in underscores',
-                '~~strikethrough~~ wraps words in double tildes',
-                '[large]large text[/large] and [small]small text[/small] change size',
-                'The editor shows markers while Pro preview shows the final card',
-                'Use the B / I / S / A+ / A- toolbar above the text field',
+                context
+                    .l('**bold text** uses exactly two asterisks on each side'),
+                context
+                    .l('***bold italic*** uses three asterisks on each side'),
+                context.l('_italic text_ wraps words in underscores'),
+                context.l('~~strikethrough~~ wraps words in double tildes'),
+                context.l(
+                    '[large]large text[/large] and [small]small text[/small] change size'),
+                context.l(
+                    'The editor shows markers while Pro preview shows the final card'),
+                context.l(
+                    'Use the B / I / S / A+ / A- toolbar above the text field'),
               ],
             ),
             _GuideSection(
               icon: Icons.link_rounded,
-              title: 'Link Previews',
+              title: context.l('Link Previews'),
               tips: [
-                'Paste any URL and a preview card appears automatically',
-                'The feed shows a compact preview after posting',
-                'Echo detail shows a larger preview with open options',
-                'Links are validated — only http/https accepted',
+                context.l(
+                    'Paste any URL and a preview card appears automatically'),
+                context.l('The feed shows a compact preview after posting'),
+                context
+                    .l('Echo detail shows a larger preview with open options'),
+                context.l('Links are validated — only http/https accepted'),
               ],
             ),
             _GuideSection(
               icon: Icons.alternate_email_rounded,
-              title: 'Mentions & Signals',
+              title: context.l('Mentions & Signals'),
               tips: [
-                'Type @username to mention another user',
-                'Type ~topic to add a signal tag to your echo',
-                'Signals help your echo appear in Discover',
-                'Max 5 signals per echo for best reach',
+                context.l('Type @username to mention another user'),
+                context.l('Type ~topic to add a signal tag to your echo'),
+                context.l('Signals help your echo appear in Discover'),
+                context.l('Max 5 signals per echo for best reach'),
               ],
             ),
             _GuideSection(
               icon: Icons.photo_library_outlined,
-              title: 'Media Attachments',
+              title: context.l('Media Attachments'),
               tips: [
-                'Attach up to 2 images or videos as evidence',
-                'Images are compressed to 1280px max',
-                'Videos must be under 50MB',
-                'File type, size, and file header are validated before upload',
+                context.l('Attach up to 2 images or videos as evidence'),
+                context.l('Images are compressed to 1280px max'),
+                context.l('Videos must be under 50MB'),
+                context.l(
+                    'File type, size, and file header are validated before upload'),
               ],
             ),
             _GuideSection(
               icon: Icons.bar_chart_rounded,
-              title: 'Getting Verified',
+              title: context.l('Getting Verified'),
               tips: [
-                'Trust score = support_weight − challenge_weight',
-                'Score ≥ 50 + confidence ≥ 70% = Verified status',
-                'Verified identity users have 4x voting weight',
-                'Pro + Verified = highest feed ranking boost (1.25x)',
+                context.l('Trust score = support_weight − challenge_weight'),
+                context.l('Score ≥ 50 + confidence ≥ 70% = Verified status'),
+                context.l('Verified identity users have 4x voting weight'),
+                context
+                    .l('Pro + Verified = highest feed ranking boost (1.25x)'),
               ],
             ),
             const SizedBox(height: 40),
@@ -811,7 +832,7 @@ class _ContentMentionField extends StatelessWidget {
     return FormField<String>(
       validator: (_) {
         final v = mentionKey.currentState?.controller?.text ?? '';
-        return v.trim().isEmpty ? 'content cannot be empty' : null;
+        return v.trim().isEmpty ? context.l('content cannot be empty') : null;
       },
       builder: (field) {
         final maxLen = context.read<CreateEchoService>().contentMaxLength;
@@ -855,8 +876,8 @@ class _ContentMentionField extends StatelessWidget {
                       height: 1.5,
                     ),
                     decoration: InputDecoration(
-                      hintText:
-                          'Explain your opinion or claim.\n\nUse @username to mention, ~signal to tag.',
+                      hintText: context.l(
+                          'Explain your opinion or claim.\n\nUse @username to mention, ~signal to tag.'),
                       hintStyle: GoogleFonts.josefinSans(
                         fontSize: 14,
                         color: AppColors.textTertiary,
@@ -1014,7 +1035,7 @@ class _ProEchoPreviewCard extends StatelessWidget {
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Text(
-                    'Pro preview',
+                    context.l('Pro preview'),
                     style: AppTypography.textTheme.titleSmall,
                   ),
                 ),
@@ -1030,7 +1051,7 @@ class _ProEchoPreviewCard extends StatelessWidget {
                           BorderRadius.circular(AppSpacing.radiusFull),
                     ),
                     child: Text(
-                      category!.displayName,
+                      context.l(category!.displayName),
                       style: AppTypography.textTheme.bodySmall,
                     ),
                   ),
@@ -1058,10 +1079,14 @@ class _ProEchoPreviewCard extends StatelessWidget {
             Row(
               children: [
                 _PreviewStat(
-                    icon: Icons.chat_bubble_outline_rounded, text: 'Reply'),
-                _PreviewStat(icon: Icons.arrow_upward_rounded, text: 'Support'),
+                    icon: Icons.chat_bubble_outline_rounded,
+                    text: context.l('Reply')),
                 _PreviewStat(
-                    icon: Icons.arrow_downward_rounded, text: 'Challenge'),
+                    icon: Icons.arrow_upward_rounded,
+                    text: context.l('Support')),
+                _PreviewStat(
+                    icon: Icons.arrow_downward_rounded,
+                    text: context.l('Challenge')),
               ],
             ),
           ],
@@ -1213,7 +1238,7 @@ class _ProRichToolbar extends StatelessWidget {
         _TBtn(label: 'A-', onTap: () => _wrap('[small]', '[/small]')),
         const SizedBox(width: 8),
         Text(
-          'Pro rich text',
+          context.l('Pro rich text'),
           style: GoogleFonts.josefinSans(
             fontSize: 10,
             color: AppColors.fernGreen,
@@ -1302,7 +1327,7 @@ class _SubmitButton extends StatelessWidget {
                   ),
                 )
               : Text(
-                  'Publish',
+                  context.l('Publish'),
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -1367,7 +1392,7 @@ class _CategoryPicker extends StatelessWidget {
               ),
             ),
             child: Text(
-              cat.displayName,
+              context.l(cat.displayName),
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
@@ -1459,7 +1484,7 @@ class _OtherCategoryFieldState extends State<_OtherCategoryField> {
                 null,
             style: AppTypography.textTheme.bodyMedium,
             decoration: InputDecoration(
-              hintText: 'Field name',
+              hintText: context.l('Field name'),
               prefixIcon: const Icon(Icons.label_outline_rounded, size: 18),
               filled: true,
               fillColor: AppColors.surfaceSecondary,
@@ -1492,8 +1517,12 @@ class _OtherCategoryFieldState extends State<_OtherCategoryField> {
               Expanded(
                 child: Text(
                   isEmpty
-                      ? 'Describe the Other category in 10 characters or less.'
-                      : 'Other category: ${_controller.text.trim()}',
+                      ? context.l(
+                          'Describe the Other category in 10 characters or less.',
+                        )
+                      : context.l('Other category: {value}', {
+                          'value': _controller.text.trim(),
+                        }),
                   style: GoogleFonts.josefinSans(
                     fontSize: 11,
                     color: isEmpty
@@ -1570,7 +1599,9 @@ class _MediaPickerRow extends StatelessWidget {
           Row(
             children: [
               Text(
-                '${localPaths.length}/2 attachment${localPaths.length > 1 ? 's' : ''}',
+                context.l('{count}/2 attachments', {
+                  'count': localPaths.length,
+                }),
                 style: GoogleFonts.josefinSans(
                   fontSize: 11,
                   color:
@@ -1781,11 +1812,13 @@ class _VerificationToggle extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Require verification',
+                    context.l('Require verification'),
                     style: AppTypography.textTheme.titleSmall,
                   ),
                   Text(
-                    'Community members will be asked to support or challenge this echo',
+                    context.l(
+                      'Community members will be asked to support or challenge this echo',
+                    ),
                     style: AppTypography.textTheme.bodySmall,
                   ),
                 ],

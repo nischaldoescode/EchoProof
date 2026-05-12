@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import 'theme/app_theme.dart';
 import '../shared/widgets/connectivity_wrapper.dart';
 import '../features/onboarding/presentation/services/onboarding_service.dart';
+import '../core/localization/app_copy.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import '../../../../core/utils/snack.dart';
 import 'package:flutter_quill/flutter_quill.dart';
@@ -103,7 +104,7 @@ class _ExitConfirmWrapperState extends State<ExitConfirmWrapper> {
           if (mounted) {
             showInfoSnack(
               context,
-              'Press back again to exit',
+              context.l('Press back again to exit'),
             );
           }
         }

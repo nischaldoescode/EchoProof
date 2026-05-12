@@ -76,7 +76,7 @@ class _LoginScreenState extends State<LoginScreen>
   void _showAgreementSnack() {
     showWarningSnack(
       context,
-      'Accept the Privacy Policy and Terms of Service to continue.',
+      context.l('Accept the Privacy Policy and Terms of Service to continue.'),
     );
   }
 
@@ -672,7 +672,7 @@ class _AgreementCheckbox extends StatelessWidget {
                     url: 'https://echoproof.online/terms',
                   ),
                 ),
-                const TextSpan(text: ' and '),
+                TextSpan(text: ' ${context.l('and')} '),
                 WidgetSpan(
                   alignment: PlaceholderAlignment.baseline,
                   baseline: TextBaseline.alphabetic,

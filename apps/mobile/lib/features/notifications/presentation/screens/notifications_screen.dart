@@ -11,6 +11,7 @@ import '../services/notification_service.dart';
 import '../../../../shared/widgets/app_bottom_nav.dart';
 import '../../../../app/app.dart';
 import '../../../../core/utils/snack.dart';
+import '../../../../core/localization/app_copy.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -42,12 +43,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             actions: [
               IconButton(
                 icon: const Icon(Icons.done_all_rounded),
-                tooltip: 'Mark all read',
+                tooltip: context.l('Mark all read'),
                 onPressed:
                     service.unreadCount == 0 ? null : service.markAllRead,
               ),
             ],
-            title: Text('Notifications',
+            title: Text(context.l('Notifications'),
                 style: AppTypography.textTheme.titleLarge),
             automaticallyImplyLeading: false,
           ),
@@ -173,7 +174,7 @@ class _EmptyNotifications extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.lg),
           Text(
-            'No notifications yet',
+            context.l('No notifications yet'),
             style: AppTypography.textTheme.bodyMedium?.copyWith(
               color: AppColors.textSecondary,
             ),
@@ -199,16 +200,16 @@ class _FollowRequestActions extends StatelessWidget {
             try {
               await service.acceptFollowRequest(item);
               if (context.mounted) {
-                showSuccessSnack(context, 'Request accepted');
+                showSuccessSnack(context, context.l('Request accepted'));
               }
             } catch (_) {
               if (context.mounted) {
-                showErrorSnack(context, 'Could not accept request');
+                showErrorSnack(context, context.l('Could not accept request'));
               }
             }
           },
           icon: const Icon(Icons.check_rounded, size: 16),
-          label: const Text('Accept'),
+          label: Text(context.l('Accept')),
           style: TextButton.styleFrom(
             foregroundColor: AppColors.fernGreenDark,
             padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -219,15 +220,17 @@ class _FollowRequestActions extends StatelessWidget {
           onPressed: () async {
             try {
               await service.rejectFollowRequest(item);
-              if (context.mounted) showInfoSnack(context, 'Request ignored');
+              if (context.mounted) {
+                showInfoSnack(context, context.l('Request ignored'));
+              }
             } catch (_) {
               if (context.mounted) {
-                showErrorSnack(context, 'Could not update request');
+                showErrorSnack(context, context.l('Could not update request'));
               }
             }
           },
           icon: const Icon(Icons.close_rounded, size: 16),
-          label: const Text('Ignore'),
+          label: Text(context.l('Ignore')),
           style: TextButton.styleFrom(
             foregroundColor: AppColors.textSecondary,
             padding: const EdgeInsets.symmetric(horizontal: 10),

@@ -457,14 +457,14 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                           SolanaStatusChip(
                             status: displayed.solanaStatus,
                             signature: displayed.createdRecordTx,
-                            label: 'Solana post',
+                            label: context.l('Solana post'),
                             compact: false,
                           ),
                           if (displayed.status == EchoStatus.verified)
                             SolanaStatusChip(
                               status: displayed.verifiedRecordStatus,
                               signature: displayed.verifiedRecordTx,
-                              label: 'Solana verification',
+                              label: context.l('Solana verification'),
                               compact: false,
                             ),
                         ],
@@ -710,8 +710,8 @@ class _DetailCategoryChip extends StatelessWidget {
     final label = echo.category == EchoCategory.other &&
             detail != null &&
             detail.isNotEmpty
-        ? 'Other: $detail'
-        : echo.category.displayName;
+        ? context.l('Other: {detail}', {'detail': detail})
+        : context.l(echo.category.displayName);
 
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -752,7 +752,7 @@ class _ProofsSection extends StatelessWidget {
         const SizedBox(height: AppSpacing.sm),
         if (proofs.isEmpty)
           Text(
-            'No evidence attached yet. Be the first to add proof.',
+            context.l('No evidence attached yet. Be the first to add proof.'),
             style: AppTypography.textTheme.bodySmall,
           )
         else
@@ -841,7 +841,7 @@ class _RepliesPreviewSection extends StatelessWidget {
                 border: Border.all(color: AppColors.borderSubtle),
               ),
               child: Text(
-                'No replies yet. Start the conversation.',
+                context.l('No replies yet. Start the conversation.'),
                 style: AppTypography.textTheme.bodySmall,
               ),
             ),
@@ -852,7 +852,9 @@ class _RepliesPreviewSection extends StatelessWidget {
             TextButton.icon(
               onPressed: onOpenReplies,
               icon: const Icon(Icons.chat_bubble_outline_rounded, size: 15),
-              label: Text('View ${replies.length - visible.length} more'),
+              label: Text(context.l('View {count} more', {
+                'count': replies.length - visible.length,
+              })),
               style: TextButton.styleFrom(
                 foregroundColor: AppColors.fernGreenDark,
                 padding: EdgeInsets.zero,

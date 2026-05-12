@@ -7,9 +7,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
+import '../../../../core/localization/app_copy.dart';
 
 class AnalyticsTab extends StatefulWidget {
-  const AnalyticsTab({required this.userId});
+  const AnalyticsTab({super.key, required this.userId});
   final String userId;
 
   @override
@@ -32,7 +33,8 @@ class _AnalyticsTabState extends State<AnalyticsTab>
     super.initState();
     _loadStats();
     // Refresh every 30 seconds.
-    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) => _loadStats());
+    _refreshTimer =
+        Timer.periodic(const Duration(seconds: 30), (_) => _loadStats());
     _subscribeRealtime();
   }
 
@@ -58,13 +60,17 @@ class _AnalyticsTabState extends State<AnalyticsTab>
 
       final profile = await client
           .from('users_public')
-          .select('echo_count, proof_count, trust_score, follower_count, following_count, trust_tier')
+          .select(
+              'echo_count, proof_count, trust_score, follower_count, following_count, trust_tier')
           .eq('id', widget.userId)
           .maybeSingle();
 
       final echoList = List<Map<String, dynamic>>.from(echoes as List);
 
-      int totalSupport = 0, totalChallenge = 0, totalReplies = 0, totalBonds = 0;
+      int totalSupport = 0,
+          totalChallenge = 0,
+          totalReplies = 0,
+          totalBonds = 0;
       for (final e in echoList) {
         totalSupport += (e['support_count'] as num?)?.toInt() ?? 0;
         totalChallenge += (e['challenge_count'] as num?)?.toInt() ?? 0;
@@ -123,7 +129,8 @@ class _AnalyticsTabState extends State<AnalyticsTab>
 
     if (_isLoading) {
       return const Center(
-        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.fernGreen),
+        child: CircularProgressIndicator(
+            strokeWidth: 2, color: AppColors.fernGreen),
       );
     }
 
@@ -133,11 +140,11 @@ class _AnalyticsTabState extends State<AnalyticsTab>
       child: ListView(
         padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
-          _SectionHeader(label: 'Account Overview'),
+          _SectionHeader(label: context.l('Account Overview')),
           const SizedBox(height: AppSpacing.md),
           _StatsGrid(stats: _stats ?? {}),
           const SizedBox(height: AppSpacing.xl),
-          _SectionHeader(label: 'Engagement Summary'),
+          _SectionHeader(label: context.l('Engagement Summary')),
           const SizedBox(height: AppSpacing.md),
           _EngagementRow(
             totalSupport: (_stats?['total_support'] as num?)?.toInt() ?? 0,
@@ -146,7 +153,7 @@ class _AnalyticsTabState extends State<AnalyticsTab>
             totalBonds: (_stats?['total_bonds'] as num?)?.toInt() ?? 0,
           ),
           const SizedBox(height: AppSpacing.xl),
-          _SectionHeader(label: 'Top Echoes by Trust Score'),
+          _SectionHeader(label: context.l('Top Echoes by Trust Score')),
           const SizedBox(height: AppSpacing.md),
           ..._topEchoes.asMap().entries.map((e) => _TopEchoCard(
                 echo: e.value,
@@ -167,9 +174,12 @@ class _SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Container(width: 3, height: 16, color: AppColors.fernGreen,
-          margin: const EdgeInsets.only(right: 8),
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(2))),
+        Container(
+            width: 3,
+            height: 16,
+            color: AppColors.fernGreen,
+            margin: const EdgeInsets.only(right: 8),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(2))),
         Text(
           label,
           style: GoogleFonts.josefinSans(
@@ -191,10 +201,26 @@ class _StatsGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = [
-      _GridStat('Trust Score', '${(stats['trust_score'] as num?)?.toInt() ?? 0}', Icons.shield_outlined, AppColors.fernGreen),
-      _GridStat('Echoes', '${(stats['echo_count'] as num?)?.toInt() ?? 0}', Icons.record_voice_over_outlined, AppColors.charcoal),
-      _GridStat('Followers', '${(stats['follower_count'] as num?)?.toInt() ?? 0}', Icons.people_outline, AppColors.fernGreen),
-      _GridStat('Following', '${(stats['following_count'] as num?)?.toInt() ?? 0}', Icons.person_add_outlined, AppColors.textSecondary),
+      _GridStat(
+          context.l('Trust Score'),
+          '${(stats['trust_score'] as num?)?.toInt() ?? 0}',
+          Icons.shield_outlined,
+          AppColors.fernGreen),
+      _GridStat(
+          context.l('Echoes'),
+          '${(stats['echo_count'] as num?)?.toInt() ?? 0}',
+          Icons.record_voice_over_outlined,
+          AppColors.charcoal),
+      _GridStat(
+          context.l('Followers'),
+          '${(stats['follower_count'] as num?)?.toInt() ?? 0}',
+          Icons.people_outline,
+          AppColors.fernGreen),
+      _GridStat(
+          context.l('Following'),
+          '${(stats['following_count'] as num?)?.toInt() ?? 0}',
+          Icons.person_add_outlined,
+          AppColors.textSecondary),
     ];
 
     return GridView.count(
@@ -232,7 +258,8 @@ class _StatCardState extends State<_StatCard>
   @override
   void initState() {
     super.initState();
-    _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+    _c = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 600));
     _scale = Tween<double>(begin: 0.85, end: 1.0).animate(
       CurvedAnimation(parent: _c, curve: Curves.easeOutBack),
     );
@@ -316,28 +343,28 @@ class _EngagementRow extends StatelessWidget {
             children: [
               _EngagementChip(
                 icon: Icons.thumb_up_outlined,
-                label: 'Support',
+                label: context.l('Support'),
                 value: totalSupport,
                 color: AppColors.fernGreen,
               ),
               const SizedBox(width: AppSpacing.sm),
               _EngagementChip(
                 icon: Icons.thumb_down_outlined,
-                label: 'Challenge',
+                label: context.l('Challenge'),
                 value: totalChallenge,
                 color: AppColors.sunsetCoral,
               ),
               const SizedBox(width: AppSpacing.sm),
               _EngagementChip(
                 icon: Icons.chat_bubble_outline,
-                label: 'Replies',
+                label: context.l('Replies'),
                 value: totalReplies,
                 color: AppColors.charcoal,
               ),
               const SizedBox(width: AppSpacing.sm),
               _EngagementChip(
                 icon: Icons.link_outlined,
-                label: 'Bonds',
+                label: context.l('Bonds'),
                 value: totalBonds,
                 color: const Color(0xFF9C6FDE),
               ),
@@ -346,8 +373,9 @@ class _EngagementRow extends StatelessWidget {
           if (total > 0) ...[
             const SizedBox(height: AppSpacing.md),
             Text(
-              'Support ratio',
-              style: GoogleFonts.josefinSans(fontSize: 11, color: AppColors.textTertiary),
+              context.l('Support ratio'),
+              style: GoogleFonts.josefinSans(
+                  fontSize: 11, color: AppColors.textTertiary),
             ),
             const SizedBox(height: 4),
             ClipRRect(
@@ -361,7 +389,9 @@ class _EngagementRow extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              '${(supportRatio * 100).round()}% supportive',
+              context.l('{percent}% supportive', {
+                'percent': (supportRatio * 100).round(),
+              }),
               style: GoogleFonts.josefinSans(
                 fontSize: 11,
                 color: AppColors.fernGreen,
@@ -404,7 +434,8 @@ class _EngagementChip extends StatelessWidget {
           ),
           Text(
             label,
-            style: GoogleFonts.josefinSans(fontSize: 9, color: AppColors.textTertiary),
+            style: GoogleFonts.josefinSans(
+                fontSize: 9, color: AppColors.textTertiary),
           ),
         ],
       ),
@@ -419,7 +450,7 @@ class _TopEchoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = echo['title'] as String? ?? 'Untitled';
+    final title = echo['title'] as String? ?? context.l('Untitled');
     final trust = (echo['trust_score'] as num?)?.toInt() ?? 0;
     final confidence = (echo['confidence_score'] as num?)?.toDouble() ?? 0.0;
     final support = (echo['support_count'] as num?)?.toInt() ?? 0;
@@ -448,7 +479,8 @@ class _TopEchoCard extends StatelessWidget {
                 style: GoogleFonts.josefinSans(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: rank <= 3 ? AppColors.fernGreen : AppColors.textTertiary,
+                  color:
+                      rank <= 3 ? AppColors.fernGreen : AppColors.textTertiary,
                 ),
               ),
             ),
@@ -470,7 +502,14 @@ class _TopEchoCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${confidence.toStringAsFixed(0)}% confidence · $support ↑ $challenge ↓',
+                  context.l(
+                    '{confidence}% confidence · {support} ↑ {challenge} ↓',
+                    {
+                      'confidence': confidence.toStringAsFixed(0),
+                      'support': support,
+                      'challenge': challenge,
+                    },
+                  ),
                   style: GoogleFonts.josefinSans(
                     fontSize: 11,
                     color: AppColors.textSecondary,
@@ -482,7 +521,9 @@ class _TopEchoCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: trust >= 0 ? AppColors.fernGreenLight : AppColors.sunsetCoralLight,
+              color: trust >= 0
+                  ? AppColors.fernGreenLight
+                  : AppColors.sunsetCoralLight,
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text(
@@ -490,7 +531,9 @@ class _TopEchoCard extends StatelessWidget {
               style: GoogleFonts.josefinSans(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
-                color: trust >= 0 ? AppColors.fernGreenDark : AppColors.sunsetCoralDark,
+                color: trust >= 0
+                    ? AppColors.fernGreenDark
+                    : AppColors.sunsetCoralDark,
               ),
             ),
           ),

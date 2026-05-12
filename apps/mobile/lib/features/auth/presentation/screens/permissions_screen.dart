@@ -9,6 +9,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
+import '../../../../core/localization/app_copy.dart';
 import '../../../../core/services/push_notification_service.dart';
 import '../../../auth/presentation/services/auth_service.dart';
 import '../../../onboarding/presentation/services/onboarding_service.dart';
@@ -130,7 +131,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
               const SizedBox(height: AppSpacing.xl),
 
               Text(
-                'A few quick permissions',
+                context.l('A few quick permissions'),
                 style: GoogleFonts.josefinSans(
                   fontSize: 26,
                   fontWeight: FontWeight.w700,
@@ -141,7 +142,9 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
               const SizedBox(height: AppSpacing.sm),
 
               Text(
-                'We only ask for what we actually need. Tap each one to learn why.',
+                context.l(
+                  'We only ask for what we actually need. Tap each one to learn why.',
+                ),
                 style: GoogleFonts.josefinSans(
                   fontSize: 14,
                   color: AppColors.textSecondary,
@@ -187,7 +190,9 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                     ),
                   ),
                   child: Text(
-                    _allGranted ? 'Continue' : 'Allow all and continue',
+                    _allGranted
+                        ? context.l('Continue')
+                        : context.l('Allow all and continue'),
                     style: GoogleFonts.josefinSans(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
@@ -203,7 +208,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                 child: TextButton(
                   onPressed: () => _proceed(context),
                   child: Text(
-                    'Skip for now',
+                    context.l('Skip for now'),
                     style: GoogleFonts.josefinSans(
                       fontSize: 13,
                       color: AppColors.textTertiary,
@@ -305,7 +310,7 @@ class _PermissionCardState extends State<_PermissionCard> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          widget.info.title,
+                          context.l(widget.info.title),
                           style: GoogleFonts.josefinSans(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
@@ -314,10 +319,10 @@ class _PermissionCardState extends State<_PermissionCard> {
                         ),
                         Text(
                           widget.granted
-                              ? 'Allowed'
+                              ? context.l('Allowed')
                               : widget.isDenied
-                                  ? 'Denied — open settings to allow'
-                                  : 'Tap to allow',
+                                  ? context.l('Denied — open settings to allow')
+                                  : context.l('Tap to allow'),
                           style: GoogleFonts.josefinSans(
                             fontSize: 12,
                             color: widget.granted
@@ -346,7 +351,7 @@ class _PermissionCardState extends State<_PermissionCard> {
                         padding: EdgeInsets.zero,
                       ),
                       child: Text(
-                        'Open settings',
+                        context.l('Open settings'),
                         style: GoogleFonts.josefinSans(fontSize: 12),
                       ),
                     )
@@ -358,7 +363,7 @@ class _PermissionCardState extends State<_PermissionCard> {
                         padding: EdgeInsets.zero,
                       ),
                       child: Text(
-                        'Allow',
+                        context.l('Allow'),
                         style: GoogleFonts.josefinSans(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
@@ -405,7 +410,7 @@ class _PermissionCardState extends State<_PermissionCard> {
                     margin: const EdgeInsets.only(bottom: AppSpacing.md),
                   ),
                   Text(
-                    widget.info.reason,
+                    context.l(widget.info.reason),
                     style: GoogleFonts.josefinSans(
                       fontSize: 13,
                       color: AppColors.textSecondary,
@@ -425,7 +430,7 @@ class _PermissionCardState extends State<_PermissionCard> {
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            widget.info.deniedHint,
+                            context.l(widget.info.deniedHint),
                             style: GoogleFonts.josefinSans(
                               fontSize: 12,
                               color: AppColors.textTertiary,

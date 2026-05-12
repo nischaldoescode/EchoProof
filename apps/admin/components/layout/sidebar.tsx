@@ -4,15 +4,46 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import type { LucideIcon } from "lucide-react";
+import {
+  BadgeDollarSign,
+  Flag,
+  LayoutDashboard,
+  LogOut,
+  MessageSquareText,
+  ShieldCheck,
+  Trash2,
+  Users,
+} from "lucide-react";
 
-const nav = [
-  { href: "/", label: "Dashboard", icon: "◉" },
-  { href: "/echoes", label: "Echoes", icon: "◎" },
-  { href: "/users", label: "Users", icon: "○" },
-  { href: "/reports", label: "Reports", icon: "△" },
-  { href: "/subscription", label: "Subscriptions", icon: "★" },
-  { href: "/deletion-requests", label: "Deletion requests", icon: "⊗" },
-  { href: "/trust-engine", label: "Trust engine", icon: "◇" },
+const nav: Array<{
+  href: string;
+  label: string;
+  shortLabel?: string;
+  Icon: LucideIcon;
+}> = [
+  { href: "/", label: "Dashboard", Icon: LayoutDashboard },
+  { href: "/echoes", label: "Echoes", Icon: MessageSquareText },
+  { href: "/users", label: "Users", Icon: Users },
+  { href: "/reports", label: "Reports", Icon: Flag },
+  {
+    href: "/subscription",
+    label: "Subscriptions",
+    shortLabel: "Subs",
+    Icon: BadgeDollarSign,
+  },
+  {
+    href: "/deletion-requests",
+    label: "Deletion requests",
+    shortLabel: "Delete",
+    Icon: Trash2,
+  },
+  {
+    href: "/trust-engine",
+    label: "Trust engine",
+    shortLabel: "Trust",
+    Icon: ShieldCheck,
+  },
 ];
 
 export function Sidebar() {
@@ -51,7 +82,7 @@ export function Sidebar() {
                     : "text-gray-400 hover:text-white hover:bg-white/5 hover:translate-x-0.5"
                 }`}
               >
-                <span className="text-xs">{item.icon}</span>
+                <item.Icon size={15} strokeWidth={2} />
                 {item.label}
               </Link>
             );
@@ -62,12 +93,12 @@ export function Sidebar() {
           onClick={handleSignOut}
           className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 text-sm transition-all duration-200 cursor-pointer hover:translate-x-0.5"
         >
-          <span className="text-xs">→</span>
+          <LogOut size={15} strokeWidth={2} />
           Sign out
         </button>
       </aside>
 
-      <nav className="md:hidden fixed inset-x-3 bottom-3 z-40 rounded-2xl border border-white/10 bg-[#1A1A1A]/95 px-2 py-2 shadow-2xl backdrop-blur">
+      <nav className="md:hidden fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-40 rounded-2xl border border-white/10 bg-[#1A1A1A]/95 px-2 py-2 shadow-2xl backdrop-blur">
         <div className="flex items-center gap-1 overflow-x-auto">
           {nav.map((item) => {
             const active = isActive(pathname, item.href);
@@ -80,9 +111,12 @@ export function Sidebar() {
                     ? "bg-white/10 text-white"
                     : "text-gray-400 hover:bg-white/5 hover:text-white"
                 }`}
+                aria-label={item.label}
               >
-                <span className="block text-xs">{item.icon}</span>
-                <span className="block truncate">{item.label}</span>
+                <item.Icon className="mx-auto" size={15} strokeWidth={2} />
+                <span className="mt-1 block truncate">
+                  {item.shortLabel ?? item.label}
+                </span>
               </Link>
             );
           })}

@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@400;500;600;700;800&display=swap");
 @import "tailwindcss";
 
 :root {
@@ -8,7 +9,17 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --color-charcoal: #1a1a1a;
+  --color-fern-green: #4caf6e;
+  --color-fern-light: #e8f5ee;
+  --color-fern-dark: #2d7a4a;
+  --color-soft-sand: #eae7df;
+  --color-sunset-coral: #ff7759;
+  --color-coral-light: #fff0ed;
+  --color-coral-dark: #b03e28;
+  --color-border-subtle: #e6e6e6;
+  --font-sans: "Josefin Sans", Arial, Helvetica, sans-serif;
+  --font-josefin: "Josefin Sans", Arial, Helvetica, sans-serif;
   --font-mono: var(--font-geist-mono);
 }
 
@@ -22,5 +33,107 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: "Josefin Sans", Arial, Helvetica, sans-serif;
+}
+
+.ep-page-enter {
+  animation: epPageEnter 440ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.ep-card-in {
+  animation: epCardIn 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.ep-hover-lift {
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease;
+}
+
+.ep-hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 45px rgba(26, 26, 26, 0.08);
+}
+
+.ep-shimmer {
+  background: linear-gradient(90deg, #eeeeee 0%, #f8f7f5 48%, #eeeeee 100%);
+  background-size: 220% 100%;
+  animation: epShimmer 1.8s ease-in-out infinite;
+}
+
+.ep-liquid-loader {
+  position: relative;
+  display: inline-block;
+  width: 42px;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.ep-liquid-loader::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  width: 42%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #d4f0e2, #4caf6e, #d4f0e2);
+  animation: epLiquidFlow 920ms cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+@keyframes epPageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes epCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes epShimmer {
+  0% {
+    background-position: 120% 0;
+  }
+  100% {
+    background-position: -120% 0;
+  }
+}
+
+@keyframes epLiquidFlow {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(260%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ep-page-enter,
+  .ep-card-in,
+  .ep-shimmer,
+  .ep-liquid-loader::before {
+    animation: none !important;
+  }
+
+  .ep-hover-lift,
+  .ep-hover-lift:hover {
+    transform: none;
+    transition: none;
+  }
 }

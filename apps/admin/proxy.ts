@@ -2,6 +2,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { isAllowedAdminEmail } from "@/lib/auth/allowlist";
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -30,12 +31,19 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const isLoginPage = request.nextUrl.pathname === "/login";
+  const isAllowedAdmin = isAllowedAdminEmail(user?.email);
 
   if (!user && !isLoginPage) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  if (user && isLoginPage) {
+  if (user && !isAllowedAdmin && !isLoginPage) {
+    const url = new URL("/login", request.url);
+    url.searchParams.set("error", "unauthorized");
+    return NextResponse.redirect(url);
+  }
+
+  if (user && isLoginPage && isAllowedAdmin) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 

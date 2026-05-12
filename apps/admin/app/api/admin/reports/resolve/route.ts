@@ -1,6 +1,7 @@
 // admin API: resolve one report or all unresolved reports for an echo
 
-import { createServerClient } from "@/lib/supabase/client";
+import { requireAdmin } from "@/lib/auth/require-admin";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 
 type ResolvePayload = {
@@ -9,7 +10,10 @@ type ResolvePayload = {
 };
 
 export async function POST(req: NextRequest) {
-  const supabase = createServerClient();
+  const admin = await requireAdmin();
+  if (!admin.ok) return admin.response;
+
+  const supabase = createAdminClient();
   const payload = await readPayload(req);
 
   if (!payload.report_id && !payload.echo_id) {

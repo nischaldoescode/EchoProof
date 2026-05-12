@@ -11,12 +11,16 @@ const nextConfig: NextConfig = {
     ],
   },
 
-  // rewrites (/@username → /user/username)
+  // Rewrites keep shared handles friendly while the page also normalizes params.
   async rewrites() {
     return [
       {
-        source: '/@:username',
-        destination: '/user/:username',
+        source: "/@:username",
+        destination: "/user/:username",
+      },
+      {
+        source: "/user/@:username",
+        destination: "/user/:username",
       },
     ];
   },
