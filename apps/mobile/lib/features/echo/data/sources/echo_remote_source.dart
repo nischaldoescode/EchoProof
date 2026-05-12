@@ -18,7 +18,7 @@ class EchoRemoteSource {
     final response = await _client
         .from('echoes')
         .select('''
-          id, user_id, title, content, category, status, version,
+          id, user_id, title, content, category, category_detail, status, version,
           media_urls, reply_count, proof_count, bond_count,
           trust_score, confidence_score, controversy_score,
           support_count, challenge_count, created_at,
@@ -40,7 +40,7 @@ class EchoRemoteSource {
 
   Future<EchoEntity> fetchById(String id) async {
     final row = await _client.from('echoes').select('''
-          id, user_id, title, content, category, status, version,
+          id, user_id, title, content, category, category_detail, status, version,
           media_urls, reply_count, proof_count, bond_count,
           trust_score, confidence_score, controversy_score,
           support_count, challenge_count, created_at,
@@ -68,10 +68,11 @@ class EchoRemoteSource {
       'title': title.trim(),
       'content': content.trim(),
       'category': category.dbValue,
+      'category_detail': null,
       'verification_required': verificationRequired,
       'status': 'pending_verification',
     }).select('''
-      id, user_id, title, content, category, status, version,
+      id, user_id, title, content, category, category_detail, status, version,
       media_urls, reply_count, proof_count, bond_count,
       trust_score, confidence_score, controversy_score,
       support_count, challenge_count, created_at,

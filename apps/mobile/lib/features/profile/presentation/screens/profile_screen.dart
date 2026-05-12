@@ -554,11 +554,27 @@ class _ProfileScreenState extends State<ProfileScreen>
     required DateTime? currentDob,
   }) async {
     final usernameChanged = newUsername != currentUsername;
+    final displayChanged =
+        newDisplayName != (_profile?['display_name'] as String? ?? '');
+    final genderChanged = newGender != (_profile?['gender'] as String? ?? '');
     final dobChanged = newDob != null &&
         (currentDob == null ||
             newDob.year != currentDob.year ||
             newDob.month != currentDob.month ||
             newDob.day != currentDob.day);
+
+    if (usernameChanged || displayChanged || genderChanged || dobChanged) {
+      final retryAfter = await _profileCooldownRemaining();
+      if (retryAfter > 0) {
+        if (mounted) {
+          showInfoSnack(
+            context,
+            'Profile changes are cooling down. Try again in ${_formatCooldown(retryAfter)}.',
+          );
+        }
+        return;
+      }
+    }
 
     // otp required if username or dob changed
     final needsOtp = usernameChanged || dobChanged;
@@ -642,11 +658,50 @@ class _ProfileScreenState extends State<ProfileScreen>
     } catch (e) {
       AppLogger.error('profile: save changes failed $e');
       if (mounted) {
-        showErrorSnack(context, 'Failed to save changes. Please try again.');
+        showErrorSnack(context, _profileUpdateErrorMessage(e));
       }
     }
 
     setState(() => _isSavingProfile = false);
+  }
+
+  Future<int> _profileCooldownRemaining() async {
+    try {
+      final client = Supabase.instance.client;
+      final userId = client.auth.currentUser?.id;
+      if (userId == null) return 0;
+      final response = await client.rpc('get_action_cooldown_status', params: {
+        'p_action': 'profile_update',
+        'p_subject': userId,
+        'p_window_seconds': 20 * 60,
+        'p_max_actions': 1,
+        'p_include_ip': false,
+      });
+      final map = Map<String, dynamic>.from(response as Map);
+      return (map['retry_after_seconds'] as num?)?.toInt() ?? 0;
+    } catch (e) {
+      AppLogger.warn('profile: cooldown check failed $e');
+      return 0;
+    }
+  }
+
+  String _profileUpdateErrorMessage(Object error) {
+    if (error is PostgrestException &&
+        error.message.toLowerCase().contains('profile_update_cooldown')) {
+      final detail = error.details?.toString() ?? '';
+      final seconds = int.tryParse(RegExp(r'\d+').stringMatch(detail) ?? '');
+      if (seconds != null && seconds > 0) {
+        return 'Profile changes are cooling down. Try again in ${_formatCooldown(seconds)}.';
+      }
+      return 'Profile changes are cooling down. Please try again later.';
+    }
+    return 'Failed to save changes. Please try again.';
+  }
+
+  String _formatCooldown(int seconds) {
+    final minutes = (seconds / 60).ceil();
+    if (minutes <= 1) return '$seconds seconds';
+    return '$minutes minutes';
   }
 
   Future<bool> _showOtpVerificationDialog(String email) async {
@@ -828,7 +883,7 @@ class _ProfileScreenState extends State<ProfileScreen>
         client
             .from('echoes')
             .select(
-              'id, title, content, category, status, trust_score, '
+              'id, title, content, category, category_detail, status, trust_score, '
               'confidence_score, controversy_score, support_count, '
               'challenge_count, reply_count, created_at, media_urls, '
               'created_record_tx, created_record_at, solana_status, solana_error, '
@@ -875,6 +930,7 @@ class _ProfileScreenState extends State<ProfileScreen>
           userIsVerified: priv?['is_identity_verified'] as bool? ?? false,
           userAvatarUrl: profile['avatar_url'] as String?,
           category: EchoCategory.fromString(r['category'] as String),
+          categoryDetail: r['category_detail'] as String?,
           status: _parseStatus(r['status'] as String),
           confidenceScore: (r['confidence_score'] as num?)?.toDouble() ?? 0,
           trustScore: (r['trust_score'] as num?)?.toInt() ?? 0,
@@ -1205,6 +1261,17 @@ class _ProfileScreenState extends State<ProfileScreen>
     final client = Supabase.instance.client;
     final userId = client.auth.currentUser?.id;
     if (userId == null) return;
+    if (newBio == (_profile?['bio'] as String? ?? '')) return;
+    final retryAfter = await _profileCooldownRemaining();
+    if (retryAfter > 0) {
+      if (mounted) {
+        showInfoSnack(
+          context,
+          'Profile changes are cooling down. Try again in ${_formatCooldown(retryAfter)}.',
+        );
+      }
+      return;
+    }
     try {
       await client
           .from('users_public')
@@ -1218,7 +1285,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     } catch (e) {
       AppLogger.error('profile: bio update failed $e');
       if (mounted) {
-        showErrorSnack(context, 'Failed to update bio.');
+        showErrorSnack(context, _profileUpdateErrorMessage(e));
       }
     }
   }
@@ -1412,12 +1479,6 @@ class _ProfileScreenState extends State<ProfileScreen>
                                     isPublic: _isPublic,
                                     onToggle: _setPublic,
                                   ),
-                                if (_isOwnProfile) ...[
-                                  const SizedBox(height: AppSpacing.sm),
-                                  _BlockedUsersEntry(
-                                    onTap: _showBlockedUsersSheet,
-                                  ),
-                                ],
                                 if (!_isOwnProfile &&
                                     !_isPublic &&
                                     !_isBlockedByMe)
@@ -1658,6 +1719,89 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
+  void _showOwnProfileMenu() {
+    showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      backgroundColor: AppColors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) => Padding(
+            padding: EdgeInsets.fromLTRB(
+              AppSpacing.xl,
+              AppSpacing.lg,
+              AppSpacing.xl,
+              AppSpacing.xl + MediaQuery.paddingOf(ctx).bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.borderMedium,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.xl),
+                _ProfileMenuTile(
+                  icon: Icons.edit_outlined,
+                  title: 'Edit profile',
+                  subtitle: 'Name, username, birthday, and gender',
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _showEditProfileSheet();
+                  },
+                ),
+                _ProfileMenuTile(
+                  icon: _isPublic
+                      ? Icons.public_rounded
+                      : Icons.lock_outline_rounded,
+                  title: _isPublic ? 'Public profile' : 'Private profile',
+                  subtitle: _isPublic
+                      ? 'Anyone can view your profile'
+                      : 'Only accepted followers can view it',
+                  trailing: Switch.adaptive(
+                    value: _isPublic,
+                    activeThumbColor: AppColors.fernGreen,
+                    activeTrackColor:
+                        AppColors.fernGreen.withValues(alpha: 0.35),
+                    onChanged: (value) {
+                      setSheetState(() => _isPublic = value);
+                      _setPublic(value);
+                    },
+                  ),
+                ),
+                _ProfileMenuTile(
+                  icon: Icons.block_rounded,
+                  title: 'Blocked users',
+                  subtitle: 'Review and unblock accounts',
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _showBlockedUsersSheet();
+                  },
+                ),
+                _ProfileMenuTile(
+                  icon: Icons.settings_outlined,
+                  title: 'Settings',
+                  subtitle: 'Account, ads, privacy, and support',
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    context.push('/settings');
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<List<Map<String, dynamic>>> _loadBlockedUsers() async {
     final client = Supabase.instance.client;
     final myId = client.auth.currentUser?.id;
@@ -1740,10 +1884,10 @@ class _ProfileScreenState extends State<ProfileScreen>
                       tooltip: 'Edit profile',
                     ),
                     IconButton(
-                      icon: const Icon(Icons.settings_outlined, size: 22),
-                      onPressed: () => context.push('/settings'),
+                      icon: const Icon(Icons.more_horiz_rounded, size: 24),
+                      onPressed: _showOwnProfileMenu,
                       color: AppColors.charcoal,
-                      tooltip: 'Settings',
+                      tooltip: 'Profile menu',
                     ),
                   ] else if (_profile != null) ...[
                     IconButton(
@@ -1924,71 +2068,64 @@ class _UnblockButton extends StatelessWidget {
   }
 }
 
-class _BlockedUsersEntry extends StatelessWidget {
-  const _BlockedUsersEntry({required this.onTap});
-  final VoidCallback onTap;
+class _ProfileMenuTile extends StatelessWidget {
+  const _ProfileMenuTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.onTap,
+    this.trailing,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback? onTap;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
-      builder: (context, value, child) => Opacity(
-        opacity: value,
-        child: Transform.translate(
-          offset: Offset(0, (1 - value) * 8),
-          child: child,
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: Material(
-        color: Colors.transparent,
+        color: AppColors.surfaceSecondary,
+        borderRadius: BorderRadius.circular(14),
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           onTap: onTap,
-          child: Ink(
+          child: Padding(
             padding: const EdgeInsets.all(AppSpacing.md),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.borderSubtle),
-            ),
             child: Row(
               children: [
                 Container(
-                  width: 34,
-                  height: 34,
+                  width: 38,
+                  height: 38,
                   decoration: BoxDecoration(
-                    color: AppColors.sunsetCoral.withValues(alpha: 0.1),
+                    color: AppColors.white,
                     borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.borderSubtle),
                   ),
-                  child: const Icon(
-                    Icons.block_rounded,
-                    color: AppColors.sunsetCoral,
-                    size: 18,
-                  ),
+                  child: Icon(icon, size: 19, color: AppColors.charcoal),
                 ),
                 const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Blocked users',
-                        style: AppTypography.textTheme.titleSmall,
-                      ),
+                      Text(title, style: AppTypography.textTheme.titleSmall),
                       const SizedBox(height: 2),
                       Text(
-                        'Review and unblock accounts you have blocked.',
+                        subtitle,
                         style: AppTypography.textTheme.labelMedium,
                       ),
                     ],
                   ),
                 ),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  color: AppColors.textTertiary,
-                ),
+                trailing ??
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: AppColors.textTertiary,
+                    ),
               ],
             ),
           ),
@@ -2443,7 +2580,7 @@ class _AvatarCard extends StatelessWidget {
     Navigator.of(context).push(
       PageRouteBuilder<void>(
         opaque: false,
-        barrierColor: Colors.black87,
+        barrierColor: const Color(0xEEF5FAF7),
         barrierDismissible: true,
         pageBuilder: (_, __, ___) =>
             _AvatarZoomPage(avatarUrl: avatarUrl, heroTag: heroTag),
@@ -2509,11 +2646,10 @@ class _AvatarZoomPageState extends State<_AvatarZoomPage> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final imageWidth = size.width * 0.9;
-    final imageHeight = size.height * 0.72;
+    final avatarSize = (size.width * 0.78).clamp(220.0, 360.0).toDouble();
 
     return Scaffold(
-      backgroundColor: Colors.black.withValues(alpha: 0.94),
+      backgroundColor: const Color(0xFFF5FAF7),
       body: Stack(
         children: [
           Center(
@@ -2529,28 +2665,53 @@ class _AvatarZoomPageState extends State<_AvatarZoomPage> {
                 clipBehavior: Clip.none,
                 child: Hero(
                   tag: widget.heroTag,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(24),
+                  child: Container(
+                    width: avatarSize,
+                    height: avatarSize,
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          AppColors.fernGreen,
+                          AppColors.fernGreenDark,
+                        ],
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.fernGreen.withValues(alpha: 0.18),
+                          blurRadius: 30,
+                          offset: const Offset(0, 12),
+                        ),
+                      ],
+                    ),
                     child: SizedBox(
-                      width: imageWidth,
-                      height: imageHeight,
-                      child: widget.avatarUrl.endsWith('.svg')
-                          ? SvgPicture.network(
-                              widget.avatarUrl,
-                              fit: BoxFit.contain,
-                            )
-                          : Image.network(
-                              widget.avatarUrl,
-                              fit: BoxFit.contain,
-                              errorBuilder: (_, __, ___) => Container(
-                                color: AppColors.charcoal,
-                                child: const Icon(
-                                  Icons.person_outline,
-                                  color: Colors.white70,
-                                  size: 72,
+                      width: avatarSize,
+                      height: avatarSize,
+                      child: ClipOval(
+                        child: ColoredBox(
+                          color: AppColors.softSand,
+                          child: widget.avatarUrl.endsWith('.svg')
+                              ? SvgPicture.network(
+                                  widget.avatarUrl,
+                                  fit: BoxFit.cover,
+                                )
+                              : Image.network(
+                                  widget.avatarUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    color: AppColors.softSand,
+                                    child: const Icon(
+                                      Icons.person_outline,
+                                      color: AppColors.textTertiary,
+                                      size: 72,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -2564,11 +2725,18 @@ class _AvatarZoomPageState extends State<_AvatarZoomPage> {
                 padding: const EdgeInsets.all(AppSpacing.lg),
                 child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.12),
+                    color: Colors.white,
                     borderRadius: BorderRadius.circular(22),
                     border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.16),
+                      color: AppColors.borderSubtle,
                     ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
                   ),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
@@ -2585,14 +2753,14 @@ class _AvatarZoomPageState extends State<_AvatarZoomPage> {
                                 ? Icons.zoom_out_map_rounded
                                 : Icons.zoom_in_rounded,
                           ),
-                          color: Colors.white,
+                          color: AppColors.charcoal,
                           tooltip: _zoomed ? 'Reset zoom' : 'Zoom in',
                         ),
                         const SizedBox(width: AppSpacing.xs),
                         IconButton(
                           onPressed: _resetZoom,
                           icon: const Icon(Icons.center_focus_strong_rounded),
-                          color: Colors.white,
+                          color: AppColors.charcoal,
                           tooltip: 'Center image',
                         ),
                       ],
@@ -2610,9 +2778,9 @@ class _AvatarZoomPageState extends State<_AvatarZoomPage> {
                 child: IconButton(
                   onPressed: () => Navigator.pop(context),
                   icon: const Icon(Icons.close_rounded),
-                  color: Colors.white,
+                  color: AppColors.charcoal,
                   style: IconButton.styleFrom(
-                    backgroundColor: Colors.white.withValues(alpha: 0.12),
+                    backgroundColor: Colors.white,
                   ),
                 ),
               ),

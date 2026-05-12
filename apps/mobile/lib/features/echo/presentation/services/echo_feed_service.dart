@@ -83,7 +83,7 @@ class EchoFeedService extends ChangeNotifier {
       final rows = await client
           .from('echoes')
           .select('''
-            id, title, content, category, status, version,
+            id, title, content, category, category_detail, status, version,
             user_id, media_urls, reply_count, proof_count, bond_count,
             trust_score, confidence_score, controversy_score, report_score,
             support_count, challenge_count, created_at,
@@ -304,6 +304,7 @@ class EchoFeedService extends ChangeNotifier {
       // only the edge function which does a join to users_private will have this
       userAvatarUrl: user['avatar_url'] as String?,
       category: EchoCategory.fromString(row['category'] as String),
+      categoryDetail: row['category_detail'] as String?,
       status: _parseStatus(row['status'] as String),
       confidenceScore: (row['confidence_score'] as num?)?.toDouble() ?? 0.0,
       trustScore: (row['trust_score'] as num?)?.toInt() ?? 0,

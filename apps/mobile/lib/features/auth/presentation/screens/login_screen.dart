@@ -1,13 +1,16 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'dart:math' as math;
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
+import '../../../../app/theme/typography.dart';
+import '../../../../core/utils/link_launcher.dart';
+import '../../../../core/utils/snack.dart';
 import '../services/auth_service.dart';
-import 'package:flutter_svg/flutter_svg.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -21,91 +24,40 @@ class _LoginScreenState extends State<LoginScreen>
   final _formKey = GlobalKey<FormState>();
   final _emailCtrl = TextEditingController();
 
-  late final AnimationController _bgCtrl;
-  late final AnimationController _cardCtrl;
-  late final AnimationController _particleCtrl;
+  late final AnimationController _entranceCtrl;
+  late final AnimationController _breathCtrl;
+  late final Animation<double> _fade;
+  late final Animation<Offset> _slide;
 
-  late final Animation<double> _cardScale;
-  late final Animation<double> _cardFade;
-  late final Animation<Offset> _cardSlide;
-  late final Animation<double> _titleFade;
-  late final Animation<Offset> _titleSlide;
   bool _agreedToTerms = false;
-
-  final List<_Particle> _particles = [];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-
-    _bgCtrl = AnimationController(
+    _entranceCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 8),
+      duration: const Duration(milliseconds: 560),
+    )..forward();
+    _breathCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
     )..repeat(reverse: true);
-
-    _cardCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    );
-
-    _particleCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 4),
-    )..repeat();
-
-    _cardScale = Tween<double>(begin: 0.92, end: 1.0).animate(
-      CurvedAnimation(parent: _cardCtrl, curve: Curves.easeOutBack),
-    );
-    _cardFade = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(
-        parent: _cardCtrl,
-        curve: const Interval(0, 0.6, curve: Curves.easeOut),
-      ),
-    );
-    _cardSlide = Tween<Offset>(
-      begin: const Offset(0, 0.08),
+    _fade = CurvedAnimation(parent: _entranceCtrl, curve: Curves.easeOut);
+    _slide = Tween<Offset>(
+      begin: const Offset(0, 0.035),
       end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _cardCtrl, curve: Curves.easeOutCubic));
-
-    _titleFade = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(
-        parent: _cardCtrl,
-        curve: const Interval(0.2, 0.8, curve: Curves.easeOut),
-      ),
-    );
-    _titleSlide = Tween<Offset>(
-      begin: const Offset(0, -0.3),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _cardCtrl, curve: Curves.easeOutCubic));
-
-    final rng = math.Random();
-    _particles.addAll(List.generate(18, (_) => _Particle.random(rng)));
-    _cardCtrl.forward();
-  }
-
-  void _showAgreementSnack() {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(
-          'Please accept the Privacy Policy and Terms of Service to continue.',
-          style: GoogleFonts.josefinSans(fontSize: 13),
-        ),
-        backgroundColor: AppColors.sunsetCoral,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(seconds: 3),
-      ));
+    ).animate(CurvedAnimation(
+      parent: _entranceCtrl,
+      curve: Curves.easeOutCubic,
+    ));
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _bgCtrl.dispose();
-    _cardCtrl.dispose();
-    _particleCtrl.dispose();
+    _entranceCtrl.dispose();
+    _breathCtrl.dispose();
     _emailCtrl.dispose();
     super.dispose();
   }
@@ -114,337 +66,291 @@ class _LoginScreenState extends State<LoginScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
-      _bgCtrl.stop();
-      _particleCtrl.stop();
+      _breathCtrl.stop();
     } else if (state == AppLifecycleState.resumed) {
-      _bgCtrl.repeat(reverse: true);
-      _particleCtrl.repeat();
+      _breathCtrl.repeat(reverse: true);
     }
   }
 
+  void _showAgreementSnack() {
+    showWarningSnack(
+      context,
+      'Accept the Privacy Policy and Terms of Service to continue.',
+    );
+  }
+
   Future<void> _submit() async {
+    if (!_agreedToTerms) {
+      _showAgreementSnack();
+      return;
+    }
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
     final auth = context.read<AuthService>();
     final email = _emailCtrl.text.trim();
-
     final sent = await auth.sendOtp(email: email);
-    if (!mounted) return;
-    if (sent) context.push('/verify-email', extra: email);
+    if (!mounted || !sent) return;
+    context.push('/verify-email', extra: email);
   }
 
   Future<void> _googleSignIn() async {
+    if (!_agreedToTerms) {
+      _showAgreementSnack();
+      return;
+    }
     final auth = context.read<AuthService>();
-    final success = await auth.signInWithGoogle();
-    if (!mounted || !success) return;
-    // router redirect handles navigation based on hasUsername
+    await auth.signInWithGoogle();
+    // Router redirect handles navigation after the auth state updates.
   }
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final isWide = size.width > 600;
-
-    // watch only what we need — avoids full rebuild on unrelated changes
     final isLoading = context.select<AuthService, bool>((a) => a.isLoading);
     final error = context.select<AuthService, String?>((a) => a.error);
 
-    // show error snack
     if (error != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(
-            content: Text(error, style: GoogleFonts.josefinSans(fontSize: 13)),
-            backgroundColor: AppColors.sunsetCoral,
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            duration: const Duration(seconds: 3),
-          ));
+        showErrorSnack(context, error);
         context.read<AuthService>().clearError();
       });
     }
 
     return Scaffold(
-      body: AnimatedBuilder(
-        animation: Listenable.merge([_bgCtrl, _particleCtrl]),
-        builder: (ctx, _) {
-          final bg1 = Color.lerp(
-              const Color(0xFFE8F5EE), const Color(0xFFF0FAF5), _bgCtrl.value)!;
-          final bg2 = Color.lerp(
-              const Color(0xFFFAF7F2), const Color(0xFFEDF9F3), _bgCtrl.value)!;
-
-          return Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [bg1, bg2],
-              ),
-            ),
-            child: Stack(
-              children: [
-                // floating particles
-                ...List.generate(_particles.length, (i) {
-                  final p = _particles[i];
-                  final phase = (_particleCtrl.value + p.offset) % 1.0;
-                  return Positioned(
-                    left: p.startX * size.width,
-                    top: p.startY * size.height +
-                        math.sin(phase * math.pi * 2) * 28 * p.amplitude,
-                    child: Opacity(
-                      opacity: 0.12 + 0.08 * math.sin(phase * math.pi),
-                      child: Container(
-                        width: p.size,
-                        height: p.size,
-                        decoration: BoxDecoration(
-                          color: p.color,
-                          shape: BoxShape.circle,
+      backgroundColor: const Color(0xFFF5FAF7),
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFFF5FAF7),
+              Color(0xFFFFFFFF),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final maxWidth = constraints.maxWidth > 640 ? 430.0 : 520.0;
+              return Center(
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.fromLTRB(
+                    AppSpacing.xl,
+                    AppSpacing.xl,
+                    AppSpacing.xl,
+                    AppSpacing.xl + MediaQuery.paddingOf(context).bottom,
+                  ),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: maxWidth),
+                    child: FadeTransition(
+                      opacity: _fade,
+                      child: SlideTransition(
+                        position: _slide,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _BrandHeader(animation: _breathCtrl),
+                            const SizedBox(height: AppSpacing.xxl),
+                            _LoginPanel(
+                              formKey: _formKey,
+                              emailCtrl: _emailCtrl,
+                              agreed: _agreedToTerms,
+                              isLoading: isLoading,
+                              onAgreementChanged: (value) =>
+                                  setState(() => _agreedToTerms = value),
+                              onSubmit: _submit,
+                              onGoogle: _googleSignIn,
+                            ),
+                            const SizedBox(height: AppSpacing.lg),
+                            Text(
+                              'Secure email codes. Native Google sign-in. No password to remember.',
+                              textAlign: TextAlign.center,
+                              style: GoogleFonts.josefinSans(
+                                fontSize: 12,
+                                height: 1.45,
+                                color: AppColors.textTertiary,
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ),
-                  );
-                }),
-
-                SafeArea(
-                  child: Center(
-                    child: SingleChildScrollView(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: isWide ? size.width * 0.15 : 24,
-                        vertical: 32,
-                      ),
-                      child: Column(
-                        children: [
-                          // logo + title
-                          AnimatedBuilder(
-                            animation: _cardCtrl,
-                            builder: (_, child) => FadeTransition(
-                              opacity: _titleFade,
-                              child: SlideTransition(
-                                position: _titleSlide,
-                                child: child,
-                              ),
-                            ),
-                            child: Column(
-                              children: [
-                                _AnimatedLogo(ctrl: _particleCtrl),
-                                const SizedBox(height: 20),
-                                _TypewriterText(
-                                  text: 'Echoproof',
-                                  style: GoogleFonts.josefinSans(
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.charcoal,
-                                    letterSpacing: -0.5,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Wrap(
-                                  alignment: WrapAlignment.center,
-                                  crossAxisAlignment: WrapCrossAlignment.center,
-                                  children: [
-                                    _Dot(delay: 0),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'truth, verified by community',
-                                      style: GoogleFonts.josefinSans(
-                                        fontSize: 13,
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    _Dot(delay: 0.3),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-
-                          const SizedBox(height: 36),
-
-                          // form card
-                          AnimatedBuilder(
-                            animation: _cardCtrl,
-                            builder: (_, child) => FadeTransition(
-                              opacity: _cardFade,
-                              child: SlideTransition(
-                                position: _cardSlide,
-                                child: ScaleTransition(
-                                  scale: _cardScale,
-                                  child: child,
-                                ),
-                              ),
-                            ),
-                            child: Container(
-                              padding: const EdgeInsets.all(24),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.93),
-                                borderRadius: BorderRadius.circular(24),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppColors.fernGreen
-                                        .withValues(alpha: 0.07),
-                                    blurRadius: 32,
-                                    offset: const Offset(0, 8),
-                                  ),
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.04),
-                                    blurRadius: 12,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Form(
-                                key: _formKey,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Welcome to Echoproof',
-                                      style: GoogleFonts.josefinSans(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.charcoal,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      "Enter your email. We'll send a one-time code to sign in or create your account.",
-                                      style: GoogleFonts.josefinSans(
-                                        fontSize: 13,
-                                        color: AppColors.textSecondary,
-                                        height: 1.5,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 22),
-                                    _EmailField(ctrl: _emailCtrl),
-                                    const SizedBox(height: 18),
-                                    // Agreement checkbox  required before either sign-in method.
-                                    _AgreementCheckbox(
-                                      agreed: _agreedToTerms,
-                                      onChanged: (v) =>
-                                          setState(() => _agreedToTerms = v),
-                                    ),
-                                    const SizedBox(height: 18),
-                                    _ContinueButton(
-                                      isLoading: isLoading,
-                                      agreed: _agreedToTerms,
-                                      onTap: _agreedToTerms
-                                          ? _submit
-                                          : _showAgreementSnack,
-                                    ),
-                                    const SizedBox(height: 18),
-                                    Row(children: [
-                                      const Expanded(child: Divider()),
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 12),
-                                        child: Text(
-                                          'or',
-                                          style: GoogleFonts.josefinSans(
-                                              fontSize: 12,
-                                              color: AppColors.textTertiary),
-                                        ),
-                                      ),
-                                      const Expanded(child: Divider()),
-                                    ]),
-                                    const SizedBox(height: 18),
-                                    _GoogleButton(
-                                      isLoading: isLoading,
-                                      agreed: _agreedToTerms,
-                                      onTap: _agreedToTerms
-                                          ? _googleSignIn
-                                          : _showAgreementSnack,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-
-                          const SizedBox(height: 28),
-
-                          // feature badges — use Wrap to prevent overflow
-                          AnimatedBuilder(
-                            animation: _particleCtrl,
-                            builder: (_, __) {
-                              const badges = [
-                                (Icons.verified_outlined, 'Community verified'),
-                                (Icons.lock_outlined, 'End-to-end encrypted'),
-                                (Icons.link_outlined, 'Permanent records'),
-                              ];
-                              return Wrap(
-                                alignment: WrapAlignment.center,
-                                spacing: 6,
-                                runSpacing: 6,
-                                children: List.generate(badges.length, (i) {
-                                  final phase =
-                                      (_particleCtrl.value + i * 0.33) % 1.0;
-                                  final dy = math.sin(phase * math.pi * 2) * 3;
-                                  return Transform.translate(
-                                    offset: Offset(0, dy),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 6,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color:
-                                            Colors.white.withValues(alpha: 0.8),
-                                        borderRadius: BorderRadius.circular(20),
-                                        border: Border.all(
-                                            color: AppColors.borderSubtle),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            badges[i].$1,
-                                            size: 12,
-                                            color: AppColors.fernGreen,
-                                          ),
-                                          const SizedBox(width: 5),
-                                          Text(
-                                            badges[i].$2,
-                                            style: GoogleFonts.josefinSans(
-                                              fontSize: 10,
-                                              color: AppColors.textSecondary,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                }),
-                              );
-                            },
-                          ),
-
-                          const SizedBox(height: 20),
-                        ],
                       ),
                     ),
                   ),
                 ),
-              ],
-            ),
-          );
-        },
+              );
+            },
+          ),
+        ),
       ),
     );
   }
 }
 
-//    sub-widgets
+class _BrandHeader extends StatelessWidget {
+  const _BrandHeader({required this.animation});
+  final Animation<double> animation;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) {
+        final scale = 1.0 + animation.value * 0.025;
+        return Column(
+          children: [
+            Transform.scale(
+              scale: scale,
+              child: Container(
+                width: 76,
+                height: 76,
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white,
+                  border: Border.all(color: AppColors.borderSubtle),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.fernGreen.withValues(alpha: 0.12),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: ClipOval(
+                  child: Image.asset(
+                    'assets/images/logo.png',
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Text(
+              'Echoproof',
+              style: GoogleFonts.josefinSans(
+                fontSize: 32,
+                fontWeight: FontWeight.w800,
+                color: AppColors.charcoal,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Verified claims, real people.',
+              style: GoogleFonts.josefinSans(
+                fontSize: 14,
+                color: AppColors.textSecondary,
+                height: 1.35,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _LoginPanel extends StatelessWidget {
+  const _LoginPanel({
+    required this.formKey,
+    required this.emailCtrl,
+    required this.agreed,
+    required this.isLoading,
+    required this.onAgreementChanged,
+    required this.onSubmit,
+    required this.onGoogle,
+  });
+
+  final GlobalKey<FormState> formKey;
+  final TextEditingController emailCtrl;
+  final bool agreed;
+  final bool isLoading;
+  final ValueChanged<bool> onAgreementChanged;
+  final VoidCallback onSubmit;
+  final VoidCallback onGoogle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.borderSubtle),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Form(
+        key: formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Sign in', style: AppTypography.textTheme.headlineSmall),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              'Enter your email and we will send a 6-digit code.',
+              style: GoogleFonts.josefinSans(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            _EmailField(ctrl: emailCtrl, enabled: !isLoading),
+            const SizedBox(height: AppSpacing.lg),
+            _AgreementCheckbox(
+              agreed: agreed,
+              enabled: !isLoading,
+              onChanged: onAgreementChanged,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            _ContinueButton(
+              isLoading: isLoading,
+              enabled: agreed,
+              onTap: onSubmit,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Row(
+              children: [
+                const Expanded(child: Divider(color: AppColors.borderSubtle)),
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+                  child: Text(
+                    'or',
+                    style: GoogleFonts.josefinSans(
+                      fontSize: 12,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                ),
+                const Expanded(child: Divider(color: AppColors.borderSubtle)),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            _GoogleButton(
+              isLoading: isLoading,
+              enabled: agreed,
+              onTap: onGoogle,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _EmailField extends StatefulWidget {
-  const _EmailField({required this.ctrl});
+  const _EmailField({required this.ctrl, required this.enabled});
   final TextEditingController ctrl;
+  final bool enabled;
 
   @override
   State<_EmailField> createState() => _EmailFieldState();
@@ -456,43 +362,38 @@ class _EmailFieldState extends State<_EmailField> {
   @override
   Widget build(BuildContext context) {
     return Focus(
-      onFocusChange: (v) => setState(() => _focused = v),
+      onFocusChange: (value) => setState(() => _focused = value),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
         decoration: BoxDecoration(
-          color: _focused ? Colors.white : const Color(0xFFF8FAF9),
+          color:
+              widget.enabled ? AppColors.surfaceSecondary : AppColors.softSand,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: _focused ? AppColors.fernGreen : AppColors.borderSubtle,
-            width: _focused ? 2 : 1,
+            width: _focused ? 1.5 : 1,
           ),
-          boxShadow: _focused
-              ? [
-                  BoxShadow(
-                    color: AppColors.fernGreen.withValues(alpha: 0.1),
-                    blurRadius: 12,
-                    offset: const Offset(0, 3),
-                  )
-                ]
-              : [],
         ),
         child: TextFormField(
           controller: widget.ctrl,
+          enabled: widget.enabled,
           keyboardType: TextInputType.emailAddress,
           autocorrect: false,
           textInputAction: TextInputAction.done,
           style: GoogleFonts.josefinSans(
-            fontSize: 14,
+            fontSize: 15,
             color: AppColors.charcoal,
           ),
-          validator: (v) {
-            if (v == null || v.trim().isEmpty) return 'Enter your email';
-            if (!v.contains('@') || !v.contains('.'))
-              return 'Enter a valid email';
+          validator: (value) {
+            final email = value?.trim() ?? '';
+            if (email.isEmpty) return 'Enter your email';
+            final valid = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(email);
+            if (!valid) return 'Enter a valid email';
             return null;
           },
           decoration: InputDecoration(
-            hintText: 'your@email.com',
+            hintText: 'name@email.com',
             hintStyle: GoogleFonts.josefinSans(
               fontSize: 14,
               color: AppColors.textTertiary,
@@ -504,7 +405,7 @@ class _EmailFieldState extends State<_EmailField> {
             ),
             border: InputBorder.none,
             contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
+              horizontal: AppSpacing.lg,
               vertical: 15,
             ),
           ),
@@ -514,88 +415,48 @@ class _EmailFieldState extends State<_EmailField> {
   }
 }
 
-class _ContinueButton extends StatefulWidget {
+class _ContinueButton extends StatelessWidget {
   const _ContinueButton({
     required this.isLoading,
+    required this.enabled,
     required this.onTap,
-    required this.agreed,
   });
+
   final bool isLoading;
+  final bool enabled;
   final VoidCallback onTap;
-  final bool agreed;
-
-  @override
-  State<_ContinueButton> createState() => _ContinueButtonState();
-}
-
-class _ContinueButtonState extends State<_ContinueButton>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
-  late final Animation<double> _glow;
-
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1800),
-    )..repeat(reverse: true);
-    _glow = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _c, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _glow,
-      builder: (_, __) => Container(
+    final canTap = enabled && !isLoading;
+    return AnimatedOpacity(
+      opacity: enabled ? 1 : 0.52,
+      duration: const Duration(milliseconds: 180),
+      child: SizedBox(
         width: double.infinity,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.fernGreen
-                  .withValues(alpha: 0.2 + 0.12 * _glow.value),
-              blurRadius: 10 + 6 * _glow.value,
+        height: 50,
+        child: ElevatedButton(
+          onPressed: isLoading ? null : onTap,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.charcoal,
+            disabledBackgroundColor: AppColors.charcoal,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
             ),
-          ],
-        ),
-        child: AnimatedOpacity(
-          opacity: widget.agreed ? 1.0 : 0.5,
-          duration: const Duration(milliseconds: 200),
-          child: ElevatedButton(
-            onPressed: widget.isLoading ? null : widget.onTap,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.charcoal,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 15),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-              elevation: 0,
-            ),
-            child: widget.isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
+          ),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            child: isLoading
+                ? const _LiquidLoader(key: ValueKey('loader'))
                 : Text(
-                    'Continue with email',
+                    canTap ? 'Continue with email' : 'Continue with email',
+                    key: const ValueKey('label'),
                     style: GoogleFonts.josefinSans(
                       fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.4,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
                     ),
                   ),
           ),
@@ -605,60 +466,58 @@ class _ContinueButtonState extends State<_ContinueButton>
   }
 }
 
-// Google button is a pure StatelessWidget — no animation controller
-// this prevents jitter caused by the old StatefulWidget conflicting
-// with parent rebuild cycles
 class _GoogleButton extends StatelessWidget {
   const _GoogleButton({
     required this.isLoading,
+    required this.enabled,
     required this.onTap,
-    required this.agreed,
   });
+
   final bool isLoading;
+  final bool enabled;
   final VoidCallback onTap;
-  final bool agreed;
+
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedOpacity(
-        opacity: isLoading ? 0.55 : (agreed ? 1.0 : 0.5),
-        duration: const Duration(milliseconds: 150),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.borderSubtle),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              isLoading
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const _GoogleG(),
-              const SizedBox(width: 12),
-              Text(
-                'Continue with Google',
-                style: GoogleFonts.josefinSans(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.charcoal,
+    return AnimatedOpacity(
+      opacity: enabled && !isLoading ? 1 : 0.52,
+      duration: const Duration(milliseconds: 180),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: isLoading ? null : onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Ink(
+            height: 50,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.borderSubtle),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.fernGreen,
+                        ),
+                      )
+                    : const _AnimatedGoogleIcon(),
+                const SizedBox(width: AppSpacing.md),
+                Text(
+                  'Continue with Google',
+                  style: GoogleFonts.josefinSans(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.charcoal,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -669,10 +528,13 @@ class _GoogleButton extends StatelessWidget {
 class _AgreementCheckbox extends StatelessWidget {
   const _AgreementCheckbox({
     required this.agreed,
+    required this.enabled,
     required this.onChanged,
   });
+
   final bool agreed;
-  final void Function(bool) onChanged;
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -684,64 +546,43 @@ class _AgreementCheckbox extends StatelessWidget {
           height: 24,
           child: Checkbox(
             value: agreed,
-            onChanged: (v) => onChanged(v ?? false),
+            onChanged: enabled ? (value) => onChanged(value ?? false) : null,
             activeColor: AppColors.fernGreen,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: BorderRadius.circular(5),
             ),
             side: const BorderSide(color: AppColors.borderMedium),
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: AppSpacing.sm),
         Expanded(
           child: Text.rich(
             TextSpan(
               style: GoogleFonts.josefinSans(
                 fontSize: 12,
                 color: AppColors.textSecondary,
-                height: 1.5,
+                height: 1.45,
               ),
               children: [
                 const TextSpan(text: 'I agree to the '),
                 WidgetSpan(
-                  child: GestureDetector(
-                    onTap: () => _openInApp(
-                      context,
-                      'https://echoproof.online/terms',
-                      'Terms of Service',
-                    ),
-                    child: Text(
-                      'Terms of Service',
-                      style: GoogleFonts.josefinSans(
-                        fontSize: 12,
-                        color: AppColors.fernGreen,
-                        fontWeight: FontWeight.w600,
-                        decoration: TextDecoration.underline,
-                        decorationColor: AppColors.fernGreen,
-                      ),
-                    ),
+                  alignment: PlaceholderAlignment.baseline,
+                  baseline: TextBaseline.alphabetic,
+                  child: _InlineLink(
+                    label: 'Terms',
+                    url: 'https://echoproof.online/terms',
                   ),
                 ),
                 const TextSpan(text: ' and '),
                 WidgetSpan(
-                  child: GestureDetector(
-                    onTap: () => _openInApp(
-                      context,
-                      'https://echoproof.online/privacy',
-                      'Privacy Policy',
-                    ),
-                    child: Text(
-                      'Privacy Policy',
-                      style: GoogleFonts.josefinSans(
-                        fontSize: 12,
-                        color: AppColors.fernGreen,
-                        fontWeight: FontWeight.w600,
-                        decoration: TextDecoration.underline,
-                        decorationColor: AppColors.fernGreen,
-                      ),
-                    ),
+                  alignment: PlaceholderAlignment.baseline,
+                  baseline: TextBaseline.alphabetic,
+                  child: _InlineLink(
+                    label: 'Privacy Policy',
+                    url: 'https://echoproof.online/privacy',
                   ),
                 ),
+                const TextSpan(text: '.'),
               ],
             ),
           ),
@@ -749,62 +590,67 @@ class _AgreementCheckbox extends StatelessWidget {
       ],
     );
   }
+}
 
-  // Opens the URL in a WebView-like in-app browser with slide-up animation.
-  // Uses url_launcher's in-app web view mode which shows an animated sheet
-  // instead of jumping to the external browser — Instagram-style.
-  Future<void> _openInApp(
-    BuildContext context,
-    String url,
-    String title,
-  ) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.inAppWebView);
-    }
+class _InlineLink extends StatelessWidget {
+  const _InlineLink({required this.label, required this.url});
+  final String label;
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => showOpenLinkSheet(context, url: url, title: label),
+      child: Text(
+        label,
+        style: GoogleFonts.josefinSans(
+          fontSize: 12,
+          color: AppColors.fernGreenDark,
+          fontWeight: FontWeight.w700,
+          decoration: TextDecoration.underline,
+          decorationColor: AppColors.fernGreenDark,
+        ),
+      ),
+    );
   }
 }
 
-// draws the actual Google G logo using canvas
-class _GoogleG extends StatefulWidget {
-  const _GoogleG();
+class _AnimatedGoogleIcon extends StatefulWidget {
+  const _AnimatedGoogleIcon();
 
   @override
-  State<_GoogleG> createState() => _GoogleGState();
+  State<_AnimatedGoogleIcon> createState() => _AnimatedGoogleIconState();
 }
 
-class _GoogleGState extends State<_GoogleG>
+class _AnimatedGoogleIconState extends State<_AnimatedGoogleIcon>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
+  late final AnimationController _controller;
+  late final Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
-
-    _c = AnimationController(
+    _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 900),
     );
-
-    // start slightly delayed for nicer entrance
-    Future.delayed(const Duration(milliseconds: 300), () {
-      if (mounted) _c.forward();
-    });
+    _scale = Tween<double>(begin: 0.92, end: 1).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
+    );
+    _controller.forward();
   }
 
   @override
   void dispose() {
-    _c.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return RotationTransition(
-      turns: CurvedAnimation(
-        parent: _c,
-        curve: Curves.easeOutCubic,
-      ),
+    return ScaleTransition(
+      scale: _scale,
       child: SvgPicture.asset(
         'assets/icons/google.svg',
         width: 20,
@@ -814,201 +660,105 @@ class _GoogleGState extends State<_GoogleG>
   }
 }
 
-// animated logo
-
-class _AnimatedLogo extends StatelessWidget {
-  const _AnimatedLogo({required this.ctrl});
-  final AnimationController ctrl;
+class _LiquidLoader extends StatefulWidget {
+  const _LiquidLoader({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: ctrl,
-      builder: (_, __) {
-        return SizedBox(
-          width: 96,
-          height: 96,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              // two pulsing echo rings
-              ...List.generate(2, (i) {
-                final phase = (ctrl.value + i * 0.4) % 1.0;
-                return Opacity(
-                  opacity: (1 - phase) * 0.18,
-                  child: Transform.scale(
-                    scale: 1.0 + phase * 0.65,
-                    child: Container(
-                      width: 76,
-                      height: 76,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: AppColors.fernGreen,
-                          width: 1.5,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(22),
-                child: Image.asset(
-                  'assets/images/logo.png',
-                  width: 76,
-                  height: 76,
-                  fit: BoxFit.cover,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
+  State<_LiquidLoader> createState() => _LiquidLoaderState();
 }
 
-//    typewriter text    ───
-
-class _TypewriterText extends StatefulWidget {
-  const _TypewriterText({required this.text, required this.style});
-  final String text;
-  final TextStyle style;
-
-  @override
-  State<_TypewriterText> createState() => _TypewriterTextState();
-}
-
-class _TypewriterTextState extends State<_TypewriterText>
+class _LiquidLoaderState extends State<_LiquidLoader>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
-  int _chars = 0;
+  late final AnimationController _controller;
 
   @override
   void initState() {
     super.initState();
-    _c = AnimationController(
+    _controller = AnimationController(
       vsync: this,
-      duration: Duration(milliseconds: widget.text.length * 60),
-    );
-    _c.addListener(() {
-      final n = (_c.value * widget.text.length).round();
-      if (n != _chars) setState(() => _chars = n);
-    });
-    Future.delayed(
-      const Duration(milliseconds: 400),
-      () {
-        if (mounted) _c.forward();
-      },
-    );
+      duration: const Duration(milliseconds: 1150),
+    )..repeat();
   }
 
   @override
   void dispose() {
-    _c.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          widget.text.substring(0, _chars.clamp(0, widget.text.length)),
-          style: widget.style,
-        ),
-        if (_chars < widget.text.length)
-          Container(width: 2, height: 30, color: AppColors.fernGreen),
-      ],
-    );
-  }
-}
-
-//    animated dot
-
-class _Dot extends StatefulWidget {
-  const _Dot({required this.delay});
-  final double delay;
-
-  @override
-  State<_Dot> createState() => _DotState();
-}
-
-class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
-  late final Animation<double> _scale;
-
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    );
-    _scale = Tween<double>(begin: 0.4, end: 1.0).animate(
-      CurvedAnimation(parent: _c, curve: Curves.easeInOut),
-    );
-    Future.delayed(
-      Duration(milliseconds: (widget.delay * 1000).toInt()),
-      () {
-        if (mounted) _c.repeat(reverse: true);
-      },
-    );
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ScaleTransition(
-      scale: _scale,
-      child: Container(
-        width: 5,
-        height: 5,
-        decoration: const BoxDecoration(
-          color: AppColors.fernGreen,
-          shape: BoxShape.circle,
-        ),
+    return SizedBox(
+      width: 46,
+      height: 22,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          return CustomPaint(
+            painter: _LiquidLoaderPainter(progress: _controller.value),
+          );
+        },
       ),
     );
   }
 }
 
-//    particle  ────
+class _LiquidLoaderPainter extends CustomPainter {
+  const _LiquidLoaderPainter({required this.progress});
+  final double progress;
 
-class _Particle {
-  final double startX, startY, size, offset, amplitude;
-  final Color color;
-
-  const _Particle({
-    required this.startX,
-    required this.startY,
-    required this.size,
-    required this.offset,
-    required this.amplitude,
-    required this.color,
-  });
-
-  factory _Particle.random(math.Random rng) {
-    const colors = [
-      Color(0xFF4CAF6E),
-      Color(0xFF81C784),
-      Color(0xFFA5D6A7),
-    ];
-    return _Particle(
-      startX: rng.nextDouble(),
-      startY: rng.nextDouble(),
-      size: 4 + rng.nextDouble() * 7,
-      offset: rng.nextDouble(),
-      amplitude: 0.4 + rng.nextDouble() * 0.6,
-      color: colors[rng.nextInt(colors.length)],
+  @override
+  void paint(Canvas canvas, Size size) {
+    final track = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      Radius.circular(size.height / 2),
     );
+    final bgPaint = Paint()..color = Colors.white.withValues(alpha: 0.18);
+    canvas.drawRRect(track, bgPaint);
+
+    canvas.save();
+    canvas.clipRRect(track);
+
+    final wavePaint = Paint()
+      ..shader = const LinearGradient(
+        colors: [
+          Color(0xFFE8F5EE),
+          Color(0xFF4CAF6E),
+          Color(0xFFFFFFFF),
+        ],
+      ).createShader(Offset.zero & size);
+
+    final path = Path();
+    final waveHeight = size.height * 0.18;
+    final base = size.height * (0.58 - math.sin(progress * math.pi * 2) * 0.05);
+    path.moveTo(0, size.height);
+    path.lineTo(0, base);
+    for (double x = 0; x <= size.width; x += 1) {
+      final y = base +
+          math.sin((x / size.width * math.pi * 2) + progress * math.pi * 2) *
+              waveHeight;
+      path.lineTo(x, y);
+    }
+    path.lineTo(size.width, size.height);
+    path.close();
+    canvas.drawPath(path, wavePaint);
+
+    final glintPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.32)
+      ..strokeWidth = 1.2
+      ..strokeCap = StrokeCap.round;
+    final glintX = (progress * (size.width + 18)) - 9;
+    canvas.drawLine(
+      Offset(glintX, 4),
+      Offset(glintX + 12, size.height - 4),
+      glintPaint,
+    );
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _LiquidLoaderPainter oldDelegate) {
+    return oldDelegate.progress != progress;
   }
 }

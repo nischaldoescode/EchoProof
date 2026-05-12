@@ -7,7 +7,7 @@ import 'dart:math' as math;
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../services/auth_service.dart';
-import '../../../onboarding/presentation/services/onboarding_service.dart';
+import '../../../../core/utils/snack.dart';
 
 class OtpScreen extends StatefulWidget {
   const OtpScreen({super.key, required this.email});
@@ -19,7 +19,7 @@ class OtpScreen extends StatefulWidget {
 
 class _OtpScreenState extends State<OtpScreen>
     with SingleTickerProviderStateMixin {
-  static const _resendCooldownSeconds = 60;
+  static const _resendCooldownSeconds = 90;
   final _ctrl = PinInputController();
 
   bool _isVerifying = false;
@@ -51,9 +51,11 @@ class _OtpScreenState extends State<OtpScreen>
   }
 
   void _startTimer() {
+    final authCooldown =
+        context.read<AuthService>().otpCooldownRemaining(widget.email);
     setState(() {
       _canResend = false;
-      _resendSecs = _resendCooldownSeconds;
+      _resendSecs = math.max(_resendCooldownSeconds, authCooldown);
     });
     _tick();
   }
@@ -288,25 +290,15 @@ class _OtpScreenState extends State<OtpScreen>
                                 final sent = await auth.resendOtp(
                                   email: widget.email,
                                 );
-                                if (!mounted) return;
+                                if (!context.mounted) return;
                                 if (sent) {
                                   _startTimer();
                                 } else {
                                   setState(() => _canResend = true);
-                                  ScaffoldMessenger.of(context)
-                                    ..hideCurrentSnackBar()
-                                    ..showSnackBar(SnackBar(
-                                      content: Text(
-                                        auth.error ??
-                                            'Could not resend the code.',
-                                        style: GoogleFonts.josefinSans(
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                      backgroundColor: AppColors.sunsetCoral,
-                                      behavior: SnackBarBehavior.floating,
-                                      duration: const Duration(seconds: 3),
-                                    ));
+                                  showErrorSnack(
+                                    context,
+                                    auth.error ?? 'Could not resend the code.',
+                                  );
                                 }
                               }
                             : null,

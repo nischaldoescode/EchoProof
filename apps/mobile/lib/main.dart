@@ -100,16 +100,23 @@ Future<void> main() async {
     subscriptionService: subscriptionService,
   );
 
+  var wasLoggedIn = authService.isLoggedIn;
+  if (wasLoggedIn) {
+    adService.onUserLoggedIn();
+  }
+
   // notify ad service when user logs in or out
   authService.addListener(() {
-    if (authService.isLoggedIn) {
+    final isLoggedIn = authService.isLoggedIn;
+    if (isLoggedIn && !wasLoggedIn) {
       adService.onUserLoggedIn();
       notificationService.loadNotifications();
       notificationService.startRealtime();
-    } else {
+    } else if (!isLoggedIn && wasLoggedIn) {
       adService.onUserLoggedOut();
       notificationService.stopRealtime();
     }
+    wasLoggedIn = isLoggedIn;
   });
 
   // handle notification taps
@@ -124,7 +131,7 @@ Future<void> main() async {
     // If account was deleted by admin, sign out immediately.
     if (type == 'account_deleted' ||
         message.notification?.title == 'Account deleted') {
-      authService.signOut().then((_) {
+      authService.signOut(enforceCooldown: false).then((_) {
         router.go('/login');
       });
       return;
@@ -156,7 +163,9 @@ Future<void> main() async {
     // Account deleted by admin — sign out on cold start.
     if (type == 'account_deleted') {
       Future.delayed(const Duration(milliseconds: 300), () {
-        authService.signOut().then((_) => router.go('/login'));
+        authService
+            .signOut(enforceCooldown: false)
+            .then((_) => router.go('/login'));
       });
       return;
     }
@@ -173,7 +182,7 @@ Future<void> main() async {
     final type = message.data['type'] as String?;
     if (type == 'account_deleted') {
       // Sign out immediately without waiting for user action.
-      authService.signOut().then((_) {
+      authService.signOut(enforceCooldown: false).then((_) {
         router.go('/login');
       });
     }

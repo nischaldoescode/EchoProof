@@ -12,6 +12,8 @@ class AuthService extends ChangeNotifier {
   static const _onboardingStepKey = 'onboarding_step';
   static const _onboardingUsernameSetKey = 'onboarding_username_set';
   static const _lastSignedInUserIdKey = 'last_signed_in_user_id';
+  static const _otpRequestPrefix = 'otp_requested_at:';
+  static const _otpRequestCooldown = Duration(seconds: 90);
   static const _authRedirectUrl = String.fromEnvironment(
     'AUTH_REDIRECT_URL',
     defaultValue: 'echoproof://auth-callback',
@@ -169,17 +171,55 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<bool> sendOtp({required String email}) async {
+    final normalizedEmail = email.trim().toLowerCase();
+    final localCooldown = otpCooldownRemaining(normalizedEmail);
+    if (localCooldown > 0) {
+      _error =
+          'Please wait ${_formatCooldown(localCooldown)} before requesting another code.';
+      notifyListeners();
+      return false;
+    }
+
     _setLoading(true);
     _error = null;
     try {
+      final authCooldown = await _consumeActionCooldown(
+        action: 'auth_login',
+        subject: 'ip-only',
+        windowSeconds: 30 * 60,
+        maxActions: 3,
+        includeIp: true,
+      );
+      if (authCooldown > 0) {
+        _error =
+            'Too many sign-in requests from this network. Try again in ${_formatCooldown(authCooldown)}.';
+        _setLoading(false);
+        return false;
+      }
+
+      final accountCooldown = await _consumeActionCooldown(
+        action: 'auth_login',
+        subject: normalizedEmail,
+        windowSeconds: 30 * 60,
+        maxActions: 3,
+        includeIp: true,
+      );
+      if (accountCooldown > 0) {
+        _error =
+            'Too many sign-in requests. Try again in ${_formatCooldown(accountCooldown)}.';
+        _setLoading(false);
+        return false;
+      }
+
       await _client.auth.signInWithOtp(
-        email: email,
+        email: normalizedEmail,
         shouldCreateUser: true,
         // If the email template includes a link, it should come back to the
         // app. The 6-digit code still works independently of the link.
         emailRedirectTo: _authRedirectUrl,
       );
-      AppLogger.info('auth: OTP sent to $email');
+      await _markOtpRequested(normalizedEmail);
+      AppLogger.info('auth: OTP sent to $normalizedEmail');
       _setLoading(false);
       return true;
     } on AuthException catch (e) {
@@ -293,6 +333,34 @@ class AuthService extends ChangeNotifier {
     _setLoading(true);
     _error = null;
     try {
+      final authCooldown = await _consumeActionCooldown(
+        action: 'auth_login',
+        subject: 'ip-only',
+        windowSeconds: 30 * 60,
+        maxActions: 3,
+        includeIp: true,
+      );
+      if (authCooldown > 0) {
+        _error =
+            'Too many sign-in requests from this network. Try again in ${_formatCooldown(authCooldown)}.';
+        _setLoading(false);
+        return false;
+      }
+
+      final googleCooldown = await _consumeActionCooldown(
+        action: 'auth_login',
+        subject: 'google_oauth',
+        windowSeconds: 30 * 60,
+        maxActions: 3,
+        includeIp: true,
+      );
+      if (googleCooldown > 0) {
+        _error =
+            'Too many sign-in requests. Try again in ${_formatCooldown(googleCooldown)}.';
+        _setLoading(false);
+        return false;
+      }
+
       await _google.signOut();
       final googleUser = await _google.signIn();
       if (googleUser == null) {
@@ -438,8 +506,41 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  Future<void> signOut() async {
+  Future<bool> signOut({bool enforceCooldown = true}) async {
     try {
+      if (enforceCooldown) {
+        final userId = _client.auth.currentUser?.id;
+        if (userId != null) {
+          final authCooldown = await _consumeActionCooldown(
+            action: 'auth_logout',
+            subject: 'ip-only',
+            windowSeconds: 30 * 60,
+            maxActions: 3,
+            includeIp: true,
+          );
+          if (authCooldown > 0) {
+            _error =
+                'Too many sign-out attempts from this network. Try again in ${_formatCooldown(authCooldown)}.';
+            notifyListeners();
+            return false;
+          }
+
+          final userCooldown = await _consumeActionCooldown(
+            action: 'auth_logout',
+            subject: userId,
+            windowSeconds: 30 * 60,
+            maxActions: 3,
+            includeIp: true,
+          );
+          if (userCooldown > 0) {
+            _error =
+                'Too many sign-out attempts. Try again in ${_formatCooldown(userCooldown)}.';
+            notifyListeners();
+            return false;
+          }
+        }
+      }
+
       await _google.signOut();
       await _client.auth.signOut();
       _hasUsername = false;
@@ -450,9 +551,62 @@ class AuthService extends ChangeNotifier {
       Hive.box(_settingsBox).delete(_lastSignedInUserIdKey);
       AppLogger.info('auth: signed out, onboarding state cleared');
       notifyListeners();
+      return true;
     } catch (e) {
       AppLogger.error('auth: sign out failed $e');
+      _error = 'Could not sign out. Please try again.';
+      notifyListeners();
+      return false;
     }
+  }
+
+  int otpCooldownRemaining(String email) {
+    final normalizedEmail = email.trim().toLowerCase();
+    if (normalizedEmail.isEmpty) return 0;
+    final box = Hive.box(_settingsBox);
+    final lastIso = box.get('$_otpRequestPrefix$normalizedEmail') as String?;
+    final last = lastIso == null ? null : DateTime.tryParse(lastIso);
+    if (last == null) return 0;
+    final elapsed = DateTime.now().difference(last);
+    final remaining = _otpRequestCooldown - elapsed;
+    return remaining.isNegative ? 0 : remaining.inSeconds + 1;
+  }
+
+  Future<void> _markOtpRequested(String email) async {
+    final normalizedEmail = email.trim().toLowerCase();
+    await Hive.box(_settingsBox).put(
+      '$_otpRequestPrefix$normalizedEmail',
+      DateTime.now().toIso8601String(),
+    );
+  }
+
+  Future<int> _consumeActionCooldown({
+    required String action,
+    required String subject,
+    required int windowSeconds,
+    required int maxActions,
+    required bool includeIp,
+  }) async {
+    try {
+      final response = await _client.rpc('consume_action_cooldown', params: {
+        'p_action': action,
+        'p_subject': subject,
+        'p_window_seconds': windowSeconds,
+        'p_max_actions': maxActions,
+        'p_include_ip': includeIp,
+      });
+      final map = Map<String, dynamic>.from(response as Map);
+      return (map['retry_after_seconds'] as num?)?.toInt() ?? 0;
+    } catch (e) {
+      AppLogger.warn('auth: cooldown check failed $e');
+      return 0;
+    }
+  }
+
+  String _formatCooldown(int seconds) {
+    final minutes = (seconds / 60).ceil();
+    if (minutes <= 1) return '$seconds seconds';
+    return '$minutes minutes';
   }
 
   void _setLoading(bool v) {
@@ -507,8 +661,9 @@ class AuthService extends ChangeNotifier {
 
   String _friendly(String message) {
     final m = message.toLowerCase();
-    if (m.contains('otp') && m.contains('invalid'))
+    if (m.contains('otp') && m.contains('invalid')) {
       return 'Incorrect code. Try again.';
+    }
     if (m.contains('rate limit') ||
         m.contains('too many') ||
         m.contains('over_email_send_rate_limit')) {
@@ -521,16 +676,24 @@ class AuthService extends ChangeNotifier {
         (m.contains('email link') && m.contains('invalid'))) {
       return 'This sign-in link has expired. Request a new code.';
     }
-    if (m.contains('expired')) return 'Code expired. Request a new one.';
-    if (m.contains('invalid_credentials'))
+    if (m.contains('expired')) {
+      return 'Code expired. Request a new one.';
+    }
+    if (m.contains('invalid_credentials')) {
       return 'Incorrect email or password.';
-    if (m.contains('user_already_exists'))
+    }
+    if (m.contains('user_already_exists')) {
       return 'Account already exists. Sign in instead.';
-    if (m.contains('email_not_confirmed'))
+    }
+    if (m.contains('email_not_confirmed')) {
       return 'Please verify your email first.';
-    if (m.contains('too_many_requests'))
+    }
+    if (m.contains('too_many_requests')) {
       return 'Too many attempts. Wait a moment.';
-    if (m.contains('network')) return 'Network error. Check your connection.';
+    }
+    if (m.contains('network')) {
+      return 'Network error. Check your connection.';
+    }
     return message;
   }
 
