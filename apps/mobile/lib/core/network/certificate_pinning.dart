@@ -14,10 +14,8 @@
 // Pinning Supabase is optional — their CDN (Cloudflare) makes it fragile.
 
 import 'dart:io';
-import 'dart:convert';
 import 'package:http/io_client.dart';
 import 'package:http/http.dart' as http;
-import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 
 // SPKI SHA-256 hashes (base64-encoded) of trusted public keys.

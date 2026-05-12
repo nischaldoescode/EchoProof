@@ -11,6 +11,8 @@ class SecureScreen extends StatefulWidget {
 }
 
 class _SecureScreenState extends State<SecureScreen> {
+  static int _activeLocks = 0;
+
   @override
   void initState() {
     super.initState();
@@ -25,6 +27,7 @@ class _SecureScreenState extends State<SecureScreen> {
 
   Future<void> _lock() async {
     if (!Platform.isAndroid) return;
+    _activeLocks += 1;
     try {
       await FlutterWindowManagerPlus.addFlags(
         FlutterWindowManagerPlus.FLAG_SECURE,
@@ -34,6 +37,10 @@ class _SecureScreenState extends State<SecureScreen> {
 
   Future<void> _unlock() async {
     if (!Platform.isAndroid) return;
+    if (_activeLocks > 0) {
+      _activeLocks -= 1;
+    }
+    if (_activeLocks > 0) return;
     try {
       await FlutterWindowManagerPlus.clearFlags(
         FlutterWindowManagerPlus.FLAG_SECURE,

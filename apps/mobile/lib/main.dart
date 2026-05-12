@@ -12,7 +12,10 @@ import 'package:flutter/foundation.dart';
 import 'firebase_options.dart';
 import 'app/app.dart';
 import 'app/router.dart';
+import 'core/network/certificate_pinning.dart';
 import 'core/security/device_security.dart';
+import 'core/security/device_security_gate.dart';
+import 'core/security/secure_screen.dart';
 import 'core/services/ad_service.dart';
 import 'core/utils/logger.dart';
 import 'features/auth/presentation/services/auth_service.dart';
@@ -44,7 +47,7 @@ Future<void> main() async {
 
   // block rooted devices in release mode
   if (DeviceSecurity.isCompromised && kReleaseMode) {
-    runApp(const _SecurityWarningApp());
+    runApp(const SecurityWarningApp());
     return;
   }
 
@@ -67,6 +70,7 @@ Future<void> main() async {
   await Supabase.initialize(
     url: const String.fromEnvironment('SUPABASE_URL'),
     anonKey: const String.fromEnvironment('SUPABASE_ANON_KEY'),
+    httpClient: createPinnedClient(),
     authOptions: const FlutterAuthClientOptions(
       authFlowType: AuthFlowType.pkce,
       detectSessionInUri: false,
@@ -206,7 +210,9 @@ Future<void> main() async {
               value: subscriptionService),
           ChangeNotifierProvider<AdService>.value(value: adService),
         ],
-        child: EchoProofApp(router: router),
+        child: DeviceSecurityGate(
+          child: EchoProofApp(router: router),
+        ),
       ),
     ),
   );
@@ -307,52 +313,15 @@ class _AppLifecycleObserver extends WidgetsBindingObserver {
   }
 }
 
-class _SecurityWarningApp extends StatelessWidget {
-  const _SecurityWarningApp();
+class SecurityWarningApp extends StatelessWidget {
+  const SecurityWarningApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       navigatorKey: HyperSnackbar.navigatorKey,
-      home: Scaffold(
-        backgroundColor: const Color(0xFF1A1A1A),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.security_outlined,
-                  size: 64,
-                  color: Colors.white,
-                ),
-                const SizedBox(height: 24),
-                const Text(
-                  'Device not supported',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Echoproof cannot run on rooted or modified devices. This protects the integrity of community verification.',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                    height: 1.5,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+      home: const SecureScreen(child: SecurityLockdownScreen()),
     );
   }
 }
