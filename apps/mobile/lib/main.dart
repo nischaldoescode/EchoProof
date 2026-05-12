@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -67,8 +69,10 @@ Future<void> main() async {
     anonKey: const String.fromEnvironment('SUPABASE_ANON_KEY'),
     authOptions: const FlutterAuthClientOptions(
       authFlowType: AuthFlowType.pkce,
-      // The redirect URL that Supabase uses in magic link emails.
-      // This must match what's registered in Supabase Auth → URL Configuration → Redirect URLs.
+      detectSessionInUri: false,
+      // This app owns deep-link routing below, then hands auth links to Supabase.
+      // Keep echoproof://auth-callback and optional HTTPS fallbacks in
+      // Supabase Auth -> URL Configuration -> Redirect URLs.
     ),
   );
 
@@ -208,40 +212,17 @@ void _handleDeepLink(Uri uri, GoRouter router, [AuthService? auth]) {
   if (_lastHandledLink == link) return;
   _lastHandledLink = link;
 
-  final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
-
-  if (uri.host == 'auth-callback') {
-    AppLogger.info('deep link: auth-callback received');
-    Future.delayed(const Duration(milliseconds: 500), () async {
-      final session = Supabase.instance.client.auth.currentSession;
-      if (session != null && auth != null) {
-        await auth.checkUsername();
-      }
-    });
+  if (_isSupabaseAuthLink(uri)) {
+    AppLogger.info('deep link: auth callback received');
+    if (auth != null) {
+      unawaited(_completeAuthCallback(uri, router, auth));
+    }
     return;
   }
 
-  if (uri.scheme == 'echoproof') {
-    // Auth callback from OTP email magic link.
-    // Supabase sends: echoproof://auth-callback#access_token=...&type=signup
-    // or: echoproof://auth-callback?token=...&type=email
-    if (uri.host == 'auth-callback') {
-      // Supabase flutter SDK handles the session restoration automatically
-      // when it detects the fragment. We just need to trigger a router refresh.
-      AppLogger.info(
-          'deep link: auth-callback received, refreshing auth state');
-      // Give Supabase a moment to process the token from the URL fragment.
-      Future.delayed(const Duration(milliseconds: 500), () async {
-        final session = Supabase.instance.client.auth.currentSession;
-        if (session != null) {
-          AppLogger.info('deep link: session restored, checking username');
-          // This notifies the router via authService listeners.
-          await auth?.checkUsername();
-        }
-      });
-      return;
-    }
+  final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
 
+  if (uri.scheme == 'echoproof') {
     if (uri.host == 'echo' && segments.isNotEmpty) {
       router.go('/feed/echo/${segments.first}');
       return;
@@ -267,14 +248,38 @@ void _handleDeepLink(Uri uri, GoRouter router, [AuthService? auth]) {
   }
 }
 
+Future<void> _completeAuthCallback(
+  Uri uri,
+  GoRouter router,
+  AuthService auth,
+) async {
+  final success = await auth.handleAuthCallback(uri);
+  if (!success) {
+    router.go('/login');
+    return;
+  }
+
+  if (auth.hasUsername) {
+    router.go('/feed');
+  } else if (auth.needsAgeGender) {
+    router.go('/age-gender');
+  } else {
+    router.go('/onboarding');
+  }
+}
+
 bool _isSupabaseAuthLink(Uri uri) {
   final isCustomAuth = uri.scheme == 'echoproof' && uri.host == 'auth-callback';
   final isHttpsAuth = uri.scheme == 'https' &&
       (uri.host == 'echoproof.online' || uri.host == 'www.echoproof.online') &&
-      uri.pathSegments.length >= 2 &&
-      uri.pathSegments[0] == 'auth' &&
-      uri.pathSegments[1] == 'callback';
+      ((uri.pathSegments.length == 1 &&
+              uri.pathSegments[0] == 'auth-callback') ||
+          (uri.pathSegments.length >= 2 &&
+              uri.pathSegments[0] == 'auth' &&
+              uri.pathSegments[1] == 'callback'));
   final hasAuthPayload = uri.queryParameters.containsKey('code') ||
+      uri.queryParameters.containsKey('token_hash') ||
+      uri.queryParameters.containsKey('error_description') ||
       uri.fragment.contains('access_token') ||
       uri.fragment.contains('error_description');
 

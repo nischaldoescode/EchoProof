@@ -37,76 +37,85 @@ class StepCategories extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.white,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: AppSpacing.xl),
-              const OnboardingProgress(currentStep: 2, totalSteps: 5),
-              const SizedBox(height: AppSpacing.xxl),
-              Text(
-                'What matters to you?',
-                style: AppTypography.textTheme.headlineMedium,
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              Text(
-                'Pick at least $_minRequired areas. Your feed will show echoes from these communities.',
-                style: AppTypography.textTheme.bodyMedium?.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: AppSpacing.xxl),
-              Wrap(
-                spacing: AppSpacing.sm,
-                runSpacing: AppSpacing.sm,
-                children: _categories.map((cat) {
-                  return CategoryChip(
-                    label: cat.label,
-                    isSelected: selected.contains(cat.value),
-                    onTap: () => context
-                        .read<OnboardingService>()
-                        .toggleCategory(cat.value),
-                  );
-                }).toList(),
-              ),
-              const Spacer(),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 200),
-                child: selected.length < _minRequired
-                    ? Text(
-                        'Select ${_minRequired - selected.length} more',
-                        key: const ValueKey('need_more'),
-                        style: AppTypography.textTheme.bodySmall,
-                      )
-                    : Text(
-                        '${selected.length} selected',
-                        key: const ValueKey('selected'),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.fernGreen,
-                          fontWeight: FontWeight.w600,
-                          fontFamily: AppTypography.fontFamily,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: AppSpacing.xl),
+                    const OnboardingProgress(currentStep: 2, totalSteps: 5),
+                    const SizedBox(height: AppSpacing.xxl),
+                    Text(
+                      'What matters to you?',
+                      style: AppTypography.textTheme.headlineMedium,
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    Text(
+                      'Pick at least $_minRequired areas. Your feed will show echoes from these communities.',
+                      style: AppTypography.textTheme.bodyMedium?.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.xxl),
+                    Wrap(
+                      spacing: AppSpacing.sm,
+                      runSpacing: AppSpacing.sm,
+                      children: _categories.map((cat) {
+                        return CategoryChip(
+                          label: cat.label,
+                          isSelected: selected.contains(cat.value),
+                          onTap: () => context
+                              .read<OnboardingService>()
+                              .toggleCategory(cat.value),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: AppSpacing.xxxl),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      child: selected.length < _minRequired
+                          ? Text(
+                              'Select ${_minRequired - selected.length} more',
+                              key: const ValueKey('need_more'),
+                              style: AppTypography.textTheme.bodySmall,
+                            )
+                          : Text(
+                              '${selected.length} selected',
+                              key: const ValueKey('selected'),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.fernGreen,
+                                fontWeight: FontWeight.w600,
+                                fontFamily: AppTypography.fontFamily,
+                              ),
+                            ),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    AnimatedOpacity(
+                      opacity: canContinue ? 1.0 : 0.4,
+                      duration: const Duration(milliseconds: 200),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: canContinue
+                              ? () =>
+                                  context.read<OnboardingService>().nextStep()
+                              : null,
+                          child: const Text('Continue'),
                         ),
                       ),
-              ),
-              const SizedBox(height: AppSpacing.md),
-              AnimatedOpacity(
-                opacity: canContinue ? 1.0 : 0.4,
-                duration: const Duration(milliseconds: 200),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: canContinue
-                        ? () => context.read<OnboardingService>().nextStep()
-                        : null,
-                    child: const Text('Continue'),
-                  ),
+                    ),
+                    const SizedBox(height: AppSpacing.xl),
+                  ],
                 ),
               ),
-              const SizedBox(height: AppSpacing.xl),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );

@@ -72,8 +72,13 @@ signingConfigs {
     }
 }
 
+configurations.all {
+    exclude(group = "com.google.android.play", module = "core")
+}
+
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    
 }
 
 flutter {

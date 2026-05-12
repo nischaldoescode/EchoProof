@@ -1,6 +1,7 @@
 // echo remote data source
 // direct supabase queries — no business logic here
 
+import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../domain/entities/echo_entity.dart';
 import '../models/echo_model.dart';
@@ -17,12 +18,17 @@ class EchoRemoteSource {
     final response = await _client
         .from('echoes')
         .select('''
-          id, title, content, category, status,
+          id, user_id, title, content, category, status, version,
+          media_urls, reply_count, proof_count, bond_count,
           trust_score, confidence_score, controversy_score,
           support_count, challenge_count, created_at,
-          users_public!inner(username, avatar_url, trust_tier, is_pro)
+          created_record_tx, created_record_at, solana_status, solana_error,
+          verified_record_tx, verified_record_at,
+          verified_record_status, verified_record_error,
+          users_public!inner(username, display_name, avatar_url, trust_tier, is_pro, is_public)
         ''')
         .not('status', 'in', '("hidden","rejected")')
+        .eq('users_public.is_public', true)
         .order('trust_score', ascending: false)
         .range(offset, offset + limit - 1);
 
@@ -34,10 +40,14 @@ class EchoRemoteSource {
 
   Future<EchoEntity> fetchById(String id) async {
     final row = await _client.from('echoes').select('''
-          id, title, content, category, status,
+          id, user_id, title, content, category, status, version,
+          media_urls, reply_count, proof_count, bond_count,
           trust_score, confidence_score, controversy_score,
           support_count, challenge_count, created_at,
-          users_public!inner(username, avatar_url, trust_tier, is_pro)
+          created_record_tx, created_record_at, solana_status, solana_error,
+          verified_record_tx, verified_record_at,
+          verified_record_status, verified_record_error,
+          users_public!inner(username, display_name, avatar_url, trust_tier, is_pro)
         ''').eq('id', id).single();
 
     final user = row['users_public'] as Map<String, dynamic>;
@@ -57,18 +67,39 @@ class EchoRemoteSource {
       'user_id': userId,
       'title': title.trim(),
       'content': content.trim(),
-      'category': category.name,
+      'category': category.dbValue,
       'verification_required': verificationRequired,
       'status': 'pending_verification',
     }).select('''
-      id, title, content, category, status,
+      id, user_id, title, content, category, status, version,
+      media_urls, reply_count, proof_count, bond_count,
       trust_score, confidence_score, controversy_score,
       support_count, challenge_count, created_at,
-      users_public!inner(username, avatar_url, trust_tier, is_pro)
+      created_record_tx, created_record_at, solana_status, solana_error,
+      verified_record_tx, verified_record_at,
+      verified_record_status, verified_record_error,
+      users_public!inner(username, display_name, avatar_url, trust_tier, is_pro)
     ''').single();
+
+    unawaited(_anchorEchoOnChain(inserted['id'] as String));
 
     final user = inserted['users_public'] as Map<String, dynamic>;
     return EchoModel.fromRow(inserted, user);
+  }
+
+  Future<void> _anchorEchoOnChain(String echoId) async {
+    try {
+      await _client.functions.invoke(
+        'solana-memo',
+        body: {
+          'kind': 'echo_created',
+          'echo_id': echoId,
+        },
+      );
+      AppLogger.info('remote: echo anchored on solana echo=$echoId');
+    } catch (e) {
+      AppLogger.warn('remote: echo solana anchor queued/failed $e');
+    }
   }
 
   Future<void> interact({required String echoId, required String type}) async {

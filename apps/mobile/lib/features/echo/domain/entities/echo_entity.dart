@@ -90,6 +90,7 @@ class EchoEntity extends Equatable {
     required this.title,
     required this.content,
     required this.username,
+    required this.userDisplayName,
     required this.userTrustTier,
     required this.userIsVerified,
     required this.userAvatarUrl,
@@ -108,12 +109,22 @@ class EchoEntity extends Equatable {
     this.replyCount = 0,
     this.mediaUrls = const [],
     this.userId = '',
+    this.createdRecordTx,
+    this.createdRecordAt,
+    this.solanaStatus = 'pending',
+    this.solanaError,
+    this.verifiedRecordTx,
+    this.verifiedRecordAt,
+    this.verifiedRecordStatus = 'pending',
+    this.verifiedRecordError,
+    this.bondCount = 0,
   });
 
   final String id;
   final String title;
   final String content;
   final String username;
+  final String userDisplayName;
   final String userTrustTier;
   final bool userIsVerified;
   final String? userAvatarUrl;
@@ -136,6 +147,15 @@ class EchoEntity extends Equatable {
   final int challengeCount;
   final int replyCount;
   final String userId;
+  final String? createdRecordTx;
+  final DateTime? createdRecordAt;
+  final String solanaStatus;
+  final String? solanaError;
+  final String? verifiedRecordTx;
+  final DateTime? verifiedRecordAt;
+  final String verifiedRecordStatus;
+  final String? verifiedRecordError;
+  final int bondCount;
 
   /// pre-formatted relative time string, e.g. "2h ago"
   final String timeAgo;
@@ -149,6 +169,8 @@ class EchoEntity extends Equatable {
       title: json['title'] as String,
       content: json['content'] as String,
       username: json['username'] as String,
+      userDisplayName:
+          json['user_display_name'] as String? ?? json['username'] as String,
       userTrustTier: json['user_trust_tier'] as String,
       userIsVerified: json['user_is_verified'] as bool,
       userAvatarUrl: json['user_avatar_url'] as String?,
@@ -167,7 +189,22 @@ class EchoEntity extends Equatable {
       mediaUrls: (json['media_urls'] as List?)?.cast<String>() ?? const [],
       replyCount: (json['reply_count'] as int?) ?? 0,
       userId: json['user_id'] as String? ?? '',
+      createdRecordTx: json['created_record_tx'] as String?,
+      createdRecordAt: _dateFromJson(json['created_record_at']),
+      solanaStatus: json['solana_status'] as String? ?? 'pending',
+      solanaError: json['solana_error'] as String?,
+      verifiedRecordTx: json['verified_record_tx'] as String?,
+      verifiedRecordAt: _dateFromJson(json['verified_record_at']),
+      verifiedRecordStatus:
+          json['verified_record_status'] as String? ?? 'pending',
+      verifiedRecordError: json['verified_record_error'] as String?,
+      bondCount: (json['bond_count'] as num?)?.toInt() ?? 0,
     );
+  }
+
+  static DateTime? _dateFromJson(dynamic value) {
+    if (value is String) return DateTime.tryParse(value);
+    return null;
   }
 
   EchoEntity copyWith({
@@ -175,6 +212,7 @@ class EchoEntity extends Equatable {
     String? title,
     String? content,
     String? username,
+    String? userDisplayName,
     String? userTrustTier,
     bool? userIsVerified,
     String? userAvatarUrl,
@@ -193,12 +231,22 @@ class EchoEntity extends Equatable {
     bool? userIsPro,
     List<String>? mediaUrls,
     String? userId,
+    String? createdRecordTx,
+    DateTime? createdRecordAt,
+    String? solanaStatus,
+    String? solanaError,
+    String? verifiedRecordTx,
+    DateTime? verifiedRecordAt,
+    String? verifiedRecordStatus,
+    String? verifiedRecordError,
+    int? bondCount,
   }) {
     return EchoEntity(
       id: id ?? this.id,
       title: title ?? this.title,
       content: content ?? this.content,
       username: username ?? this.username,
+      userDisplayName: userDisplayName ?? this.userDisplayName,
       userTrustTier: userTrustTier ?? this.userTrustTier,
       userIsVerified: userIsVerified ?? this.userIsVerified,
       userAvatarUrl: userAvatarUrl ?? this.userAvatarUrl,
@@ -217,6 +265,15 @@ class EchoEntity extends Equatable {
       userIsPro: userIsPro ?? this.userIsPro,
       mediaUrls: mediaUrls ?? this.mediaUrls,
       userId: userId ?? this.userId,
+      createdRecordTx: createdRecordTx ?? this.createdRecordTx,
+      createdRecordAt: createdRecordAt ?? this.createdRecordAt,
+      solanaStatus: solanaStatus ?? this.solanaStatus,
+      solanaError: solanaError ?? this.solanaError,
+      verifiedRecordTx: verifiedRecordTx ?? this.verifiedRecordTx,
+      verifiedRecordAt: verifiedRecordAt ?? this.verifiedRecordAt,
+      verifiedRecordStatus: verifiedRecordStatus ?? this.verifiedRecordStatus,
+      verifiedRecordError: verifiedRecordError ?? this.verifiedRecordError,
+      bondCount: bondCount ?? this.bondCount,
     );
   }
 
@@ -226,6 +283,7 @@ class EchoEntity extends Equatable {
         title,
         content,
         username,
+        userDisplayName,
         userTrustTier,
         userIsVerified,
         userAvatarUrl,
@@ -242,8 +300,16 @@ class EchoEntity extends Equatable {
         version,
         replyCount,
         userId,
-        replyCount,
         userIsPro,
         mediaUrls,
+        createdRecordTx,
+        createdRecordAt,
+        solanaStatus,
+        solanaError,
+        verifiedRecordTx,
+        verifiedRecordAt,
+        verifiedRecordStatus,
+        verifiedRecordError,
+        bondCount,
       ];
 }

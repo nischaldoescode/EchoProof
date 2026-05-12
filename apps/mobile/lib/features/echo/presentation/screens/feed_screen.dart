@@ -174,7 +174,9 @@ class _FeedScreenState extends State<FeedScreen> {
   }
 
   Widget _buildBody(EchoFeedService feed, bool isTablet) {
-    if (feed.isLoading && feed.echoes.isEmpty) return const _Shimmer();
+    if (feed.isLoading && feed.echoes.isEmpty) {
+      return const EchoLogoLoader(label: 'Loading feed');
+    }
 
     if (feed.loadState == FeedLoadState.error && feed.echoes.isEmpty) {
       return _ErrorState(
@@ -210,6 +212,7 @@ class _FeedScreenState extends State<FeedScreen> {
             onRefresh: () => context.read<EchoFeedService>().refresh(),
             child: ListView.builder(
               controller: _scrollCtrl,
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.only(top: AppSpacing.xs, bottom: 120),
               itemCount: _itemCount(filtered, feed.hasMore),
               itemBuilder: (ctx, index) {
@@ -227,16 +230,7 @@ class _FeedScreenState extends State<FeedScreen> {
                   if (!feed.hasMore) return const SizedBox.shrink();
                   return const Padding(
                     padding: EdgeInsets.all(AppSpacing.xl),
-                    child: Center(
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppColors.fernGreen,
-                        ),
-                      ),
-                    ),
+                    child: EchoLogoLoader(size: 46),
                   );
                 }
 
@@ -559,25 +553,6 @@ class _CreateFabState extends State<_CreateFab>
               ),
             ),
         ],
-      ),
-    );
-  }
-}
-
-class _Shimmer extends StatelessWidget {
-  const _Shimmer();
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView.builder(
-      padding: const EdgeInsets.only(top: AppSpacing.sm),
-      itemCount: 6,
-      itemBuilder: (_, __) => const Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg,
-          vertical: AppSpacing.sm,
-        ),
-        child: EchoCardShimmer(),
       ),
     );
   }

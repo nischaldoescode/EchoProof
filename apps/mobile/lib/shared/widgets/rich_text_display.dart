@@ -1,5 +1,6 @@
 // Renders markdown-style inline formatting from echo content.
-// Supports **bold**, _italic_, ~~strikethrough~~, @mentions, ~signals.
+// Supports **bold**, ***bold italic***, _italic_, ~~strikethrough~~,
+// [large], [small], @mentions, and ~signals.
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -33,40 +34,59 @@ class RichTextDisplay extends StatelessWidget {
 
   TextSpan _parse(String input, TextStyle base) {
     final spans = <InlineSpan>[];
-    // Pattern: **bold**, _italic_, ~~strike~~, @mention, ~signal
     final pattern = RegExp(
-      r'\*\*(.+?)\*\*|_(.+?)_|~~(.+?)~~|(@\w+)|(~\w+)',
+      r'\[large\]([\s\S]+?)\[/large\]|\[small\]([\s\S]+?)\[/small\]|\*\*\*([\s\S]+?)\*\*\*|\*\*([\s\S]+?)\*\*|_([\s\S]+?)_|~~([\s\S]+?)~~|(@[A-Za-z0-9_]+)|(~[A-Za-z0-9_]+)',
       dotAll: true,
     );
 
     int last = 0;
     for (final match in pattern.allMatches(input)) {
       if (match.start > last) {
-        spans.add(TextSpan(text: input.substring(last, match.start), style: base));
+        spans.add(
+            TextSpan(text: input.substring(last, match.start), style: base));
       }
       if (match.group(1) != null) {
-        spans.add(TextSpan(
-          text: match.group(1),
-          style: base.copyWith(fontWeight: FontWeight.w700),
-        ));
+        spans.addAll(_parse(match.group(1)!, _largeStyle(base)).children ?? []);
       } else if (match.group(2) != null) {
-        spans.add(TextSpan(
-          text: match.group(2),
-          style: base.copyWith(fontStyle: FontStyle.italic),
-        ));
+        spans.addAll(_parse(match.group(2)!, _smallStyle(base)).children ?? []);
       } else if (match.group(3) != null) {
-        spans.add(TextSpan(
-          text: match.group(3),
-          style: base.copyWith(decoration: TextDecoration.lineThrough),
-        ));
+        spans.addAll(_parse(
+              match.group(3)!,
+              base.copyWith(
+                fontWeight: FontWeight.w700,
+                fontStyle: FontStyle.italic,
+              ),
+            ).children ??
+            []);
       } else if (match.group(4) != null) {
-        spans.add(TextSpan(
-          text: match.group(4),
-          style: base.copyWith(color: AppColors.fernGreen, fontWeight: FontWeight.w600),
-        ));
+        spans.addAll(_parse(
+              match.group(4)!,
+              base.copyWith(fontWeight: FontWeight.w700),
+            ).children ??
+            []);
       } else if (match.group(5) != null) {
+        spans.addAll(_parse(
+              match.group(5)!,
+              base.copyWith(fontStyle: FontStyle.italic),
+            ).children ??
+            []);
+      } else if (match.group(6) != null) {
+        spans.addAll(_parse(
+              match.group(6)!,
+              base.copyWith(decoration: TextDecoration.lineThrough),
+            ).children ??
+            []);
+      } else if (match.group(7) != null) {
         spans.add(TextSpan(
-          text: match.group(5),
+          text: match.group(7),
+          style: base.copyWith(
+            color: AppColors.fernGreen,
+            fontWeight: FontWeight.w600,
+          ),
+        ));
+      } else if (match.group(8) != null) {
+        spans.add(TextSpan(
+          text: match.group(8),
           style: base.copyWith(color: AppColors.fernGreen),
         ));
       }
@@ -76,5 +96,20 @@ class RichTextDisplay extends StatelessWidget {
       spans.add(TextSpan(text: input.substring(last), style: base));
     }
     return TextSpan(children: spans);
+  }
+
+  TextStyle _largeStyle(TextStyle base) {
+    final size = base.fontSize ?? 14;
+    return base.copyWith(
+      fontSize: size + 4,
+      height: (base.height ?? 1.35) < 1.25 ? 1.25 : base.height,
+      fontWeight: base.fontWeight ?? FontWeight.w600,
+    );
+  }
+
+  TextStyle _smallStyle(TextStyle base) {
+    final size = base.fontSize ?? 14;
+    final next = size - 2 < 11 ? 11.0 : size - 2;
+    return base.copyWith(fontSize: next, height: base.height ?? 1.35);
   }
 }

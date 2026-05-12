@@ -8,7 +8,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../features/echo/domain/entities/echo_entity.dart';
 import '../../features/echo/domain/entities/echo_status.dart';
 import '../utils/logger.dart';
-import '../utils/formatters.dart';
 
 class EchoInteractionResult {
   const EchoInteractionResult({required this.updatedEcho});
@@ -16,9 +15,8 @@ class EchoInteractionResult {
 }
 
 class EchoInteractionService {
-  EchoInteractionService(this._client, this._supabaseUrl);
+  EchoInteractionService(SupabaseClient _, this._supabaseUrl);
 
-  final SupabaseClient _client;
   final String _supabaseUrl;
 
   Future<EchoInteractionResult> interact({
@@ -73,6 +71,7 @@ class EchoInteractionService {
       userIsPro: false,
       content: '',
       username: '',
+      userDisplayName: '',
       userTrustTier: 'unverified',
       userIsVerified: false,
       userAvatarUrl: null,

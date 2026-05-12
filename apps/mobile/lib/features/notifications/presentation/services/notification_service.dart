@@ -95,6 +95,41 @@ class NotificationService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> acceptFollowRequest(NotificationItem item) async {
+    await _resolveFollowRequest(item, 'accepted');
+  }
+
+  Future<void> rejectFollowRequest(NotificationItem item) async {
+    await _resolveFollowRequest(item, 'rejected');
+  }
+
+  Future<void> _resolveFollowRequest(
+    NotificationItem item,
+    String status,
+  ) async {
+    final requestId = item.data?['request_id'] as String?;
+    if (requestId == null || requestId.isEmpty) {
+      throw Exception('missing follow request id');
+    }
+
+    final client = Supabase.instance.client;
+    final nextData = {
+      ...?item.data,
+      'handled': true,
+      'status': status,
+    };
+
+    await client
+        .from('follow_requests')
+        .update({'status': status}).eq('id', requestId);
+
+    await client
+        .from('notifications')
+        .update({'read': true, 'data': nextData}).eq('id', item.id);
+
+    await loadNotifications();
+  }
+
   void startRealtime() {
     final client = Supabase.instance.client;
     final userId = client.auth.currentUser?.id;

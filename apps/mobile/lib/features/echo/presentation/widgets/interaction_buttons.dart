@@ -1,85 +1,98 @@
-// interaction buttons — support and challenge
+// interaction buttons — support, challenge, replies, and actions
 // applies optimistic update, calls edge function, reverts on failure
-// uses EchoFeedService via provider — no riverpod
 
 import 'package:echoproof/core/utils/snack.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
-import '../../domain/entities/echo_entity.dart';
 import '../../../../core/services/echo_interaction_service.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../shared/widgets/echo_action_sheet.dart';
+import '../../domain/entities/echo_entity.dart';
 import '../services/echo_feed_service.dart';
-import 'package:go_router/go_router.dart';
 
 class InteractionButtons extends StatelessWidget {
-  const InteractionButtons({super.key, required this.echo});
+  const InteractionButtons({
+    super.key,
+    required this.echo,
+    this.dense = false,
+    this.onEchoHidden,
+  });
+
   final EchoEntity echo;
+  final bool dense;
+  final VoidCallback? onEchoHidden;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.md,
-        vertical: AppSpacing.xs,
+      padding: EdgeInsets.symmetric(
+        horizontal: dense ? 0 : AppSpacing.md,
+        vertical: dense ? 0 : AppSpacing.xs,
       ),
       child: Row(
         children: [
-          _InteractionButton(
-            label: '${echo.supportCount}',
-            icon: Icons.arrow_upward_rounded,
-            activeColor: AppColors.fernGreen,
-            onTap: () => _interact(context, 'support'),
+          Expanded(
+            child: _InteractionButton(
+              count: echo.replyCount,
+              label: 'Reply',
+              icon: Icons.chat_bubble_outline_rounded,
+              onTap: () async {
+                _openReplies(context);
+                return false;
+              },
+              flashColor: AppColors.fernGreen,
+            ),
           ),
-          const SizedBox(width: AppSpacing.sm),
-          _InteractionButton(
-            label: '${echo.challengeCount}',
-            icon: Icons.arrow_downward_rounded,
-            activeColor: AppColors.sunsetCoral,
-            onTap: () => _interact(context, 'challenge'),
+          Expanded(
+            child: _InteractionButton(
+              count: echo.supportCount,
+              label: 'Support',
+              icon: Icons.arrow_upward_rounded,
+              onTap: () => _interact(context, 'support'),
+              flashColor: AppColors.sunsetCoral,
+            ),
           ),
-          const Spacer(),
-          GestureDetector(
-            onTap: () {
-              final avatarParam = echo.userAvatarUrl == null
-                  ? ''
-                  : '&avatar=${Uri.encodeComponent(echo.userAvatarUrl!)}';
-
-              context.push(
-                '/echo/${echo.id}/replies'
-                '?author=${Uri.encodeComponent(echo.username)}'
-                '&content=${Uri.encodeComponent(echo.content)}'
-                '&authorId=${Uri.encodeComponent(echo.userId)}'
-                '$avatarParam',
-              );
-            },
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.chat_bubble_outline_rounded,
-                  size: 14,
-                  color: AppColors.textTertiary,
-                ),
-                const SizedBox(width: 3),
-                Text(
-                  '${echo.replyCount}',
-                  style: AppTypography.textTheme.labelMedium,
-                ),
-                const SizedBox(width: AppSpacing.sm),
-              ],
+          Expanded(
+            child: _InteractionButton(
+              count: echo.challengeCount,
+              label: 'Challenge',
+              icon: Icons.arrow_downward_rounded,
+              onTap: () => _interact(context, 'challenge'),
+              flashColor: AppColors.sunsetCoralDark,
+            ),
+          ),
+          Expanded(
+            child: _InteractionButton(
+              count: echo.bondCount,
+              label: 'Bonds',
+              icon: Icons.link_outlined,
+              onTap: () async {
+                _openBonds(context);
+                return false;
+              },
+              flashColor: AppColors.fernGreenDark,
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.more_horiz, size: 18),
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.more_horiz_rounded, size: 19),
             color: AppColors.textTertiary,
+            tooltip: 'More actions',
             onPressed: () => showEchoActionSheet(
               context: context,
               echoId: echo.id,
+              authorId: echo.userId,
+              authorUsername: echo.username,
+              onHidden: () {
+                context.read<EchoFeedService>().removeEcho(echo.id);
+                onEchoHidden?.call();
+              },
             ),
           ),
         ],
@@ -87,11 +100,30 @@ class InteractionButtons extends StatelessWidget {
     );
   }
 
-  Future<void> _interact(BuildContext context, String type) async {
+  void _openBonds(BuildContext context) {
+    showInfoSnack(context, 'Opening echo bonds and evidence.');
+    context.push('/feed/echo/${echo.id}');
+  }
+
+  void _openReplies(BuildContext context) {
+    final avatarParam = echo.userAvatarUrl == null
+        ? ''
+        : '&avatar=${Uri.encodeComponent(echo.userAvatarUrl!)}';
+
+    context.push(
+      '/echo/${echo.id}/replies'
+      '?author=${Uri.encodeComponent(echo.username)}'
+      '&content=${Uri.encodeComponent(echo.content)}'
+      '&authorId=${Uri.encodeComponent(echo.userId)}'
+      '$avatarParam',
+    );
+  }
+
+  Future<bool> _interact(BuildContext context, String type) async {
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
     if (echo.userId.isNotEmpty && echo.userId == currentUserId) {
       showInfoSnack(context, 'You cannot support or challenge your own echo.');
-      return;
+      return false;
     }
 
     HapticFeedback.selectionClick();
@@ -104,13 +136,11 @@ class InteractionButtons extends StatelessWidget {
 
     if (session == null) {
       feed.revertOptimisticInteraction(echoId: echo.id, type: type);
-      return;
+      return false;
     }
 
     try {
-      // pass client and supabaseUrl explicitly — no Riverpod provider needed
       const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
-
       final service = EchoInteractionService(client, supabaseUrl);
       final result = await service.interact(
         echoId: echo.id,
@@ -127,6 +157,7 @@ class InteractionButtons extends StatelessWidget {
         challengeCount: updated.challengeCount,
         status: updated.status,
       );
+      return true;
     } catch (e) {
       AppLogger.error('interaction failed', e);
       feed.revertOptimisticInteraction(echoId: echo.id, type: type);
@@ -134,22 +165,25 @@ class InteractionButtons extends StatelessWidget {
       if (context.mounted) {
         showErrorSnack(context, e.toString());
       }
+      return false;
     }
   }
 }
 
 class _InteractionButton extends StatefulWidget {
   const _InteractionButton({
+    required this.count,
     required this.label,
     required this.icon,
-    required this.activeColor,
     required this.onTap,
+    required this.flashColor,
   });
 
+  final int count;
   final String label;
   final IconData icon;
-  final Color activeColor;
-  final VoidCallback onTap;
+  final Future<bool> Function() onTap;
+  final Color flashColor;
 
   @override
   State<_InteractionButton> createState() => _InteractionButtonState();
@@ -159,6 +193,8 @@ class _InteractionButtonState extends State<_InteractionButton>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _scale;
+  bool _isFlashing = false;
+  bool _isActive = false;
 
   @override
   void initState() {
@@ -180,38 +216,54 @@ class _InteractionButtonState extends State<_InteractionButton>
   }
 
   Future<void> _handleTap() async {
+    setState(() => _isFlashing = true);
     await _controller.forward();
     await _controller.reverse();
-    widget.onTap();
+    final shouldActivate = await widget.onTap();
+    if (mounted && shouldActivate) setState(() => _isActive = true);
+    await Future<void>.delayed(const Duration(milliseconds: 420));
+    if (mounted) setState(() => _isFlashing = false);
   }
 
   @override
   Widget build(BuildContext context) {
+    final label =
+        widget.count > 0 ? '${widget.count} ${widget.label}' : widget.label;
+    final color = (_isFlashing || _isActive)
+        ? widget.flashColor
+        : AppColors.textSecondary;
+
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: _handleTap,
       child: ScaleTransition(
         scale: _scale,
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.sm,
-            vertical: AppSpacing.xs,
-          ),
-          decoration: BoxDecoration(
-            color: AppColors.softSand,
-            borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-          ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(widget.icon, size: 14, color: AppColors.textSecondary),
+              AnimatedScale(
+                scale: _isFlashing ? 1.18 : 1.0,
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutBack,
+                child: Icon(widget.icon, size: 15, color: color),
+              ),
               const SizedBox(width: 4),
-              Text(
-                widget.label,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textSecondary,
-                  fontFamily: AppTypography.fontFamily,
+              Flexible(
+                child: AnimatedDefaultTextStyle(
+                  duration: const Duration(milliseconds: 160),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: _isFlashing ? FontWeight.w700 : FontWeight.w600,
+                    color: color,
+                    fontFamily: AppTypography.fontFamily,
+                  ),
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ),
             ],

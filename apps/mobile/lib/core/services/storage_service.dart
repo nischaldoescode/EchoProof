@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../utils/logger.dart';
+import '../utils/media_file_safety.dart';
 
 const _maxFileSizeBytes = 1024 * 1024; // 1 mb
 
@@ -60,6 +61,11 @@ class StorageService {
           'only ${_allowedExtensions.join(", ")} files allowed');
     }
 
+    final header = file.bytes!.take(16).toList();
+    if (!MediaFileSafety.bytesMatchImageExtension(ext, header)) {
+      throw const StorageException('image file looks invalid or corrupted');
+    }
+
     AppLogger.info('storage: picked file ${file.name} ${file.size} bytes');
     return file;
   }
@@ -73,7 +79,7 @@ class StorageService {
     required String extension,
   }) async {
     final path = '$echoId/${_uuid.v4()}.$extension';
-    final contentType = _contentType(extension);
+    final contentType = MediaFileSafety.contentTypeForExtension(extension);
 
     AppLogger.info('storage: uploading proof $path');
 
@@ -99,11 +105,4 @@ class StorageService {
     await _client.storage.from('echo-proofs').remove([storagePath]);
     AppLogger.info('storage: deleted $storagePath');
   }
-
-  String _contentType(String ext) => switch (ext) {
-        'jpg' || 'jpeg' => 'image/jpeg',
-        'png' => 'image/png',
-        'webp' => 'image/webp',
-        _ => 'application/octet-stream',
-      };
 }

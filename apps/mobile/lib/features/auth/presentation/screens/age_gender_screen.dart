@@ -251,293 +251,312 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
             opacity: _fade,
             child: SlideTransition(
               position: _slide,
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.xl),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: AppSpacing.xl),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final minHeight = constraints.maxHeight > AppSpacing.xl * 2
+                      ? constraints.maxHeight - AppSpacing.xl * 2
+                      : 0.0;
 
-                    // step progress dots — step 1 of 3
-                    Row(
-                      children: List.generate(3, (i) {
-                        return AnimatedContainer(
-                          duration: const Duration(milliseconds: 300),
-                          margin: const EdgeInsets.only(right: 6),
-                          width: i == 0 ? 24 : 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: i == 0
-                                ? AppColors.charcoal
-                                : AppColors.borderMedium,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                        );
-                      }),
-                    ),
+                  return SingleChildScrollView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: const EdgeInsets.all(AppSpacing.xl),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: minHeight),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: AppSpacing.xl),
 
-                    const SizedBox(height: AppSpacing.xxl),
-
-                    // icon badge
-                    TweenAnimationBuilder<double>(
-                      tween: Tween(begin: 0, end: 1),
-                      duration: const Duration(milliseconds: 500),
-                      curve: Curves.easeOutBack,
-                      builder: (_, v, __) => Transform.scale(
-                        scale: v,
-                        child: Container(
-                          width: 64,
-                          height: 64,
-                          decoration: BoxDecoration(
-                            color: AppColors.fernGreenLight,
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          child: const Icon(
-                            Icons.person_outline_rounded,
-                            size: 32,
-                            color: AppColors.fernGreen,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: AppSpacing.xl),
-
-                    Text(
-                      'Quick profile setup',
-                      style: GoogleFonts.josefinSans(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.charcoal,
-                        letterSpacing: -0.3,
-                      ),
-                    ),
-
-                    const SizedBox(height: AppSpacing.sm),
-
-                    Text(
-                      'This helps us keep Echoproof safe and relevant. None of this is public.',
-                      style: GoogleFonts.josefinSans(
-                        fontSize: 14,
-                        color: AppColors.textSecondary,
-                        height: 1.5,
-                      ),
-                    ),
-
-                    const SizedBox(height: AppSpacing.xxl),
-
-                    // date of birth label
-                    Text(
-                      'Date of birth',
-                      style: GoogleFonts.josefinSans(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.charcoal,
-                      ),
-                    ),
-
-                    const SizedBox(height: AppSpacing.sm),
-
-                    // dob picker tap target
-                    GestureDetector(
-                      onTap: _pickDob,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        decoration: BoxDecoration(
-                          color: _dob != null
-                              ? Colors.white
-                              : const Color(0xFFF0F4F2),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: _dob != null
-                                ? AppColors.fernGreen
-                                : AppColors.borderSubtle,
-                            width: _dob != null ? 2 : 1,
-                          ),
-                          boxShadow: _dob != null
-                              ? [
-                                  BoxShadow(
-                                    color: AppColors.fernGreen
-                                        .withValues(alpha: 0.1),
-                                    blurRadius: 12,
-                                    offset: const Offset(0, 3),
-                                  ),
-                                ]
-                              : [],
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.cake_outlined,
-                              size: 18,
-                              color: _dob != null
-                                  ? AppColors.fernGreen
-                                  : AppColors.textTertiary,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                _dob != null
-                                    ? _formatDob(_dob!)
-                                    : 'Select your date of birth',
-                                style: GoogleFonts.josefinSans(
-                                  fontSize: _dob != null ? 15 : 14,
-                                  fontWeight: _dob != null
-                                      ? FontWeight.w600
-                                      : FontWeight.w400,
-                                  color: _dob != null
+                          // step progress dots — step 1 of 3
+                          Row(
+                            children: List.generate(3, (i) {
+                              return AnimatedContainer(
+                                duration: const Duration(milliseconds: 300),
+                                margin: const EdgeInsets.only(right: 6),
+                                width: i == 0 ? 24 : 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: i == 0
                                       ? AppColors.charcoal
-                                      : AppColors.textTertiary,
+                                      : AppColors.borderMedium,
+                                  borderRadius: BorderRadius.circular(4),
                                 ),
-                              ),
-                            ),
-                            // show calculated age as a soft badge once dob is selected
-                            if (age != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 4,
-                                ),
+                              );
+                            }),
+                          ),
+
+                          const SizedBox(height: AppSpacing.xxl),
+
+                          // icon badge
+                          TweenAnimationBuilder<double>(
+                            tween: Tween(begin: 0, end: 1),
+                            duration: const Duration(milliseconds: 500),
+                            curve: Curves.easeOutBack,
+                            builder: (_, v, __) => Transform.scale(
+                              scale: v,
+                              child: Container(
+                                width: 64,
+                                height: 64,
                                 decoration: BoxDecoration(
                                   color: AppColors.fernGreenLight,
-                                  borderRadius: BorderRadius.circular(20),
+                                  borderRadius: BorderRadius.circular(18),
                                 ),
-                                child: Text(
-                                  '$age yrs',
-                                  style: GoogleFonts.josefinSans(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.fernGreenDark,
+                                child: const Icon(
+                                  Icons.person_outline_rounded,
+                                  size: 32,
+                                  color: AppColors.fernGreen,
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: AppSpacing.xl),
+
+                          Text(
+                            'Quick profile setup',
+                            style: GoogleFonts.josefinSans(
+                              fontSize: 26,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.charcoal,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+
+                          const SizedBox(height: AppSpacing.sm),
+
+                          Text(
+                            'This helps us keep Echoproof safe and relevant. None of this is public.',
+                            style: GoogleFonts.josefinSans(
+                              fontSize: 14,
+                              color: AppColors.textSecondary,
+                              height: 1.5,
+                            ),
+                          ),
+
+                          const SizedBox(height: AppSpacing.xxl),
+
+                          // date of birth label
+                          Text(
+                            'Date of birth',
+                            style: GoogleFonts.josefinSans(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.charcoal,
+                            ),
+                          ),
+
+                          const SizedBox(height: AppSpacing.sm),
+
+                          // dob picker tap target
+                          GestureDetector(
+                            onTap: _pickDob,
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              decoration: BoxDecoration(
+                                color: _dob != null
+                                    ? Colors.white
+                                    : const Color(0xFFF0F4F2),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: _dob != null
+                                      ? AppColors.fernGreen
+                                      : AppColors.borderSubtle,
+                                  width: _dob != null ? 2 : 1,
+                                ),
+                                boxShadow: _dob != null
+                                    ? [
+                                        BoxShadow(
+                                          color: AppColors.fernGreen
+                                              .withValues(alpha: 0.1),
+                                          blurRadius: 12,
+                                          offset: const Offset(0, 3),
+                                        ),
+                                      ]
+                                    : [],
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 14,
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.cake_outlined,
+                                    size: 18,
+                                    color: _dob != null
+                                        ? AppColors.fernGreen
+                                        : AppColors.textTertiary,
                                   ),
-                                ),
-                              ),
-                            const SizedBox(width: 4),
-                            const Icon(
-                              Icons.chevron_right_rounded,
-                              size: 18,
-                              color: AppColors.textTertiary,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: AppSpacing.xl),
-
-                    // gender label
-                    Text(
-                      'Gender',
-                      style: GoogleFonts.josefinSans(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.charcoal,
-                      ),
-                    ),
-
-                    const SizedBox(height: AppSpacing.sm),
-
-                    GridView.count(
-                      crossAxisCount: 2,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      crossAxisSpacing: AppSpacing.sm,
-                      mainAxisSpacing: AppSpacing.sm,
-                      childAspectRatio: 2.8,
-                      children: _genders.map((g) {
-                        final selected = _gender == g.value;
-                        return GestureDetector(
-                          onTap: () {
-                            HapticFeedback.selectionClick();
-                            setState(() => _gender = g.value);
-                          },
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            decoration: BoxDecoration(
-                              color:
-                                  selected ? AppColors.charcoal : Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: selected
-                                    ? AppColors.charcoal
-                                    : AppColors.borderSubtle,
-                                width: selected ? 2 : 1,
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      _dob != null
+                                          ? _formatDob(_dob!)
+                                          : 'Select your date of birth',
+                                      style: GoogleFonts.josefinSans(
+                                        fontSize: _dob != null ? 15 : 14,
+                                        fontWeight: _dob != null
+                                            ? FontWeight.w600
+                                            : FontWeight.w400,
+                                        color: _dob != null
+                                            ? AppColors.charcoal
+                                            : AppColors.textTertiary,
+                                      ),
+                                    ),
+                                  ),
+                                  // show calculated age as a soft badge once dob is selected
+                                  if (age != null)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.fernGreenLight,
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: Text(
+                                        '$age yrs',
+                                        style: GoogleFonts.josefinSans(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.fernGreenDark,
+                                        ),
+                                      ),
+                                    ),
+                                  const SizedBox(width: 4),
+                                  const Icon(
+                                    Icons.chevron_right_rounded,
+                                    size: 18,
+                                    color: AppColors.textTertiary,
+                                  ),
+                                ],
                               ),
                             ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  g.icon,
-                                  size: 16,
-                                  color: selected
-                                      ? Colors.white
-                                      : AppColors.textSecondary,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  g.label,
-                                  style: GoogleFonts.josefinSans(
-                                    fontSize: 13,
-                                    fontWeight: selected
-                                        ? FontWeight.w600
-                                        : FontWeight.w400,
+                          ),
+
+                          const SizedBox(height: AppSpacing.xl),
+
+                          // gender label
+                          Text(
+                            'Gender',
+                            style: GoogleFonts.josefinSans(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.charcoal,
+                            ),
+                          ),
+
+                          const SizedBox(height: AppSpacing.sm),
+
+                          GridView.count(
+                            crossAxisCount: 2,
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            crossAxisSpacing: AppSpacing.sm,
+                            mainAxisSpacing: AppSpacing.sm,
+                            childAspectRatio: 2.8,
+                            children: _genders.map((g) {
+                              final selected = _gender == g.value;
+                              return GestureDetector(
+                                onTap: () {
+                                  HapticFeedback.selectionClick();
+                                  setState(() => _gender = g.value);
+                                },
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  decoration: BoxDecoration(
                                     color: selected
-                                        ? Colors.white
-                                        : AppColors.textSecondary,
+                                        ? AppColors.charcoal
+                                        : Colors.white,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: selected
+                                          ? AppColors.charcoal
+                                          : AppColors.borderSubtle,
+                                      width: selected ? 2 : 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        g.icon,
+                                        size: 16,
+                                        color: selected
+                                            ? Colors.white
+                                            : AppColors.textSecondary,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Flexible(
+                                        child: Text(
+                                          g.label,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: GoogleFonts.josefinSans(
+                                            fontSize: 13,
+                                            fontWeight: selected
+                                                ? FontWeight.w600
+                                                : FontWeight.w400,
+                                            color: selected
+                                                ? Colors.white
+                                                : AppColors.textSecondary,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ],
-                            ),
+                              );
+                            }).toList(),
                           ),
-                        );
-                      }).toList(),
-                    ),
 
-                    const Spacer(),
+                          const SizedBox(height: AppSpacing.xxl),
 
-                    AnimatedOpacity(
-                      opacity: _dob != null ? 1.0 : 0.4,
-                      duration: const Duration(milliseconds: 200),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: (_dob != null && !_isSubmitting)
-                              ? _continue
-                              : null,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.charcoal,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                          ),
-                          child: _isSubmitting
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : Text(
-                                  'Continue',
-                                  style: GoogleFonts.josefinSans(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
+                          AnimatedOpacity(
+                            opacity: _dob != null ? 1.0 : 0.4,
+                            duration: const Duration(milliseconds: 200),
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: (_dob != null && !_isSubmitting)
+                                    ? _continue
+                                    : null,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.charcoal,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 16),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
                                   ),
                                 ),
-                        ),
+                                child: _isSubmitting
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : Text(
+                                        'Continue',
+                                        style: GoogleFonts.josefinSans(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: AppSpacing.xl),
+                        ],
                       ),
                     ),
-
-                    const SizedBox(height: AppSpacing.xl),
-                  ],
-                ),
+                  );
+                },
               ),
             ),
           ),
