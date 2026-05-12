@@ -6,6 +6,10 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Echoproof Admin",
   description: "Trust engine control panel",
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+  },
 };
 
 export default function RootLayout({
