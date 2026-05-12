@@ -14,6 +14,7 @@ import '../../../../core/utils/logger.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../onboarding/presentation/services/onboarding_service.dart';
 import '../../../../core/services/ad_service.dart';
+import '../../../subscription/presentation/services/subscription_service.dart';
 import '../../../../core/localization/app_copy.dart';
 import 'package:flutter/services.dart';
 import '../../../../core/utils/snack.dart';
@@ -422,6 +423,8 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   @override
   Widget build(BuildContext context) {
+    final subscription = context.watch<SubscriptionService>();
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5FAF7),
       appBar: AppBar(
@@ -599,9 +602,10 @@ class _SettingsScreenState extends State<SettingsScreen>
               onTap: () => _showDeleteAccount(context),
             ),
           ]),
-          _Section(title: context.l('Ads'), tiles: [
-            _AdStatusTile(onTap: () => _showAdInfoModal(context)),
-          ]),
+          if (!subscription.isPro)
+            _Section(title: context.l('Ads'), tiles: [
+              _AdStatusTile(onTap: () => _showAdInfoModal(context)),
+            ]),
           _Section(title: context.l('About'), tiles: [
             _Tile(
               icon: Icons.info_outline_rounded,

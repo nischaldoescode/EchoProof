@@ -1,6 +1,6 @@
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { adminPath } from "@/lib/routes";
+import { adminUrl } from "@/lib/public-url";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
@@ -61,5 +61,5 @@ export async function POST(req: NextRequest) {
     data: { route: "/subscription" },
   });
 
-  return NextResponse.redirect(new URL(adminPath("/subscription"), req.url));
+  return NextResponse.redirect(adminUrl(req, "/subscription"));
 }

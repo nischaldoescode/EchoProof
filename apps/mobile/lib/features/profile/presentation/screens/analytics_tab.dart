@@ -52,7 +52,7 @@ class _AnalyticsTabState extends State<AnalyticsTab>
           .from('echoes')
           .select(
             'id, title, trust_score, confidence_score, support_count, '
-            'challenge_count, reply_count, bond_count, status, created_at, media_urls,',
+            'challenge_count, reply_count, bond_count, status, created_at, media_urls',
           )
           .eq('user_id', widget.userId)
           .order('trust_score', ascending: false)
@@ -71,12 +71,30 @@ class _AnalyticsTabState extends State<AnalyticsTab>
           totalChallenge = 0,
           totalReplies = 0,
           totalBonds = 0;
+      var totalConfidence = 0.0;
+      var mediaEchoes = 0;
+      var verifiedEchoes = 0;
+      var pendingEchoes = 0;
+      var disputedEchoes = 0;
       for (final e in echoList) {
         totalSupport += (e['support_count'] as num?)?.toInt() ?? 0;
         totalChallenge += (e['challenge_count'] as num?)?.toInt() ?? 0;
         totalReplies += (e['reply_count'] as num?)?.toInt() ?? 0;
         totalBonds += (e['bond_count'] as num?)?.toInt() ?? 0;
+        totalConfidence += (e['confidence_score'] as num?)?.toDouble() ?? 0;
+        final media = e['media_urls'];
+        if (media is List && media.isNotEmpty) mediaEchoes++;
+        final status = (e['status'] as String? ?? '').toLowerCase();
+        if (status.contains('verified')) {
+          verifiedEchoes++;
+        } else if (status.contains('challenge') || status.contains('dispute')) {
+          disputedEchoes++;
+        } else {
+          pendingEchoes++;
+        }
       }
+      final totalReactions = totalSupport + totalChallenge;
+      final totalEngagements = totalReactions + totalReplies + totalBonds;
 
       setState(() {
         _stats = {
@@ -85,6 +103,15 @@ class _AnalyticsTabState extends State<AnalyticsTab>
           'total_challenge': totalChallenge,
           'total_replies': totalReplies,
           'total_bonds': totalBonds,
+          'total_engagements': totalEngagements,
+          'support_ratio':
+              totalReactions == 0 ? 0.0 : totalSupport / totalReactions,
+          'avg_confidence':
+              echoList.isEmpty ? 0.0 : totalConfidence / echoList.length,
+          'media_echoes': mediaEchoes,
+          'verified_echoes': verifiedEchoes,
+          'pending_echoes': pendingEchoes,
+          'disputed_echoes': disputedEchoes,
         };
         _topEchoes = echoList.take(5).toList();
         _isLoading = false;
@@ -134,24 +161,30 @@ class _AnalyticsTabState extends State<AnalyticsTab>
       );
     }
 
+    final stats = _stats ?? {};
+
     return RefreshIndicator(
       color: AppColors.fernGreen,
       onRefresh: _loadStats,
       child: ListView(
         padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
+          _AnalyticsHero(stats: stats),
+          const SizedBox(height: AppSpacing.xl),
           _SectionHeader(label: context.l('Account Overview')),
           const SizedBox(height: AppSpacing.md),
-          _StatsGrid(stats: _stats ?? {}),
+          _StatsGrid(stats: stats),
           const SizedBox(height: AppSpacing.xl),
           _SectionHeader(label: context.l('Engagement Summary')),
           const SizedBox(height: AppSpacing.md),
           _EngagementRow(
-            totalSupport: (_stats?['total_support'] as num?)?.toInt() ?? 0,
-            totalChallenge: (_stats?['total_challenge'] as num?)?.toInt() ?? 0,
-            totalReplies: (_stats?['total_replies'] as num?)?.toInt() ?? 0,
-            totalBonds: (_stats?['total_bonds'] as num?)?.toInt() ?? 0,
+            totalSupport: (stats['total_support'] as num?)?.toInt() ?? 0,
+            totalChallenge: (stats['total_challenge'] as num?)?.toInt() ?? 0,
+            totalReplies: (stats['total_replies'] as num?)?.toInt() ?? 0,
+            totalBonds: (stats['total_bonds'] as num?)?.toInt() ?? 0,
           ),
+          const SizedBox(height: AppSpacing.md),
+          _StatusMixCard(stats: stats),
           const SizedBox(height: AppSpacing.xl),
           _SectionHeader(label: context.l('Top Echoes by Trust Score')),
           const SizedBox(height: AppSpacing.md),
@@ -160,6 +193,153 @@ class _AnalyticsTabState extends State<AnalyticsTab>
                 rank: e.key + 1,
               )),
           const SizedBox(height: 80),
+        ],
+      ),
+    );
+  }
+}
+
+class _AnalyticsHero extends StatelessWidget {
+  const _AnalyticsHero({required this.stats});
+  final Map<String, dynamic> stats;
+
+  @override
+  Widget build(BuildContext context) {
+    final trust = (stats['trust_score'] as num?)?.toInt() ?? 0;
+    final avgConfidence = (stats['avg_confidence'] as num?)?.toDouble() ?? 0;
+    final engagements = (stats['total_engagements'] as num?)?.toInt() ?? 0;
+    final supportRatio = (stats['support_ratio'] as num?)?.toDouble() ?? 0;
+    final tier = (stats['trust_tier'] as String? ?? 'building')
+        .replaceAll('_', ' ')
+        .toUpperCase();
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 520),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 12 * (1 - value)),
+            child: child,
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        decoration: BoxDecoration(
+          color: AppColors.charcoal,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.charcoal.withValues(alpha: 0.12),
+              blurRadius: 22,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.fernGreen.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    tier,
+                    style: GoogleFonts.josefinSans(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.fernGreenLight,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                const Icon(
+                  Icons.insights_rounded,
+                  color: AppColors.fernGreenLight,
+                  size: 20,
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            Text(
+              '$trust',
+              style: GoogleFonts.josefinSans(
+                fontSize: 42,
+                fontWeight: FontWeight.w800,
+                color: AppColors.white,
+              ),
+            ),
+            Text(
+              context.l('trust score'),
+              style: GoogleFonts.josefinSans(
+                fontSize: 13,
+                color: AppColors.white.withValues(alpha: 0.68),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Row(
+              children: [
+                _HeroMetric(
+                  label: context.l('Engagements'),
+                  value: '$engagements',
+                ),
+                _HeroMetric(
+                  label: context.l('Avg confidence'),
+                  value: '${avgConfidence.round()}%',
+                ),
+                _HeroMetric(
+                  label: context.l('Supportive'),
+                  value: '${(supportRatio * 100).round()}%',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HeroMetric extends StatelessWidget {
+  const _HeroMetric({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value,
+            style: GoogleFonts.josefinSans(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: AppColors.white,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.josefinSans(
+              fontSize: 10,
+              color: AppColors.white.withValues(alpha: 0.58),
+            ),
+          ),
         ],
       ),
     );
@@ -175,11 +355,14 @@ class _SectionHeader extends StatelessWidget {
     return Row(
       children: [
         Container(
-            width: 3,
-            height: 16,
+          width: 3,
+          height: 16,
+          margin: const EdgeInsets.only(right: 8),
+          decoration: BoxDecoration(
             color: AppColors.fernGreen,
-            margin: const EdgeInsets.only(right: 8),
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(2))),
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
         Text(
           label,
           style: GoogleFonts.josefinSans(
@@ -436,6 +619,159 @@ class _EngagementChip extends StatelessWidget {
             label,
             style: GoogleFonts.josefinSans(
                 fontSize: 9, color: AppColors.textTertiary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusMixCard extends StatelessWidget {
+  const _StatusMixCard({required this.stats});
+  final Map<String, dynamic> stats;
+
+  @override
+  Widget build(BuildContext context) {
+    final verified = (stats['verified_echoes'] as num?)?.toInt() ?? 0;
+    final pending = (stats['pending_echoes'] as num?)?.toInt() ?? 0;
+    final disputed = (stats['disputed_echoes'] as num?)?.toInt() ?? 0;
+    final media = (stats['media_echoes'] as num?)?.toInt() ?? 0;
+    final total = verified + pending + disputed;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceSecondary,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                context.l('Content mix'),
+                style: GoogleFonts.josefinSans(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.charcoal,
+                ),
+              ),
+              const Spacer(),
+              Icon(
+                media > 0 ? Icons.perm_media_outlined : Icons.article_outlined,
+                size: 17,
+                color: AppColors.textSecondary,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                context.l('{count} media echoes', {'count': media}),
+                style: GoogleFonts.josefinSans(
+                  fontSize: 11,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: Row(
+              children: [
+                _MixSegment(
+                  flex: verified,
+                  fallbackFlex: total == 0 ? 1 : 0,
+                  color: AppColors.fernGreen,
+                ),
+                _MixSegment(
+                  flex: pending,
+                  fallbackFlex: total == 0 ? 1 : 0,
+                  color: AppColors.statusUnderReview,
+                ),
+                _MixSegment(
+                  flex: disputed,
+                  fallbackFlex: total == 0 ? 1 : 0,
+                  color: AppColors.sunsetCoral,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            children: [
+              _Legend(
+                  label: context.l('Verified'),
+                  value: verified,
+                  color: AppColors.fernGreen),
+              _Legend(
+                  label: context.l('Pending'),
+                  value: pending,
+                  color: AppColors.statusUnderReview),
+              _Legend(
+                  label: context.l('Disputed'),
+                  value: disputed,
+                  color: AppColors.sunsetCoral),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MixSegment extends StatelessWidget {
+  const _MixSegment({
+    required this.flex,
+    required this.fallbackFlex,
+    required this.color,
+  });
+  final int flex;
+  final int fallbackFlex;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final effectiveFlex = flex > 0 ? flex : fallbackFlex;
+    if (effectiveFlex == 0) return const SizedBox.shrink();
+    return Expanded(
+      flex: effectiveFlex,
+      child: Container(height: 9, color: color),
+    );
+  }
+}
+
+class _Legend extends StatelessWidget {
+  const _Legend({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+  final String label;
+  final int value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Row(
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              '$label $value',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.josefinSans(
+                fontSize: 10,
+                color: AppColors.textSecondary,
+              ),
+            ),
           ),
         ],
       ),

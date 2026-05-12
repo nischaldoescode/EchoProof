@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAllowedAdminEmail } from "@/lib/auth/allowlist";
+import { publicOrigin } from "@/lib/public-url";
 import { adminPath } from "@/lib/routes";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -27,7 +28,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const origin = request.headers.get("origin") ?? new URL(request.url).origin;
+  const origin = request.headers.get("origin") ?? publicOrigin(request);
   const redirectTo = `${origin}${adminPath("/auth/callback")}`;
   let errorMessage: string | undefined;
   try {

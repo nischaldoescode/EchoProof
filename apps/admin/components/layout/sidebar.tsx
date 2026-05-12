@@ -54,6 +54,7 @@ export function Sidebar() {
   async function handleSignOut() {
     const supabase = createBrowserClient();
     await supabase.auth.signOut();
+    await fetch(adminPath("/api/auth/admin-logout"), { method: "POST" });
     router.push(adminPath("/login"));
   }
 

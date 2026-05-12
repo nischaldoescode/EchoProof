@@ -77,11 +77,13 @@ class SolanaService {
       'SUPABASE_URL',
       defaultValue: 'http://127.0.0.1:54321',
     );
+    const anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
 
     try {
       final response = await http.post(
         Uri.parse('$supabaseUrl/functions/v1/solana-memo'),
         headers: {
+          if (anonKey.isNotEmpty) 'apikey': anonKey,
           'Authorization': 'Bearer $jwtToken',
           'Content-Type': 'application/json',
         },
