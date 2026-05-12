@@ -259,6 +259,7 @@ class EchoFeedService extends ChangeNotifier {
     if (session == null) return [];
 
     final supabaseUrl = const String.fromEnvironment('SUPABASE_URL');
+    final anonKey = const String.fromEnvironment('SUPABASE_ANON_KEY');
     final refreshParam = forceRefresh ? '&refresh=1' : '';
 
     final response = await http.get(
@@ -267,6 +268,7 @@ class EchoFeedService extends ChangeNotifier {
         '?offset=$offset&limit=$_kPageSize$refreshParam',
       ),
       headers: {
+        if (anonKey.isNotEmpty) 'apikey': anonKey,
         'Authorization': 'Bearer ${session.accessToken}',
         'Content-Type': 'application/json',
       },

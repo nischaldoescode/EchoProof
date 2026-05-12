@@ -943,16 +943,6 @@ class _ContentMentionField extends StatelessWidget {
                           );
                         },
                       ),
-                      Mention(
-                        trigger: '~',
-                        style: GoogleFonts.josefinSans(
-                          color: AppColors.fernGreen,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        data: const [],
-                        matchAll: true,
-                        disableMarkup: true,
-                      ),
                     ],
                   ),
                 ],

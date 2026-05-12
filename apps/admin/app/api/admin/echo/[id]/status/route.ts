@@ -3,7 +3,7 @@
 
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { adminPath } from "@/lib/routes";
+import { adminUrl } from "@/lib/public-url";
 import { NextRequest, NextResponse } from "next/server";
 
 type RouteContext = {
@@ -92,7 +92,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     return NextResponse.json({ success: true, status });
   }
 
-  return NextResponse.redirect(new URL(adminPath(`/echoes/${id}`), req.url));
+  return NextResponse.redirect(adminUrl(req, `/echoes/${id}`));
 }
 
 async function readPayload(req: NextRequest): Promise<StatusPayload> {

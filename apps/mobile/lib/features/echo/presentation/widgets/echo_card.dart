@@ -17,6 +17,8 @@ import '../../../../core/utils/media_file_safety.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
+import 'package:crypto/crypto.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'dart:async' show unawaited;
 import 'package:cached_network_image/cached_network_image.dart';
@@ -84,6 +86,21 @@ class _EchoCardState extends State<EchoCard> {
       setState(() => _showTranslated = !_showTranslated);
       return;
     }
+    const targetLang = 'en';
+    final cacheKey = 'translation:v1:$targetLang:'
+        '${sha256.convert(utf8.encode('${echo.id}|${echo.title}|${echo.content}'))}';
+    if (Hive.isBoxOpen('echo_cache')) {
+      final cached = Hive.box('echo_cache').get(cacheKey);
+      if (cached is Map) {
+        setState(() {
+          _translatedTitle = cached['title'] as String?;
+          _translatedContent = cached['content'] as String?;
+          _showTranslated = true;
+        });
+        return;
+      }
+    }
+
     setState(() => _isTranslating = true);
     try {
       // Using Supabase edge function to proxy translation (keeps API keys server-side).
@@ -91,28 +108,41 @@ class _EchoCardState extends State<EchoCard> {
       final session = client.auth.currentSession;
       if (session == null) return;
       final supabaseUrl = const String.fromEnvironment('SUPABASE_URL');
+      final anonKey = const String.fromEnvironment('SUPABASE_ANON_KEY');
       final res = await http.post(
         Uri.parse('$supabaseUrl/functions/v1/translate'),
         headers: {
+          if (anonKey.isNotEmpty) 'apikey': anonKey,
           'Authorization': 'Bearer ${session.accessToken}',
           'Content-Type': 'application/json',
         },
         body: jsonEncode({
           'title': echo.title,
           'content': echo.content,
-          'target_lang': 'en',
+          'target_lang': targetLang,
         }),
       );
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final provider = data['provider'] as String?;
+        final hasProvider = provider != 'none';
+        if (hasProvider && Hive.isBoxOpen('echo_cache')) {
+          await Hive.box('echo_cache').put(cacheKey, {
+            'title': data['title'] as String?,
+            'content': data['content'] as String?,
+            'created_at': DateTime.now().toIso8601String(),
+          });
+        }
         setState(() {
           _translatedTitle = data['title'] as String?;
           _translatedContent = data['content'] as String?;
-          _showTranslated = true;
+          _showTranslated = hasProvider;
         });
       }
-    } catch (_) {}
-    setState(() => _isTranslating = false);
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _isTranslating = false);
+    }
   }
 
   Future<void> _recordDwell(int seconds) async {

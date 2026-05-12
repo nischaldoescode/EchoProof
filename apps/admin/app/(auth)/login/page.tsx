@@ -18,9 +18,11 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
+  const [accessKey, setAccessKey] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
+  const [accessLoading, setAccessLoading] = useState(false);
   const queryError =
     searchParams.get("error") === "unauthorized"
       ? "This account is signed in, but it is not on the admin allowlist."
@@ -99,6 +101,37 @@ function LoginForm() {
     setLoading(false);
   }
 
+  async function handleAccessLogin(e: FormEvent) {
+    e.preventDefault();
+
+    if (!email.trim() || !accessKey) {
+      setError("Enter your admin email and access key.");
+      return;
+    }
+
+    setAccessLoading(true);
+    setError("");
+    setNotice("");
+
+    const response = await fetch(adminPath("/api/auth/admin-access-login"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, accessKey }),
+    });
+    const result = (await response.json().catch(() => ({}))) as {
+      error?: string;
+    };
+
+    if (!response.ok) {
+      setError(result.error || "Could not sign in with admin access key.");
+      setAccessLoading(false);
+      return;
+    }
+
+    router.replace(adminPath("/"));
+    router.refresh();
+  }
+
   async function signInWithProvider(provider: Provider) {
     setLoading(true);
     setError("");
@@ -134,6 +167,7 @@ function LoginForm() {
   async function handleSignOut() {
     const supabase = createClient();
     await supabase.auth.signOut();
+    await fetch(adminPath("/api/auth/admin-logout"), { method: "POST" });
     router.replace(adminPath("/login"));
     router.refresh();
   }
@@ -141,12 +175,16 @@ function LoginForm() {
   return (
     <LoginFrame
       email={email}
+      accessKey={accessKey}
       error={error || queryError}
       notice={notice}
       loading={loading}
+      accessLoading={accessLoading}
       canSignOut={!!queryError}
       onEmailChange={setEmail}
+      onAccessKeyChange={setAccessKey}
       onSubmit={handleMagicLink}
+      onAccessLogin={handleAccessLogin}
       onGoogle={() => signInWithProvider("google")}
       onGithub={() => signInWithProvider("github")}
       onSignOut={handleSignOut}
@@ -156,23 +194,31 @@ function LoginForm() {
 
 function LoginFrame({
   email = "",
+  accessKey = "",
   error = "",
   notice = "",
   loading = false,
+  accessLoading = false,
   canSignOut = false,
   onEmailChange,
+  onAccessKeyChange,
   onSubmit,
+  onAccessLogin,
   onGoogle,
   onGithub,
   onSignOut,
 }: {
   email?: string;
+  accessKey?: string;
   error?: string;
   notice?: string;
   loading?: boolean;
+  accessLoading?: boolean;
   canSignOut?: boolean;
   onEmailChange?: (value: string) => void;
+  onAccessKeyChange?: (value: string) => void;
   onSubmit?: (e: FormEvent) => void;
+  onAccessLogin?: (e: FormEvent) => void;
   onGoogle?: () => void;
   onGithub?: () => void;
   onSignOut?: () => void;
@@ -300,6 +346,34 @@ function LoginFrame({
                 className="w-full rounded-lg bg-fern-green py-2.5 text-sm font-semibold text-white hover:bg-fern-dark disabled:opacity-50"
               >
                 {loading ? "Sending..." : "Send magic link"}
+              </button>
+            </form>
+
+            <form
+              onSubmit={onAccessLogin}
+              className="mt-3 space-y-3 rounded-xl border border-border-subtle bg-white/70 p-4"
+            >
+              <div>
+                <p className="text-xs font-semibold text-charcoal">
+                  Admin access key
+                </p>
+                <p className="mt-1 text-xs leading-5 text-gray-500">
+                  Use this only when Supabase Auth providers are unavailable.
+                </p>
+              </div>
+              <input
+                type="password"
+                value={accessKey}
+                onChange={(e) => onAccessKeyChange?.(e.target.value)}
+                className="w-full rounded-lg border border-border-subtle px-3 py-2 text-sm focus:border-fern-green focus:outline-none"
+                placeholder="Access key"
+              />
+              <button
+                type="submit"
+                disabled={accessLoading}
+                className="w-full rounded-lg border border-charcoal/10 bg-white py-2.5 text-sm font-semibold text-charcoal hover:bg-soft-sand disabled:opacity-50"
+              >
+                {accessLoading ? "Signing in..." : "Sign in with access key"}
               </button>
             </form>
           </div>
