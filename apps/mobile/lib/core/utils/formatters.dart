@@ -57,6 +57,20 @@ abstract final class Formatters {
     return '${address.substring(0, chars)}...${address.substring(address.length - chars)}';
   }
 
+  static String compactNumber(int value) {
+    if (value < 1000) return value.toString();
+    if (value < 1000000) {
+      final compact = value / 1000;
+      return compact >= 10
+          ? '${compact.toStringAsFixed(0)}K'
+          : '${compact.toStringAsFixed(1).replaceAll('.0', '')}K';
+    }
+    final compact = value / 1000000;
+    return compact >= 10
+        ? '${compact.toStringAsFixed(0)}M'
+        : '${compact.toStringAsFixed(1).replaceAll('.0', '')}M';
+  }
+
   // formats a signal tag — ensures ~ prefix and lowercase
   static String formatSignal(String raw) {
     final cleaned = raw.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '').toLowerCase();

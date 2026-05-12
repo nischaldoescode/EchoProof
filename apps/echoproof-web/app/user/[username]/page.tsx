@@ -2,6 +2,7 @@
 // generateMetadata requires app router — never put this in pages/
 
 import type { Metadata } from "next";
+import { cache } from "react";
 import { notFound } from "next/navigation";
 import { supabaseAdmin as supabase } from "@/lib/supabase";
 import Nav from "@/components/Nav";
@@ -11,6 +12,20 @@ import Footer from "@/components/Footer";
 interface Props {
   params: Promise<{ username: string }>;
 }
+
+type PublicProfile = {
+  id: string;
+  username: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  trust_tier: string;
+  trust_score: number | null;
+  echo_count: number | null;
+  proof_count: number | null;
+  bio: string | null;
+  is_public: boolean | null;
+  created_at: string;
+};
 
 function normalizeUsernameParam(value: string) {
   let decoded = value;
@@ -34,6 +49,39 @@ function publicSiteUrl() {
   );
 }
 
+function officialFallbackProfile(username: string): PublicProfile | null {
+  if (username !== "echoproof") return null;
+
+  return {
+    id: "official-echoproof",
+    username: "echoproof",
+    display_name: "Echoproof",
+    avatar_url: "/logo.png",
+    trust_tier: "elite",
+    trust_score: 100,
+    echo_count: 0,
+    proof_count: 0,
+    bio: "Official Echoproof account for product updates, trust signals, and platform notices.",
+    is_public: true,
+    created_at: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+const loadPublicProfile = cache(async (username: string) => {
+  const officialProfile = officialFallbackProfile(username);
+  if (officialProfile) return officialProfile;
+
+  const { data } = await supabase
+    .from("users_public")
+    .select(
+      "id, username, display_name, avatar_url, trust_tier, trust_score, echo_count, proof_count, bio, is_public, created_at",
+    )
+    .eq("username", username)
+    .maybeSingle();
+
+  return data as PublicProfile | null;
+});
+
 const tierConfig: Record<string, { label: string; color: string; bg: string }> =
   {
     elite: { label: "Elite", color: "#2D7A4A", bg: "#E8F5EE" },
@@ -54,11 +102,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     };
   }
 
-  const { data } = await supabase
-    .from("users_public")
-    .select("username, display_name, avatar_url, trust_tier, echo_count, bio, is_public")
-    .eq("username", username)
-    .maybeSingle();
+  const data = await loadPublicProfile(username);
 
   if (!data) {
     return {
@@ -108,13 +152,7 @@ export default async function UserProfilePage({ params }: Props) {
 
   if (!isValidUsername(username)) notFound();
 
-  const { data: profile } = await supabase
-    .from("users_public")
-    .select(
-      "id, username, display_name, avatar_url, trust_tier, trust_score, echo_count, proof_count, bio, is_public, created_at",
-    )
-    .eq("username", username)
-    .maybeSingle();
+  const profile = await loadPublicProfile(username);
 
   if (!profile) notFound();
 

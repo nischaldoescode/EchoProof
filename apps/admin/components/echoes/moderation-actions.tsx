@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Echo } from "@/types/echo";
+import { adminPath } from "@/lib/routes";
 
 interface ModerationActionsProps {
   echo: Echo;
@@ -36,7 +37,7 @@ export function ModerationActions({ echo, onClose }: ModerationActionsProps) {
       updates.admin_note     = note;
     }
 
-    const res = await fetch(`/api/admin/echo/${echo.id}/status`, {
+    const res = await fetch(adminPath(`/api/admin/echo/${echo.id}/status`), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

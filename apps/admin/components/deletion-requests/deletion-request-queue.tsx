@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { adminPath } from "@/lib/routes";
 
 interface DeletionRequest {
   id: string;
@@ -32,7 +33,7 @@ export function DeletionRequestQueue({ requests }: DeletionRequestQueueProps) {
 
   async function markProcessed(requestId: string) {
     setLoading(requestId);
-    await fetch(`/api/admin/deletion-requests/${requestId}/process`, {
+    await fetch(adminPath(`/api/admin/deletion-requests/${requestId}/process`), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ delete_account: false }),
@@ -51,7 +52,7 @@ export function DeletionRequestQueue({ requests }: DeletionRequestQueueProps) {
 
     try {
       const res = await fetch(
-        `/api/admin/deletion-requests/${request.id}/process`,
+        adminPath(`/api/admin/deletion-requests/${request.id}/process`),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

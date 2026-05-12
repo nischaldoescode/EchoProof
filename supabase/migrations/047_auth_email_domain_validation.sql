@@ -29,7 +29,7 @@ declare
     'pm.me'
   ];
 begin
-  if v_email !~ $re$^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$$re$ then
+  if v_email !~ $re$^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$re$ then
     return jsonb_build_object(
       'allowed', false,
       'reason', 'invalid_format'

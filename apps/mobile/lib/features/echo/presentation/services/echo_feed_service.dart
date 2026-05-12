@@ -127,16 +127,18 @@ class EchoFeedService extends ChangeNotifier {
     AppLogger.info('feed: loadFeed called');
 
     try {
-      final results = await _fetchPage(offset: 0);
+      final page = await _fetchPage(offset: 0);
+      final results = await _decorateFeed(page, includeFollowedLikes: true);
       _echoes = results;
-      _hasMore = results.length == _kPageSize;
+      _hasMore = page.length == _kPageSize;
       _loadState = FeedLoadState.idle;
       AppLogger.info(
           'feed: loaded ${results.length} echoes from edge function');
     } catch (e) {
       AppLogger.warn('feed: edge function failed ($e), trying fallback');
       try {
-        final fallback = await _fetchFallback();
+        final fallback = await _decorateFeed(await _fetchFallback(),
+            includeFollowedLikes: true);
         _echoes = fallback;
         _hasMore = false;
         _loadState = FeedLoadState.idle;
@@ -159,7 +161,7 @@ class EchoFeedService extends ChangeNotifier {
 
     try {
       _offset += _kPageSize;
-      final more = await _fetchPage(offset: _offset);
+      final more = await _decorateFeed(await _fetchPage(offset: _offset));
       _echoes = [..._echoes, ...more];
       _hasMore = more.length == _kPageSize;
     } catch (e) {
@@ -179,9 +181,10 @@ class EchoFeedService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final results = await _fetchPage(offset: 0, forceRefresh: true);
+      final page = await _fetchPage(offset: 0, forceRefresh: true);
+      final results = await _decorateFeed(page, includeFollowedLikes: true);
       _echoes = results;
-      _hasMore = results.length == _kPageSize;
+      _hasMore = page.length == _kPageSize;
       _loadState = FeedLoadState.idle;
     } catch (e) {
       _loadState = FeedLoadState.error;
@@ -283,9 +286,274 @@ class EchoFeedService extends ChangeNotifier {
     }).toList();
   }
 
+  Future<List<EchoEntity>> _decorateFeed(
+    List<EchoEntity> echoes, {
+    bool includeFollowedLikes = false,
+  }) async {
+    if (echoes.isEmpty) return echoes;
+
+    var decorated = echoes;
+    if (includeFollowedLikes) {
+      decorated = await _injectFollowedLikedEchoes(decorated);
+    }
+    decorated = await _attachSocialContext(decorated);
+    decorated = await _attachReplyPreviews(decorated);
+    return decorated;
+  }
+
+  Future<List<EchoEntity>> _injectFollowedLikedEchoes(
+    List<EchoEntity> echoes,
+  ) async {
+    try {
+      final client = Supabase.instance.client;
+      final userId = client.auth.currentUser?.id;
+      if (userId == null || echoes.length < 4) return echoes;
+
+      final followRows = await client
+          .from('user_follows')
+          .select('following_id')
+          .eq('follower_id', userId);
+      final followingIds = List<Map<String, dynamic>>.from(followRows as List)
+          .map((row) => row['following_id'] as String?)
+          .whereType<String>()
+          .toSet();
+      if (followingIds.isEmpty) return echoes;
+
+      final hiddenEchoIds = <String>{};
+      final hiddenAuthorIds = <String>{};
+      final hiddenResults = await Future.wait([
+        client
+            .from('user_feed_feedback')
+            .select('echo_id, author_id, feedback_type')
+            .eq('user_id', userId)
+            .filter(
+              'feedback_type',
+              'in',
+              '("not_interested","report","block_author")',
+            ),
+        client
+            .from('user_blocks')
+            .select('blocked_id')
+            .eq('blocker_id', userId),
+      ]);
+      for (final row
+          in List<Map<String, dynamic>>.from(hiddenResults[0] as List)) {
+        final echoId = row['echo_id'] as String?;
+        if (echoId != null) hiddenEchoIds.add(echoId);
+        if (row['feedback_type'] == 'block_author') {
+          final authorId = row['author_id'] as String?;
+          if (authorId != null) hiddenAuthorIds.add(authorId);
+        }
+      }
+      for (final row
+          in List<Map<String, dynamic>>.from(hiddenResults[1] as List)) {
+        final blockedId = row['blocked_id'] as String?;
+        if (blockedId != null) hiddenAuthorIds.add(blockedId);
+      }
+
+      final followedIds = followingIds.join(',');
+      final existingIds = echoes.map((echo) => echo.id).toSet();
+      final interactionRows = await client
+          .from('echo_interactions')
+          .select('echo_id, user_id, created_at')
+          .filter('user_id', 'in', '($followedIds)')
+          .eq('type', 'support')
+          .order('created_at', ascending: false)
+          .limit(24);
+
+      final candidateIds = <String>[];
+      for (final raw in interactionRows as List) {
+        final row = raw as Map<String, dynamic>;
+        final echoId = row['echo_id'] as String?;
+        if (echoId == null || existingIds.contains(echoId)) continue;
+        if (hiddenEchoIds.contains(echoId)) continue;
+        if (!candidateIds.contains(echoId)) candidateIds.add(echoId);
+        if (candidateIds.length >= 8) break;
+      }
+      if (candidateIds.isEmpty) return echoes;
+
+      final rows = await client
+          .from('echoes')
+          .select('''
+            id, title, content, category, category_detail, status, version,
+            user_id, media_urls, reply_count, proof_count, bond_count,
+            trust_score, confidence_score, controversy_score, report_score,
+            support_count, challenge_count, created_at,
+            created_record_tx, created_record_at, solana_status, solana_error,
+            verified_record_tx, verified_record_at,
+            verified_record_status, verified_record_error,
+            users_public!inner(username, display_name, avatar_url, trust_tier, is_pro, is_public)
+          ''')
+          .filter('id', 'in', '(${candidateIds.join(',')})')
+          .not('status', 'in', '("hidden","rejected")')
+          .eq('users_public.is_public', true);
+
+      final byId = <String, EchoEntity>{};
+      for (final raw in rows as List) {
+        final row = raw as Map<String, dynamic>;
+        final user = row['users_public'] as Map<String, dynamic>;
+        final entity = _mapToEntity(row, user);
+        if (entity.userId == userId) continue;
+        if (hiddenAuthorIds.contains(entity.userId)) continue;
+        byId[entity.id] = entity;
+      }
+
+      final additions = candidateIds
+          .map((id) => byId[id])
+          .whereType<EchoEntity>()
+          .take(2)
+          .toList();
+      if (additions.isEmpty) return echoes;
+
+      final output = <EchoEntity>[];
+      var addIndex = 0;
+      for (var i = 0; i < echoes.length; i++) {
+        output.add(echoes[i]);
+        final insertionPoint = i == 3 || i == 10;
+        if (insertionPoint && addIndex < additions.length) {
+          output.add(additions[addIndex++]);
+        }
+      }
+      while (addIndex < additions.length && output.length < echoes.length) {
+        output.add(additions[addIndex++]);
+      }
+
+      return output.take(echoes.length).toList();
+    } catch (e) {
+      AppLogger.warn('feed: followed-liked injection skipped $e');
+      return echoes;
+    }
+  }
+
+  Future<List<EchoEntity>> _attachSocialContext(List<EchoEntity> echoes) async {
+    try {
+      final client = Supabase.instance.client;
+      final userId = client.auth.currentUser?.id;
+      if (userId == null) return echoes;
+
+      final followRows = await client
+          .from('user_follows')
+          .select('following_id')
+          .eq('follower_id', userId);
+      final followingIds = List<Map<String, dynamic>>.from(followRows as List)
+          .map((row) => row['following_id'] as String?)
+          .whereType<String>()
+          .toSet();
+      if (followingIds.isEmpty) return echoes;
+
+      final echoIds = echoes.map((echo) => echo.id).join(',');
+      final followedIds = followingIds.join(',');
+      final rows = await client
+          .from('echo_interactions')
+          .select('''
+            echo_id, user_id, created_at,
+            users_public!inner(username, display_name)
+          ''')
+          .filter('echo_id', 'in', '($echoIds)')
+          .filter('user_id', 'in', '($followedIds)')
+          .eq('type', 'support')
+          .order('created_at', ascending: false)
+          .limit(80);
+
+      final byEcho = <String, List<Map<String, dynamic>>>{};
+      for (final raw in rows as List) {
+        final row = raw as Map<String, dynamic>;
+        final echoId = row['echo_id'] as String?;
+        if (echoId == null) continue;
+        byEcho.putIfAbsent(echoId, () => []).add(row);
+      }
+
+      return echoes.map((echo) {
+        final likers = byEcho[echo.id] ?? const <Map<String, dynamic>>[];
+        if (likers.isEmpty) return echo;
+
+        final visible = likers
+            .where((row) => row['user_id'] != echo.userId)
+            .take(3)
+            .toList();
+        if (visible.isEmpty) return echo;
+
+        final firstUser = visible.first['users_public'] as Map<String, dynamic>;
+        final firstName =
+            (firstUser['display_name'] as String?)?.trim().isNotEmpty == true
+                ? firstUser['display_name'] as String
+                : '@${firstUser['username'] as String? ?? 'someone'}';
+        final extra = visible.length - 1;
+        final label = extra > 0
+            ? 'Liked by $firstName and $extra ${extra == 1 ? 'other' : 'others'} you follow'
+            : 'Liked by $firstName';
+        return echo.copyWith(socialContext: label);
+      }).toList();
+    } catch (e) {
+      AppLogger.warn('feed: social context skipped $e');
+      return echoes;
+    }
+  }
+
+  Future<List<EchoEntity>> _attachReplyPreviews(List<EchoEntity> echoes) async {
+    try {
+      final withReplies = echoes.where((echo) => echo.replyCount > 0).toList();
+      if (withReplies.isEmpty) return echoes;
+
+      final echoIds = withReplies.map((echo) => echo.id).join(',');
+      final rows = await Supabase.instance.client
+          .from('echo_replies')
+          .select('''
+            id, echo_id, user_id, content, parent_reply_id, created_at,
+            like_count, child_reply_count,
+            users_public!inner(
+              id, username, display_name, avatar_url, trust_tier, is_pro
+            )
+          ''')
+          .filter('echo_id', 'in', '($echoIds)')
+          .order('created_at', ascending: false)
+          .limit(80);
+
+      final byEcho = <String, EchoReplyPreview>{};
+      for (final raw in rows as List) {
+        final row = raw as Map<String, dynamic>;
+        if (row['parent_reply_id'] != null) continue;
+        final echoId = row['echo_id'] as String?;
+        if (echoId == null || byEcho.containsKey(echoId)) continue;
+        final user = row['users_public'] as Map<String, dynamic>? ?? {};
+        final username = user['username'] as String? ?? 'unknown';
+        final displayName =
+            (user['display_name'] as String?)?.trim().isNotEmpty == true
+                ? user['display_name'] as String
+                : username;
+        final trustTier = user['trust_tier'] as String? ?? 'unverified';
+        byEcho[echoId] = EchoReplyPreview(
+          id: row['id'] as String,
+          content: row['content'] as String? ?? '',
+          username: username,
+          displayName: displayName,
+          userId: row['user_id'] as String? ?? user['id'] as String? ?? '',
+          avatarUrl: user['avatar_url'] as String?,
+          userTrustTier: trustTier,
+          userIsVerified: trustTier == 'high' || trustTier == 'elite',
+          userIsPro: user['is_pro'] as bool? ?? false,
+          likeCount: (row['like_count'] as num?)?.toInt() ?? 0,
+          childReplyCount: (row['child_reply_count'] as num?)?.toInt() ?? 0,
+          createdAt: _parseDate(row['created_at']),
+        );
+      }
+
+      return echoes
+          .map((echo) => echo.copyWith(
+                previewReplies:
+                    byEcho[echo.id] == null ? const [] : [byEcho[echo.id]!],
+              ))
+          .toList();
+    } catch (e) {
+      AppLogger.warn('feed: reply previews skipped $e');
+      return echoes;
+    }
+  }
+
   EchoEntity _mapToEntity(Map<String, dynamic> row, Map<String, dynamic> user) {
     final created =
         DateTime.tryParse(row['created_at'] as String? ?? '') ?? DateTime.now();
+    final trustTier = user['trust_tier'] as String? ?? 'unverified';
 
     return EchoEntity(
       id: row['id'] as String,
@@ -296,8 +564,10 @@ class EchoFeedService extends ChangeNotifier {
           (user['display_name'] as String?)?.trim().isNotEmpty == true
               ? user['display_name'] as String
               : user['username'] as String,
-      userTrustTier: user['trust_tier'] as String? ?? 'unverified',
-      userIsVerified: user['is_identity_verified'] as bool? ?? false,
+      userTrustTier: trustTier,
+      userIsVerified: (user['is_identity_verified'] as bool? ?? false) ||
+          trustTier == 'high' ||
+          trustTier == 'elite',
       userIsPro: user['is_pro'] as bool? ?? false,
       // is_identity_verified is on users_private not users_public
       // so fallback queries will return null here and default to false

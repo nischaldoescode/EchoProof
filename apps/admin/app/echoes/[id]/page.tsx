@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { notFound } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
+import { adminPath } from "@/lib/routes";
 import {
   Badge,
   Card,
@@ -262,7 +263,7 @@ function ModerationButton({
   color: string;
 }) {
   return (
-    <form action={`/api/admin/echo/${echoId}/status`} method="POST">
+    <form action={adminPath(`/api/admin/echo/${echoId}/status`)} method="POST">
       <input type="hidden" name="status" value={action} />
       <Button type="submit" color={color as any} variant="soft">
         {label}

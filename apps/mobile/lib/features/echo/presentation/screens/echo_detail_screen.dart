@@ -45,6 +45,7 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
   List<Map<String, dynamic>> _replies = [];
   bool _isLoading = true;
   bool _isRepliesLoading = true;
+  bool _previewUnavailable = false;
   String? _error;
 
   // realtime subscription
@@ -147,7 +148,8 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
           .from('echo_replies')
           .select('''
             id, content, parent_reply_id, created_at,
-            users_public!inner(id, username, display_name, avatar_url, trust_tier)
+            like_count, child_reply_count,
+            users_public!inner(id, username, display_name, avatar_url, trust_tier, is_pro)
           ''')
           .eq('echo_id', widget.echoId)
           .order('created_at', ascending: true)
@@ -218,6 +220,7 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
     final user = row['users_public'] as Map<String, dynamic>;
     final created =
         DateTime.tryParse(row['created_at'] as String? ?? '') ?? DateTime.now();
+    final trustTier = user['trust_tier'] as String? ?? 'unverified';
 
     return EchoEntity(
       id: row['id'] as String,
@@ -228,8 +231,8 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
           (user['display_name'] as String?)?.trim().isNotEmpty == true
               ? user['display_name'] as String
               : user['username'] as String,
-      userTrustTier: user['trust_tier'] as String? ?? 'unverified',
-      userIsVerified: false,
+      userTrustTier: trustTier,
+      userIsVerified: trustTier == 'high' || trustTier == 'elite',
       userIsPro: user['is_pro'] as bool? ?? false,
       userAvatarUrl: user['avatar_url'] as String?,
       userId: row['user_id'] as String? ?? '',
@@ -308,6 +311,7 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
 
     final previewUrl =
         extractFirstUrl('${displayed.title}\n${displayed.content}');
+    final hideUrlText = previewUrl != null && !_previewUnavailable;
 
     return Scaffold(
       backgroundColor: AppColors.white,
@@ -387,6 +391,17 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                                           style: AppTypography
                                               .textTheme.titleSmall,
                                         ),
+                                        if (displayed.userIsVerified ||
+                                            displayed.userIsPro)
+                                          Padding(
+                                            padding:
+                                                const EdgeInsets.only(top: 2),
+                                            child: _InlineDetailBadge(
+                                              isVerified:
+                                                  displayed.userIsVerified,
+                                              isPro: displayed.userIsPro,
+                                            ),
+                                          ),
                                         Text(
                                           '@${displayed.username} · ${displayed.timeAgo}',
                                           maxLines: 1,
@@ -415,6 +430,7 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                             height: 1.15,
                             color: AppColors.charcoal,
                           ),
+                          hideUrls: hideUrlText,
                         ),
                         const SizedBox(height: AppSpacing.md),
                       ],
@@ -422,12 +438,18 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                       RichTextDisplay(
                         text: displayed.content,
                         style: AppTypography.textTheme.bodyLarge,
+                        hideUrls: hideUrlText,
                       ),
 
                       if (previewUrl != null)
                         EchoLinkPreview(
                           url: previewUrl,
                           variant: EchoLinkPreviewVariant.detail,
+                          onUnavailable: () {
+                            if (mounted) {
+                              setState(() => _previewUnavailable = true);
+                            }
+                          },
                         ),
 
                       if (displayed.mediaUrls.isNotEmpty) ...[
@@ -551,6 +573,52 @@ class _EchoDetailAppBarTitle extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: AppTypography.textTheme.labelSmall?.copyWith(
             color: AppColors.textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _InlineDetailBadge extends StatelessWidget {
+  const _InlineDetailBadge({
+    required this.isVerified,
+    required this.isPro,
+  });
+
+  final bool isVerified;
+  final bool isPro;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isVerified ? AppColors.fernGreen : const Color(0xFFFFB300);
+    final label = isVerified && isPro
+        ? context.l('Verified Pro')
+        : isVerified
+            ? context.l('Verified')
+            : context.l('Pro');
+    final icon = isPro && !isVerified
+        ? Icons.workspace_premium_rounded
+        : Icons.verified_rounded;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 15,
+          height: 15,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 10, color: Colors.white),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: AppTypography.textTheme.labelSmall?.copyWith(
+            color: AppColors.textSecondary,
+            fontWeight: FontWeight.w700,
           ),
         ),
       ],
@@ -866,13 +934,30 @@ class _RepliesPreviewSection extends StatelessWidget {
   }
 }
 
-class _InlineReply extends StatelessWidget {
+class _InlineReply extends StatefulWidget {
   const _InlineReply({required this.reply});
 
   final Map<String, dynamic> reply;
 
   @override
+  State<_InlineReply> createState() => _InlineReplyState();
+}
+
+class _InlineReplyState extends State<_InlineReply> {
+  bool _previewUnavailable = false;
+
+  @override
+  void didUpdateWidget(covariant _InlineReply oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.reply['id'] != widget.reply['id'] ||
+        oldWidget.reply['content'] != widget.reply['content']) {
+      _previewUnavailable = false;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final reply = widget.reply;
     final user = reply['users_public'] as Map<String, dynamic>? ?? {};
     final username = user['username'] as String? ?? 'unknown';
     final displayName =
@@ -882,6 +967,14 @@ class _InlineReply extends StatelessWidget {
     final avatarUrl = user['avatar_url'] as String?;
     final created = DateTime.tryParse(reply['created_at'] as String? ?? '') ??
         DateTime.now();
+    final content = reply['content'] as String? ?? '';
+    final previewUrl = extractFirstUrl(content);
+    final hideUrlText = previewUrl != null && !_previewUnavailable;
+    final likeCount = (reply['like_count'] as num?)?.toInt() ?? 0;
+    final childReplyCount = (reply['child_reply_count'] as num?)?.toInt() ?? 0;
+    final isPro = user['is_pro'] as bool? ?? false;
+    final trustTier = user['trust_tier'] as String? ?? 'unverified';
+    final isTrusted = trustTier == 'high' || trustTier == 'elite';
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
@@ -893,7 +986,10 @@ class _InlineReply extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _VerifiedAvatar(avatarUrl: avatarUrl, isVerified: false),
+          _VerifiedAvatar(
+            avatarUrl: avatarUrl,
+            isVerified: isPro || isTrusted,
+          ),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Column(
@@ -910,6 +1006,18 @@ class _InlineReply extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: AppSpacing.xs),
+                    if (isPro || isTrusted) ...[
+                      Icon(
+                        isPro
+                            ? Icons.workspace_premium_rounded
+                            : Icons.verified_rounded,
+                        size: 14,
+                        color: isPro
+                            ? const Color(0xFFFFB300)
+                            : AppColors.fernGreen,
+                      ),
+                      const SizedBox(width: AppSpacing.xs),
+                    ],
                     Expanded(
                       child: Text(
                         '@$username · ${Formatters.timeAgo(created)}',
@@ -922,9 +1030,53 @@ class _InlineReply extends StatelessWidget {
                 ),
                 const SizedBox(height: AppSpacing.xs),
                 RichTextDisplay(
-                  text: reply['content'] as String? ?? '',
+                  text: content,
                   style: AppTypography.textTheme.bodyMedium,
+                  hideUrls: hideUrlText,
                 ),
+                if (previewUrl != null)
+                  EchoLinkPreview(
+                    url: previewUrl,
+                    variant: EchoLinkPreviewVariant.compact,
+                    onUnavailable: () {
+                      if (mounted) {
+                        setState(() => _previewUnavailable = true);
+                      }
+                    },
+                  ),
+                if (likeCount > 0 || childReplyCount > 0) ...[
+                  const SizedBox(height: AppSpacing.xs),
+                  Row(
+                    children: [
+                      if (likeCount > 0) ...[
+                        const Icon(
+                          Icons.favorite_rounded,
+                          size: 14,
+                          color: AppColors.sunsetCoral,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          Formatters.compactNumber(likeCount),
+                          style: AppTypography.textTheme.labelSmall,
+                        ),
+                      ],
+                      if (likeCount > 0 && childReplyCount > 0)
+                        const SizedBox(width: AppSpacing.md),
+                      if (childReplyCount > 0) ...[
+                        const Icon(
+                          Icons.mode_comment_outlined,
+                          size: 14,
+                          color: AppColors.textTertiary,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          Formatters.compactNumber(childReplyCount),
+                          style: AppTypography.textTheme.labelSmall,
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
               ],
             ),
           ),

@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   Trash2,
 } from "lucide-react";
+import { adminPath } from "@/lib/routes";
 
 type EchoStatus = "under_review" | "hidden" | "rejected";
 
@@ -103,7 +104,7 @@ export function ReportQueue({ reports }: ReportQueueProps) {
 
   async function resolveEchoReports(echoId: string) {
     setLoading(`resolve:${echoId}`);
-    await fetch("/api/admin/reports/resolve", {
+    await fetch(adminPath("/api/admin/reports/resolve"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ echo_id: echoId }),
@@ -119,7 +120,7 @@ export function ReportQueue({ reports }: ReportQueueProps) {
     resolveReports: boolean,
   ) {
     setLoading(`${status}:${echoId}`);
-    await fetch(`/api/admin/echo/${echoId}/status`, {
+    await fetch(adminPath(`/api/admin/echo/${echoId}/status`), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

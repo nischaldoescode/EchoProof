@@ -27,48 +27,54 @@ class AvatarWithBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        // Verified ring
-        if (badgeType != BadgeType.none)
-          Container(
-            width: radius * 2 + 4,
-            height: radius * 2 + 4,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                colors: badgeType == BadgeType.verifiedPro
-                    ? [const Color(0xFF1DA1F2), const Color(0xFF0D47A1)]
-                    : [AppColors.fernGreen, AppColors.fernGreenDark],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+    final size = radius * 2 + (badgeType == BadgeType.none ? 0 : 4);
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          // Verified ring
+          if (badgeType != BadgeType.none)
+            Container(
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: badgeType == BadgeType.verifiedPro
+                      ? [const Color(0xFF1DA1F2), const Color(0xFF0D47A1)]
+                      : [AppColors.fernGreen, AppColors.fernGreenDark],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
               ),
             ),
-          ),
-        Positioned(
-          left: badgeType != BadgeType.none ? 2 : 0,
-          top: badgeType != BadgeType.none ? 2 : 0,
-          child: CircleAvatar(
-            radius: radius,
-            backgroundColor: AppColors.softSand,
-            backgroundImage: (avatarUrl != null && avatarUrl!.isNotEmpty)
-                ? NetworkImage(avatarUrl!)
-                : null,
-            child: (avatarUrl == null || avatarUrl!.isEmpty)
-                ? Icon(Icons.person_outline,
-                    size: radius * 0.7, color: AppColors.textTertiary)
-                : null,
-          ),
-        ),
-        // Badge dot
-        if (badgeType != BadgeType.none)
           Positioned(
-            right: 0,
-            bottom: 0,
-            child: _AnimatedBadgeDot(type: badgeType),
+            left: badgeType != BadgeType.none ? 2 : 0,
+            top: badgeType != BadgeType.none ? 2 : 0,
+            child: CircleAvatar(
+              radius: radius,
+              backgroundColor: AppColors.softSand,
+              backgroundImage: (avatarUrl != null && avatarUrl!.isNotEmpty)
+                  ? NetworkImage(avatarUrl!)
+                  : null,
+              child: (avatarUrl == null || avatarUrl!.isEmpty)
+                  ? Icon(Icons.person_outline,
+                      size: radius * 0.7, color: AppColors.textTertiary)
+                  : null,
+            ),
           ),
-      ],
+          // Badge dot
+          if (badgeType != BadgeType.none)
+            Positioned(
+              right: 0,
+              bottom: 0,
+              child: _AnimatedBadgeDot(type: badgeType),
+            ),
+        ],
+      ),
     );
   }
 }

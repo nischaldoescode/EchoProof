@@ -15,6 +15,7 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
+import { adminPath } from "@/lib/routes";
 
 const nav: Array<{
   href: string;
@@ -53,7 +54,7 @@ export function Sidebar() {
   async function handleSignOut() {
     const supabase = createBrowserClient();
     await supabase.auth.signOut();
-    router.push("/login");
+    router.push(adminPath("/login"));
   }
 
   return (

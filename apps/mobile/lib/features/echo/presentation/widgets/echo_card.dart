@@ -24,6 +24,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../shared/widgets/image_viewer.dart';
 import '../../../../core/services/video_playback_coordinator.dart';
+import '../../../../core/utils/formatters.dart';
 import 'echo_video_player.dart';
 import 'link_preview_card.dart';
 
@@ -46,6 +47,7 @@ class _EchoCardState extends State<EchoCard> {
   String? _translatedTitle;
   bool _isTranslating = false;
   bool _showTranslated = false;
+  bool _previewUnavailable = false;
 
   DateTime? _visibleSince;
   static const _dwellThreshold = Duration(seconds: 3);
@@ -53,13 +55,27 @@ class _EchoCardState extends State<EchoCard> {
   EchoEntity get echo => widget.echo;
   VoidCallback? get onTap => widget.onTap;
 
+  @override
+  void didUpdateWidget(covariant EchoCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.echo.id != widget.echo.id) {
+      _previewUnavailable = false;
+    }
+  }
+
   void _openAuthorProfile() {
+    _openProfile(echo.username, userId: echo.userId);
+  }
+
+  void _openProfile(String username, {String? userId}) {
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
-    if (echo.userId.isNotEmpty && echo.userId == currentUserId) {
+    if (userId != null && userId.isNotEmpty && userId == currentUserId) {
       context.push('/profile');
       return;
     }
-    context.push('/profile/${Uri.encodeComponent(echo.username)}');
+    if (username.trim().isNotEmpty) {
+      context.push('/profile/${Uri.encodeComponent(username)}');
+    }
   }
 
   Future<void> _translate() async {
@@ -117,6 +133,7 @@ class _EchoCardState extends State<EchoCard> {
   @override
   Widget build(BuildContext context) {
     final previewUrl = extractFirstUrl('${echo.title}\n${echo.content}');
+    final hideUrlText = previewUrl != null && !_previewUnavailable;
 
     return VisibilityDetector(
       key: Key('echo_card_${echo.id}'),
@@ -168,6 +185,10 @@ class _EchoCardState extends State<EchoCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (echo.socialContext != null) ...[
+                      _SocialContextPill(label: echo.socialContext!),
+                      const SizedBox(height: 5),
+                    ],
                     _TweetHeader(echo: echo, onAuthorTap: _openAuthorProfile),
                     const SizedBox(height: AppSpacing.xs),
                     if (echo.title.isNotEmpty) ...[
@@ -178,6 +199,7 @@ class _EchoCardState extends State<EchoCard> {
                         style: AppTypography.textTheme.titleMedium,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
+                        hideUrls: hideUrlText,
                       ),
                       const SizedBox(height: AppSpacing.xs),
                     ],
@@ -186,9 +208,17 @@ class _EchoCardState extends State<EchoCard> {
                           ? _translatedContent!
                           : echo.content,
                       style: AppTypography.textTheme.bodyMedium,
+                      hideUrls: hideUrlText,
                     ),
                     if (previewUrl != null) ...[
-                      EchoLinkPreview(url: previewUrl),
+                      EchoLinkPreview(
+                        url: previewUrl,
+                        onUnavailable: () {
+                          if (mounted) {
+                            setState(() => _previewUnavailable = true);
+                          }
+                        },
+                      ),
                     ],
                     if (echo.mediaUrls.isNotEmpty) ...[
                       const SizedBox(height: AppSpacing.md),
@@ -223,6 +253,20 @@ class _EchoCardState extends State<EchoCard> {
                     ),
                     const SizedBox(height: AppSpacing.xs),
                     InteractionButtons(echo: echo, dense: true),
+                    if (echo.previewReplies.isNotEmpty) ...[
+                      const SizedBox(height: AppSpacing.sm),
+                      _ReplyPreviewCard(
+                        reply: echo.previewReplies.first,
+                        totalReplyCount: echo.replyCount,
+                        onTap: () => context.push('/echo/${echo.id}/replies'
+                            '?author=${Uri.encodeComponent(echo.username)}'
+                            '&content=${Uri.encodeComponent(echo.content)}'
+                            '&authorId=${Uri.encodeComponent(echo.userId)}'
+                            '${echo.userAvatarUrl == null ? '' : '&avatar=${Uri.encodeComponent(echo.userAvatarUrl!)}'}'),
+                        onAuthorTap: (username, userId) =>
+                            _openProfile(username, userId: userId),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -230,6 +274,237 @@ class _EchoCardState extends State<EchoCard> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _SocialContextPill extends StatelessWidget {
+  const _SocialContextPill({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const Icon(
+          Icons.favorite_rounded,
+          size: 12,
+          color: AppColors.fernGreenDark,
+        ),
+        const SizedBox(width: 5),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.josefinSans(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: AppColors.fernGreenDark,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ReplyPreviewCard extends StatefulWidget {
+  const _ReplyPreviewCard({
+    required this.reply,
+    required this.totalReplyCount,
+    required this.onTap,
+    required this.onAuthorTap,
+  });
+
+  final EchoReplyPreview reply;
+  final int totalReplyCount;
+  final VoidCallback onTap;
+  final void Function(String username, String? userId) onAuthorTap;
+
+  @override
+  State<_ReplyPreviewCard> createState() => _ReplyPreviewCardState();
+}
+
+class _ReplyPreviewCardState extends State<_ReplyPreviewCard> {
+  bool _previewUnavailable = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final previewUrl = extractFirstUrl(widget.reply.content);
+    final hideUrlText = previewUrl != null && !_previewUnavailable;
+    final extraReplies = widget.totalReplyCount - 1;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: widget.onTap,
+      child: Container(
+        padding: const EdgeInsets.only(top: AppSpacing.sm),
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: AppColors.borderSubtle)),
+        ),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 28,
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        width: 2,
+                        decoration: BoxDecoration(
+                          color: AppColors.borderSubtle,
+                          borderRadius: BorderRadius.circular(1),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        GestureDetector(
+                          onTap: () => widget.onAuthorTap(
+                            widget.reply.username,
+                            widget.reply.userId,
+                          ),
+                          child: AvatarWithBadge(
+                            avatarUrl: widget.reply.avatarUrl,
+                            radius: 14,
+                            badgeType: resolveBadgeType(
+                              isVerified: widget.reply.userIsVerified,
+                              isPro: widget.reply.userIsPro,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _ReplyPreviewHeader(reply: widget.reply),
+                              const SizedBox(height: 3),
+                              RichTextDisplay(
+                                text: widget.reply.content,
+                                style: AppTypography.textTheme.bodySmall,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                hideUrls: hideUrlText,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (previewUrl != null)
+                      EchoLinkPreview(
+                        url: previewUrl,
+                        onUnavailable: () {
+                          if (mounted) {
+                            setState(() => _previewUnavailable = true);
+                          }
+                        },
+                      ),
+                    const SizedBox(height: AppSpacing.xs),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.chat_bubble_outline_rounded,
+                          size: 13,
+                          color: AppColors.textTertiary,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          extraReplies > 0
+                              ? '$extraReplies more ${extraReplies == 1 ? 'reply' : 'replies'}'
+                              : 'Reply',
+                          style: GoogleFonts.josefinSans(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textTertiary,
+                          ),
+                        ),
+                        if (widget.reply.likeCount > 0) ...[
+                          const SizedBox(width: AppSpacing.md),
+                          const Icon(
+                            Icons.favorite_border_rounded,
+                            size: 13,
+                            color: AppColors.textTertiary,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${widget.reply.likeCount}',
+                            style: GoogleFonts.josefinSans(
+                              fontSize: 11,
+                              color: AppColors.textTertiary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReplyPreviewHeader extends StatelessWidget {
+  const _ReplyPreviewHeader({required this.reply});
+  final EchoReplyPreview reply;
+
+  @override
+  Widget build(BuildContext context) {
+    final created = reply.createdAt;
+    final time = created == null ? '' : ' · ${Formatters.timeAgo(created)}';
+
+    return Row(
+      children: [
+        Flexible(
+          child: Text(
+            reply.displayName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.josefinSans(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: AppColors.charcoal,
+            ),
+          ),
+        ),
+        if (reply.userIsVerified || reply.userIsPro) ...[
+          const SizedBox(width: 4),
+          _InlineAccountBadge(
+            isVerified: reply.userIsVerified,
+            isPro: reply.userIsPro,
+            size: 12,
+          ),
+        ],
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            '@${reply.username}$time',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.josefinSans(
+              fontSize: 11,
+              color: AppColors.textTertiary,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -335,10 +610,12 @@ class _ExpandableEchoText extends StatefulWidget {
   const _ExpandableEchoText({
     required this.text,
     required this.style,
+    required this.hideUrls,
   });
 
   final String text;
   final TextStyle? style;
+  final bool hideUrls;
 
   @override
   State<_ExpandableEchoText> createState() => _ExpandableEchoTextState();
@@ -370,6 +647,7 @@ class _ExpandableEchoTextState extends State<_ExpandableEchoText> {
             style: widget.style,
             maxLines: _expanded ? null : 4,
             overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+            hideUrls: widget.hideUrls,
           ),
           if (_looksLong) ...[
             const SizedBox(height: 4),
@@ -444,12 +722,10 @@ class _TweetHeader extends StatelessWidget {
             ),
           ),
           if (echo.userIsVerified || echo.userIsPro)
-            Icon(
-              echo.userIsVerified ? Icons.verified_rounded : Icons.star_rounded,
+            _InlineAccountBadge(
+              isVerified: echo.userIsVerified,
+              isPro: echo.userIsPro,
               size: 13,
-              color: echo.userIsVerified
-                  ? AppColors.fernGreen
-                  : const Color(0xFFFFB300),
             ),
           Text(
             '@${echo.username} · ${echo.timeAgo}',
@@ -551,6 +827,44 @@ class _TranslateButton extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _InlineAccountBadge extends StatelessWidget {
+  const _InlineAccountBadge({
+    required this.isVerified,
+    required this.isPro,
+    this.size = 13,
+  });
+
+  final bool isVerified;
+  final bool isPro;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final badgeType = resolveBadgeType(isVerified: isVerified, isPro: isPro);
+    final color = switch (badgeType) {
+      BadgeType.verifiedPro => AppColors.fernGreenDark,
+      BadgeType.verified => AppColors.fernGreen,
+      BadgeType.pro => const Color(0xFFFFB300),
+      BadgeType.none => AppColors.textTertiary,
+    };
+    final icon = switch (badgeType) {
+      BadgeType.pro || BadgeType.verifiedPro => Icons.workspace_premium_rounded,
+      _ => Icons.verified_rounded,
+    };
+
+    return Container(
+      width: size + 4,
+      height: size + 4,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color,
+        border: Border.all(color: Colors.white, width: 1.2),
+      ),
+      child: Icon(icon, size: size * 0.7, color: Colors.white),
     );
   }
 }
