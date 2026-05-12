@@ -27,6 +27,7 @@ declare
     'proton.me',
     'protonmail.com',
     'pm.me'
+    'echoproof.online'
   ];
 begin
   if v_email !~ $re$^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$re$ then

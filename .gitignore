@@ -123,3 +123,5 @@ supabase/config.toml
 supabase/seed/seed.sql
 firebase.json
 .solana-keypair.json
+supabase/
+apps/admin/
