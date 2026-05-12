@@ -1,1 +1,0 @@
-refresh materialized view user_category_affinity;
