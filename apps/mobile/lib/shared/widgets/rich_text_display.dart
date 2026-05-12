@@ -13,12 +13,14 @@ class RichTextDisplay extends StatelessWidget {
     this.style,
     this.maxLines,
     this.overflow,
+    this.hideUrls = false,
   });
 
   final String text;
   final TextStyle? style;
   final int? maxLines;
   final TextOverflow? overflow;
+  final bool hideUrls;
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +37,7 @@ class RichTextDisplay extends StatelessWidget {
   TextSpan _parse(String input, TextStyle base) {
     final spans = <InlineSpan>[];
     final pattern = RegExp(
-      r'\[large\]([\s\S]+?)\[/large\]|\[small\]([\s\S]+?)\[/small\]|\*\*\*([\s\S]+?)\*\*\*|\*\*([\s\S]+?)\*\*|_([\s\S]+?)_|~~([\s\S]+?)~~|(@[A-Za-z0-9_]+)|(~[A-Za-z0-9_]+)',
+      r'\[large\]([\s\S]+?)\[/large\]|\[small\]([\s\S]+?)\[/small\]|\*\*\*([\s\S]+?)\*\*\*|\*\*([\s\S]+?)\*\*|_([\s\S]+?)_|~~([\s\S]+?)~~|(https?:\/\/[^\s<>"{}|\\^`\[\]]+)|(@[A-Za-z0-9_]+)|(~[A-Za-z0-9_]+)',
       dotAll: true,
     );
 
@@ -77,16 +79,28 @@ class RichTextDisplay extends StatelessWidget {
             ).children ??
             []);
       } else if (match.group(7) != null) {
+        if (!hideUrls) {
+          spans.add(TextSpan(
+            text: match.group(7),
+            style: base.copyWith(
+              color: AppColors.fernGreenDark,
+              decoration: TextDecoration.underline,
+              decorationColor: AppColors.fernGreenDark,
+              fontWeight: FontWeight.w600,
+            ),
+          ));
+        }
+      } else if (match.group(8) != null) {
         spans.add(TextSpan(
-          text: match.group(7),
+          text: match.group(8),
           style: base.copyWith(
             color: AppColors.fernGreen,
             fontWeight: FontWeight.w600,
           ),
         ));
-      } else if (match.group(8) != null) {
+      } else if (match.group(9) != null) {
         spans.add(TextSpan(
-          text: match.group(8),
+          text: match.group(9),
           style: base.copyWith(color: AppColors.fernGreen),
         ));
       }

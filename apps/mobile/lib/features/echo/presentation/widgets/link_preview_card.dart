@@ -263,10 +263,12 @@ class EchoLinkPreview extends StatefulWidget {
     super.key,
     required this.url,
     this.variant = EchoLinkPreviewVariant.compact,
+    this.onUnavailable,
   });
 
   final String url;
   final EchoLinkPreviewVariant variant;
+  final VoidCallback? onUnavailable;
 
   @override
   State<EchoLinkPreview> createState() => _EchoLinkPreviewState();
@@ -302,6 +304,7 @@ class _EchoLinkPreviewState extends State<EchoLinkPreview> {
       final session = client.auth.currentSession;
       if (session == null) {
         setState(() => _isLoading = false);
+        widget.onUnavailable?.call();
         return;
       }
 
@@ -322,12 +325,15 @@ class _EchoLinkPreviewState extends State<EchoLinkPreview> {
           _meta = data['error'] == null ? data : null;
           _isLoading = false;
         });
+        if (data['error'] != null) widget.onUnavailable?.call();
       } else {
         setState(() => _isLoading = false);
+        widget.onUnavailable?.call();
       }
     } catch (e) {
       AppLogger.warn('echo link preview: fetch failed $e');
       if (mounted) setState(() => _isLoading = false);
+      widget.onUnavailable?.call();
     }
   }
 
@@ -346,6 +352,10 @@ class _EchoLinkPreviewState extends State<EchoLinkPreview> {
                 : _hostFor(widget.url))
             .trim();
     final displayTitle = title.isNotEmpty ? title : widget.url;
+
+    if (_meta == null) {
+      return const SizedBox.shrink();
+    }
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,

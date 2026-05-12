@@ -3,6 +3,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { isAllowedAdminEmail } from "@/lib/auth/allowlist";
+import { adminPath } from "@/lib/routes";
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -30,21 +31,23 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isLoginPage = request.nextUrl.pathname === "/login";
+  const loginPath = adminPath("/login");
+  const isLoginPage =
+    request.nextUrl.pathname === "/login" || request.nextUrl.pathname === loginPath;
   const isAllowedAdmin = isAllowedAdminEmail(user?.email);
 
   if (!user && !isLoginPage) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    return NextResponse.redirect(new URL(adminPath("/login"), request.url));
   }
 
   if (user && !isAllowedAdmin && !isLoginPage) {
-    const url = new URL("/login", request.url);
+    const url = new URL(adminPath("/login"), request.url);
     url.searchParams.set("error", "unauthorized");
     return NextResponse.redirect(url);
   }
 
   if (user && isLoginPage && isAllowedAdmin) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(new URL(adminPath("/"), request.url));
   }
 
   return response;
