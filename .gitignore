@@ -124,4 +124,6 @@ supabase/seed/seed.sql
 firebase.json
 .solana-keypair.json
 supabase/
-apps/admin/
+Echoproof/supabase
+supabse/functions
+**/supabase/
