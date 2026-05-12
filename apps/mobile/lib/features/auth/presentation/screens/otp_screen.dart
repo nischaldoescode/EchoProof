@@ -19,12 +19,13 @@ class OtpScreen extends StatefulWidget {
 
 class _OtpScreenState extends State<OtpScreen>
     with SingleTickerProviderStateMixin {
+  static const _resendCooldownSeconds = 60;
   final _ctrl = PinInputController();
 
   bool _isVerifying = false;
   bool _hasError = false;
   bool _canResend = false;
-  int _resendSecs = 20;
+  int _resendSecs = _resendCooldownSeconds;
 
   late final AnimationController _shakeCtrl;
   late final Animation<double> _shakeAnim;
@@ -52,7 +53,7 @@ class _OtpScreenState extends State<OtpScreen>
   void _startTimer() {
     setState(() {
       _canResend = false;
-      _resendSecs = 20;
+      _resendSecs = _resendCooldownSeconds;
     });
     _tick();
   }
@@ -281,11 +282,32 @@ class _OtpScreenState extends State<OtpScreen>
                     Center(
                       child: TextButton(
                         onPressed: _canResend
-                            ? () {
-                                context.read<AuthService>().resendOtp(
-                                      email: widget.email,
-                                    );
-                                _startTimer();
+                            ? () async {
+                                setState(() => _canResend = false);
+                                final auth = context.read<AuthService>();
+                                final sent = await auth.resendOtp(
+                                  email: widget.email,
+                                );
+                                if (!mounted) return;
+                                if (sent) {
+                                  _startTimer();
+                                } else {
+                                  setState(() => _canResend = true);
+                                  ScaffoldMessenger.of(context)
+                                    ..hideCurrentSnackBar()
+                                    ..showSnackBar(SnackBar(
+                                      content: Text(
+                                        auth.error ??
+                                            'Could not resend the code.',
+                                        style: GoogleFonts.josefinSans(
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      backgroundColor: AppColors.sunsetCoral,
+                                      behavior: SnackBarBehavior.floating,
+                                      duration: const Duration(seconds: 3),
+                                    ));
+                                }
                               }
                             : null,
                         child: Text(

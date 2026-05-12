@@ -9,6 +9,7 @@ import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/logger.dart';
+import '../../../../shared/widgets/rich_text_display.dart';
 import 'package:go_router/go_router.dart';
 
 class EchoRepliesScreen extends StatefulWidget {
@@ -101,7 +102,7 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
           .from('echo_replies')
           .select('''
             id, content, parent_reply_id, created_at, mentioned_users,
-            users_public!inner(id, username, avatar_url, trust_tier)
+            users_public!inner(id, username, display_name, avatar_url, trust_tier)
           ''')
           .eq('echo_id', widget.echoId)
           .order('created_at', ascending: true);
@@ -197,7 +198,7 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
         elevation: 0,
         scrolledUnderElevation: 0.5,
         shadowColor: AppColors.borderSubtle,
-        title: Text('Replies', style: AppTypography.textTheme.titleLarge),
+        title: Text('Thread', style: AppTypography.textTheme.titleLarge),
         foregroundColor: AppColors.charcoal,
       ),
       body: Column(
@@ -210,35 +211,41 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
                       color: AppColors.fernGreen,
                     ),
                   )
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.only(bottom: 16),
-                    itemCount: topLevel.length + 1,
-                    itemBuilder: (context, index) {
-                      if (index == 0) {
-                        return _OriginalEchoHeader(
-                          authorUsername: widget.echoAuthorUsername,
-                          authorAvatarUrl: widget.echoAuthorAvatarUrl,
-                          authorId: widget.echoAuthorId,
-                          content: widget.echoContent,
+                : RefreshIndicator(
+                    color: AppColors.fernGreen,
+                    onRefresh: _loadReplies,
+                    child: ListView.builder(
+                      controller: _scrollController,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.only(bottom: 16),
+                      itemCount: topLevel.length + 1,
+                      itemBuilder: (context, index) {
+                        if (index == 0) {
+                          return _OriginalEchoHeader(
+                            authorUsername: widget.echoAuthorUsername,
+                            authorAvatarUrl: widget.echoAuthorAvatarUrl,
+                            authorId: widget.echoAuthorId,
+                            content: widget.echoContent,
+                            onAuthorTap: (username, userId) =>
+                                _openProfile(username, userId: userId),
+                          );
+                        }
+                        final reply = topLevel[index - 1];
+                        final children = _replies
+                            .where((r) => r['parent_reply_id'] == reply['id'])
+                            .toList();
+
+                        return _ReplyThread(
+                          reply: reply,
+                          children: children,
+                          onReply: (id, username) =>
+                              _setReplyingTo(id, username),
                           onAuthorTap: (username, userId) =>
                               _openProfile(username, userId: userId),
+                          isLastTop: index == topLevel.length,
                         );
-                      }
-                      final reply = topLevel[index - 1];
-                      final children = _replies
-                          .where((r) => r['parent_reply_id'] == reply['id'])
-                          .toList();
-
-                      return _ReplyThread(
-                        reply: reply,
-                        children: children,
-                        onReply: (id, username) => _setReplyingTo(id, username),
-                        onAuthorTap: (username, userId) =>
-                            _openProfile(username, userId: userId),
-                        isLastTop: index == topLevel.length,
-                      );
-                    },
+                      },
+                    ),
                   ),
           ),
           _ReplyInput(
@@ -303,8 +310,8 @@ class _OriginalEchoHeader extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.md),
-          Text(
-            content,
+          RichTextDisplay(
+            text: content,
             style: AppTypography.textTheme.bodyLarge,
           ),
           const SizedBox(height: AppSpacing.md),
@@ -338,6 +345,10 @@ class _ReplyThread extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = reply['users_public'] as Map<String, dynamic>;
     final username = user['username'] as String;
+    final displayName =
+        (user['display_name'] as String?)?.trim().isNotEmpty == true
+            ? user['display_name'] as String
+            : username;
     final avatarUrl = user['avatar_url'] as String?;
     final isVerified = false;
     final created = DateTime.tryParse(reply['created_at'] as String? ?? '') ??
@@ -392,14 +403,18 @@ class _ReplyThread extends StatelessWidget {
                           GestureDetector(
                             onTap: () => onAuthorTap(username, userId),
                             child: Text(
-                              '@$username',
+                              displayName,
                               style: AppTypography.textTheme.titleSmall,
                             ),
                           ),
                           const SizedBox(width: AppSpacing.sm),
-                          Text(
-                            Formatters.timeAgo(created),
-                            style: AppTypography.textTheme.labelMedium,
+                          Expanded(
+                            child: Text(
+                              '@$username · ${Formatters.timeAgo(created)}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppTypography.textTheme.labelMedium,
+                            ),
                           ),
                         ],
                       ),
@@ -451,6 +466,10 @@ class _NestedReply extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = reply['users_public'] as Map<String, dynamic>;
     final username = user['username'] as String;
+    final displayName =
+        (user['display_name'] as String?)?.trim().isNotEmpty == true
+            ? user['display_name'] as String
+            : username;
     final avatarUrl = user['avatar_url'] as String?;
     final isVerified = false;
     final userId = user['id'] as String?;
@@ -508,14 +527,18 @@ class _NestedReply extends StatelessWidget {
                     GestureDetector(
                       onTap: () => onAuthorTap(username, userId),
                       child: Text(
-                        '@$username',
+                        displayName,
                         style: AppTypography.textTheme.titleSmall,
                       ),
                     ),
                     const SizedBox(width: AppSpacing.sm),
-                    Text(
-                      Formatters.timeAgo(created),
-                      style: AppTypography.textTheme.labelMedium,
+                    Expanded(
+                      child: Text(
+                        '@$username · ${Formatters.timeAgo(created)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.textTheme.labelMedium,
+                      ),
                     ),
                   ],
                 ),
@@ -548,36 +571,9 @@ class _MentionText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final words = content.split(' ');
-    return Text.rich(
-      TextSpan(
-        children: words.map((word) {
-          if (word.startsWith('@') && word.length > 1) {
-            return TextSpan(
-              text: '$word ',
-              style: GoogleFonts.josefinSans(
-                fontSize: 14,
-                color: AppColors.fernGreen,
-                fontWeight: FontWeight.w600,
-              ),
-            );
-          }
-          if (word.startsWith('~') && word.length > 1) {
-            return TextSpan(
-              text: '$word ',
-              style: GoogleFonts.josefinSans(
-                fontSize: 14,
-                color: AppColors.fernGreen,
-                fontWeight: FontWeight.w500,
-              ),
-            );
-          }
-          return TextSpan(
-            text: '$word ',
-            style: AppTypography.textTheme.bodyMedium,
-          );
-        }).toList(),
-      ),
+    return RichTextDisplay(
+      text: content,
+      style: AppTypography.textTheme.bodyMedium,
     );
   }
 }
@@ -652,6 +648,21 @@ class _ReplyInput extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    margin: const EdgeInsets.only(bottom: 3),
+                    decoration: BoxDecoration(
+                      color: AppColors.fernGreenLight,
+                      borderRadius: BorderRadius.circular(17),
+                    ),
+                    child: const Icon(
+                      Icons.mode_comment_outlined,
+                      size: 17,
+                      color: AppColors.fernGreenDark,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Container(
                       decoration: BoxDecoration(
@@ -725,27 +736,44 @@ class _ReplyInput extends StatelessWidget {
                     onTap: isSubmitting ? null : onSubmit,
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
-                      width: 40,
                       height: 40,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
                       decoration: BoxDecoration(
                         color: isSubmitting
                             ? AppColors.borderSubtle
                             : AppColors.charcoal,
-                        shape: BoxShape.circle,
+                        borderRadius: BorderRadius.circular(20),
                       ),
-                      child: isSubmitting
-                          ? const Padding(
-                              padding: EdgeInsets.all(10),
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: AppColors.white,
+                      child: Center(
+                        child: isSubmitting
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppColors.white,
+                                ),
+                              )
+                            : Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'Reply',
+                                    style: GoogleFonts.josefinSans(
+                                      color: AppColors.white,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const Icon(
+                                    Icons.arrow_upward_rounded,
+                                    color: AppColors.white,
+                                    size: 17,
+                                  ),
+                                ],
                               ),
-                            )
-                          : const Icon(
-                              Icons.arrow_upward_rounded,
-                              color: AppColors.white,
-                              size: 20,
-                            ),
+                      ),
                     ),
                   ),
                 ],

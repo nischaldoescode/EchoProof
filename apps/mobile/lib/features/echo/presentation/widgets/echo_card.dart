@@ -9,10 +9,11 @@ import '../../../../app/theme/typography.dart';
 import '../../domain/entities/echo_entity.dart';
 import '../../domain/entities/echo_status.dart';
 import 'confidence_bar.dart';
-import 'trust_badge.dart';
 import 'interaction_buttons.dart';
+import 'solana_status_chip.dart';
 import '../../../../shared/widgets/verified_badges.dart';
 import '../../../../shared/widgets/rich_text_display.dart';
+import '../../../../core/utils/media_file_safety.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
@@ -21,6 +22,7 @@ import 'dart:async' show unawaited;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../../../shared/widgets/image_viewer.dart';
 
 class EchoCard extends StatefulWidget {
   const EchoCard({
@@ -132,30 +134,37 @@ class _EchoCardState extends State<EchoCard> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOut,
-          margin: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.lg,
-            vertical: AppSpacing.sm,
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            AppSpacing.md,
+            AppSpacing.sm,
+            AppSpacing.sm,
           ),
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             color: AppColors.white,
-            borderRadius: BorderRadius.circular(AppSpacing.echoCardRadius),
-            border: Border.all(
-              color: _borderColor(echo.status),
-              width: echo.status == EchoStatus.controversial ? 1.5 : 1.2,
+            border: Border(
+              bottom: BorderSide(color: AppColors.borderSubtle),
             ),
           ),
-          child: Column(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _CardHeader(echo: echo, onAuthorTap: _openAuthorProfile),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.lg,
-                  vertical: AppSpacing.sm,
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _openAuthorProfile,
+                child: _AvatarWithRing(
+                  avatarUrl: echo.userAvatarUrl,
+                  userIsVerified: echo.userIsVerified,
+                  userIsPro: echo.userIsPro,
                 ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    _TweetHeader(echo: echo, onAuthorTap: _openAuthorProfile),
+                    const SizedBox(height: AppSpacing.xs),
                     if (echo.title.isNotEmpty) ...[
                       RichTextDisplay(
                         text: _showTranslated && _translatedTitle != null
@@ -167,94 +176,49 @@ class _EchoCardState extends State<EchoCard> {
                       ),
                       const SizedBox(height: AppSpacing.xs),
                     ],
-                    RichTextDisplay(
+                    _ExpandableEchoText(
                       text: _showTranslated && _translatedContent != null
                           ? _translatedContent!
                           : echo.content,
                       style: AppTypography.textTheme.bodyMedium,
-                      maxLines: 4,
-                      overflow: TextOverflow.ellipsis,
                     ),
                     if (echo.mediaUrls.isNotEmpty) ...[
                       const SizedBox(height: AppSpacing.md),
                       _EchoMediaPreview(urls: echo.mediaUrls),
                     ],
-
-                    const SizedBox(height: AppSpacing.xs),
-                    // Translation toggle button.
-                    GestureDetector(
-                      onTap: _translate,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (_isTranslating)
-                            const SizedBox(
-                              width: 10,
-                              height: 10,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 1.5, color: AppColors.fernGreen),
-                            )
-                          else
-                            Icon(
-                              _showTranslated
-                                  ? Icons.language
-                                  : Icons.translate_rounded,
-                              size: 12,
-                              color: AppColors.textTertiary,
-                            ),
-                          const SizedBox(width: 4),
-                          Text(
-                            _showTranslated ? 'Show original' : 'Translate',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: AppColors.textTertiary,
-                              fontFamily: 'Josefin Sans',
-                            ),
-                          ),
-                        ],
-                      ),
+                    const SizedBox(height: AppSpacing.sm),
+                    Wrap(
+                      spacing: AppSpacing.xs,
+                      runSpacing: AppSpacing.xs,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        _StatusLabel(status: echo.status),
+                        SolanaStatusChip(
+                          status: echo.solanaStatus,
+                          signature: echo.createdRecordTx,
+                        ),
+                        _TranslateButton(
+                          isTranslating: _isTranslating,
+                          showTranslated: _showTranslated,
+                          onTap: _translate,
+                        ),
+                      ],
                     ),
+                    const SizedBox(height: AppSpacing.sm),
+                    ConfidenceBar(
+                      confidence: echo.confidenceScore,
+                      status: echo.status,
+                    ),
+                    const SizedBox(height: AppSpacing.xs),
+                    InteractionButtons(echo: echo, dense: true),
                   ],
                 ),
               ),
-              _StatusLabel(status: echo.status),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.lg,
-                  vertical: AppSpacing.sm,
-                ),
-                child: ConfidenceBar(
-                  confidence: echo.confidenceScore,
-                  status: echo.status,
-                ),
-              ),
-              const Divider(
-                height: 1,
-                indent: AppSpacing.lg,
-                endIndent: AppSpacing.lg,
-              ),
-              InteractionButtons(echo: echo),
             ],
           ),
         ),
       ),
     );
-  }
-
-  Color _borderColor(EchoStatus status) {
-    return switch (status) {
-      EchoStatus.verified => AppColors.fernGreen.withValues(alpha: 0.4),
-      EchoStatus.disputed => AppColors.sunsetCoral.withValues(alpha: 0.4),
-      EchoStatus.controversial =>
-        AppColors.statusControversial.withValues(alpha: 0.4),
-      EchoStatus.underReview =>
-        AppColors.statusUnderReview.withValues(alpha: 0.3),
-      EchoStatus.pendingVerification =>
-        const Color(0xFF9B59B6).withValues(alpha: 0.3),
-      EchoStatus.active => const Color(0xFF3498DB).withValues(alpha: 0.3),
-      EchoStatus.hidden => AppColors.borderSubtle,
-      EchoStatus.rejected => AppColors.borderSubtle,
-    };
   }
 }
 
@@ -264,8 +228,7 @@ class _EchoMediaPreview extends StatelessWidget {
   final List<String> urls;
 
   bool _isVideo(String url) {
-    final lower = url.toLowerCase();
-    return lower.endsWith('.mp4') || lower.endsWith('.mov');
+    return MediaFileSafety.isVideoPath(url);
   }
 
   @override
@@ -280,8 +243,12 @@ class _EchoMediaPreview extends StatelessWidget {
           children: [
             for (int i = 0; i < visible.length; i++) ...[
               Expanded(
-                  child: _MediaTile(
-                      url: visible[i], isVideo: _isVideo(visible[i]))),
+                child: _MediaTile(
+                  url: visible[i],
+                  urls: urls,
+                  isVideo: _isVideo(visible[i]),
+                ),
+              ),
               if (i != visible.length - 1) const SizedBox(width: 2),
             ],
           ],
@@ -292,9 +259,14 @@ class _EchoMediaPreview extends StatelessWidget {
 }
 
 class _MediaTile extends StatelessWidget {
-  const _MediaTile({required this.url, required this.isVideo});
+  const _MediaTile({
+    required this.url,
+    required this.urls,
+    required this.isVideo,
+  });
 
   final String url;
+  final List<String> urls;
   final bool isVideo;
 
   @override
@@ -309,56 +281,139 @@ class _MediaTile extends StatelessWidget {
       );
     }
 
-    return CachedNetworkImage(
-      imageUrl: url,
-      fit: BoxFit.cover,
-      width: double.infinity,
-      height: double.infinity,
-      placeholder: (_, __) => Container(color: AppColors.softSand),
-      errorWidget: (_, __, ___) => Container(
-        color: AppColors.softSand,
-        child: const Icon(Icons.broken_image_outlined,
-            color: AppColors.textTertiary),
+    final imageUrls = urls.where((u) => !_isVideoUrl(u)).toList();
+    final imageIndex =
+        imageUrls.indexOf(url).clamp(0, imageUrls.length - 1).toInt();
+
+    return GestureDetector(
+      onTap: () => ImageViewer.show(
+        context,
+        urls: imageUrls,
+        initialIndex: imageIndex,
+      ),
+      child: CachedNetworkImage(
+        imageUrl: url,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        placeholder: (_, __) => Container(color: AppColors.softSand),
+        errorWidget: (_, __, ___) => Container(
+          color: AppColors.softSand,
+          child: const Icon(Icons.broken_image_outlined,
+              color: AppColors.textTertiary),
+        ),
+      ),
+    );
+  }
+
+  bool _isVideoUrl(String value) {
+    return MediaFileSafety.isVideoPath(value);
+  }
+}
+
+class _ExpandableEchoText extends StatefulWidget {
+  const _ExpandableEchoText({
+    required this.text,
+    required this.style,
+  });
+
+  final String text;
+  final TextStyle? style;
+
+  @override
+  State<_ExpandableEchoText> createState() => _ExpandableEchoTextState();
+}
+
+class _ExpandableEchoTextState extends State<_ExpandableEchoText> {
+  bool _expanded = false;
+
+  bool get _looksLong =>
+      widget.text.length > 220 || '\n'.allMatches(widget.text).length >= 4;
+
+  @override
+  void didUpdateWidget(covariant _ExpandableEchoText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text) _expanded = false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topLeft,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          RichTextDisplay(
+            text: widget.text,
+            style: widget.style,
+            maxLines: _expanded ? null : 4,
+            overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+          ),
+          if (_looksLong) ...[
+            const SizedBox(height: 4),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setState(() => _expanded = !_expanded),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _expanded ? 'Fold back' : 'Keep reading',
+                      style: GoogleFonts.josefinSans(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.fernGreenDark,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    AnimatedRotation(
+                      turns: _expanded ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 180),
+                      child: const Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        size: 15,
+                        color: AppColors.fernGreenDark,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
 }
 
-class _CardHeader extends StatelessWidget {
-  const _CardHeader({required this.echo, required this.onAuthorTap});
+class _TweetHeader extends StatelessWidget {
+  const _TweetHeader({required this.echo, required this.onAuthorTap});
   final EchoEntity echo;
   final VoidCallback onAuthorTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        AppSpacing.md,
-        AppSpacing.lg,
-        AppSpacing.xs,
-      ),
-      child: Row(
-  children: [
-    GestureDetector(
+    final displayName = echo.userDisplayName.trim().isNotEmpty
+        ? echo.userDisplayName.trim()
+        : echo.username;
+
+    return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onAuthorTap,
-      child: _AvatarWithRing(
-        avatarUrl: echo.userAvatarUrl,
-        userIsVerified: echo.userIsVerified,
-        userIsPro: echo.userIsPro,
-      ),
-    ),
-    const SizedBox(width: AppSpacing.sm),
-    Expanded(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onAuthorTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              echo.username,
+      child: Wrap(
+        spacing: 5,
+        runSpacing: 2,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 150),
+            child: Text(
+              displayName,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: GoogleFonts.josefinSans(
@@ -367,34 +422,118 @@ class _CardHeader extends StatelessWidget {
                 color: AppColors.charcoal,
               ),
             ),
-            Text(
-              echo.category.displayName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.josefinSans(
-                fontSize: 11,
-                color: AppColors.textTertiary,
-              ),
+          ),
+          if (echo.userIsVerified || echo.userIsPro)
+            Icon(
+              echo.userIsVerified ? Icons.verified_rounded : Icons.star_rounded,
+              size: 13,
+              color: echo.userIsVerified
+                  ? AppColors.fernGreen
+                  : const Color(0xFFFFB300),
             ),
-          ],
-        ),
-      ),
-    ),
-    TrustBadge(tier: echo.userTrustTier),
-    const SizedBox(width: AppSpacing.sm),
-    Text(
-      echo.timeAgo,
-      style: GoogleFonts.josefinSans(
-        fontSize: 11,
-        color: AppColors.textTertiary,
-      ),
-    ),
+          Text(
+            '@${echo.username} · ${echo.timeAgo}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.josefinSans(
+              fontSize: 11,
+              color: AppColors.textTertiary,
+            ),
+          ),
+          if (echo.userTrustTier.toLowerCase() != 'unverified')
+            _InlineTrustPill(tier: echo.userTrustTier),
         ],
       ),
     );
   }
 }
 
+class _InlineTrustPill extends StatelessWidget {
+  const _InlineTrustPill({required this.tier});
+  final String tier;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = tier.isEmpty
+        ? 'Trusted'
+        : '${tier[0].toUpperCase()}${tier.substring(1).toLowerCase()}';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.fernGreenLight,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+        border: Border.all(color: AppColors.fernGreen.withValues(alpha: 0.2)),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.josefinSans(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: AppColors.fernGreenDark,
+        ),
+      ),
+    );
+  }
+}
+
+class _TranslateButton extends StatelessWidget {
+  const _TranslateButton({
+    required this.isTranslating,
+    required this.showTranslated,
+    required this.onTap,
+  });
+
+  final bool isTranslating;
+  final bool showTranslated;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.xs,
+        ),
+        decoration: BoxDecoration(
+          color: AppColors.softSand,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isTranslating)
+              const SizedBox(
+                width: 10,
+                height: 10,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.5,
+                  color: AppColors.fernGreen,
+                ),
+              )
+            else
+              Icon(
+                showTranslated ? Icons.language : Icons.translate_rounded,
+                size: 12,
+                color: AppColors.textTertiary,
+              ),
+            const SizedBox(width: 4),
+            Text(
+              showTranslated ? 'Original' : 'Translate',
+              style: TextStyle(
+                fontSize: 10.5,
+                color: AppColors.textTertiary,
+                fontFamily: AppTypography.fontFamily,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _AvatarWithRing extends StatelessWidget {
   const _AvatarWithRing({
@@ -542,19 +681,13 @@ class _StatusLabel extends StatelessWidget {
     };
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(
-        AppSpacing.lg,
-        0,
-        AppSpacing.lg,
-        AppSpacing.sm,
-      ),
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.sm,
         vertical: AppSpacing.xs,
       ),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
       ),
       child: Text(
         label,

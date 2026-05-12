@@ -7,6 +7,7 @@ import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../core/utils/snack.dart';
+
 class IdentityVerificationScreen extends StatefulWidget {
   const IdentityVerificationScreen({super.key});
 
@@ -59,7 +60,6 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
   }
 
   bool _isLoading = false;
-  VerificationResult? _lastResult;
 
   late final AnimationController _entranceCtrl;
   late final AnimationController _pulseCtrl;
@@ -91,6 +91,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
       CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut),
     );
 
+    _subscribeToVerificationUpdates();
     _entranceCtrl.forward();
   }
 
@@ -105,7 +106,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
   // Block back navigation mid-verification
   Future<bool> _onWillPop() async {
     if (_isLoading) {
-        showInfoSnack(context, 'Please complete or cancel verification first.');
+      showInfoSnack(context, 'Please complete or cancel verification first.');
       return false;
     }
     return true;
@@ -115,7 +116,6 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
     if (_isLoading) return;
     setState(() {
       _isLoading = true;
-      _lastResult = null;
     });
 
     HapticFeedback.mediumImpact();
@@ -160,7 +160,6 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
       if (!mounted) return;
 
       setState(() {
-        _lastResult = result;
         _isLoading = false;
       });
 
@@ -219,7 +218,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
         }
       case VerificationCancelled():
         showInfoSnack(context, 'Verification Canceled');
-      
+
       case VerificationFailed(:final error):
         AppLogger.error('verification: failed ${error.type} ${error.message}');
         _showResultSheet(
@@ -241,13 +240,21 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
   }) {
     showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
       isDismissible: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 40),
+      builder: (sheetContext) => SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: EdgeInsets.fromLTRB(
+          24,
+          20,
+          24,
+          MediaQuery.viewInsetsOf(sheetContext).bottom + 40,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -346,12 +353,14 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
             child: SlideTransition(
               position: _slide,
               child: ListView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: EdgeInsets.only(
                   left: AppSpacing.xl,
                   right: AppSpacing.xl,
                   top: AppSpacing.xl,
                   // Bottom padding accounts for home gesture bar
-                  bottom: MediaQuery.of(context).padding.bottom + AppSpacing.xl,
+                  bottom: MediaQuery.paddingOf(context).bottom + AppSpacing.xxl,
                 ),
                 children: [
                   const SizedBox(height: AppSpacing.xl),
@@ -408,6 +417,12 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                     ),
                     textAlign: TextAlign.center,
                   ),
+
+                  const SizedBox(height: AppSpacing.lg),
+                  const _VerificationPillRail(),
+
+                  const SizedBox(height: AppSpacing.lg),
+                  const _VerificationTimeline(),
 
                   const SizedBox(height: AppSpacing.xxl),
 
@@ -639,6 +654,187 @@ class _BenefitRow extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VerificationPillRail extends StatelessWidget {
+  const _VerificationPillRail();
+
+  @override
+  Widget build(BuildContext context) {
+    const items = [
+      (icon: Icons.lock_outline_rounded, label: 'Private'),
+      (icon: Icons.face_retouching_natural_rounded, label: 'Human'),
+      (icon: Icons.trending_up_rounded, label: 'Trust lift'),
+    ];
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 520),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) => Opacity(
+        opacity: value,
+        child: Transform.translate(
+          offset: Offset(0, (1 - value) * 10),
+          child: child,
+        ),
+      ),
+      child: Row(
+        children: [
+          for (final item in items) ...[
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.sm,
+                  vertical: AppSpacing.sm,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.borderSubtle),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.035),
+                      blurRadius: 12,
+                      offset: const Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Icon(item.icon, size: 18, color: AppColors.fernGreenDark),
+                    const SizedBox(height: 5),
+                    Text(
+                      item.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.josefinSans(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.charcoal,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (item != items.last) const SizedBox(width: AppSpacing.sm),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _VerificationTimeline extends StatelessWidget {
+  const _VerificationTimeline();
+
+  @override
+  Widget build(BuildContext context) {
+    const steps = [
+      (
+        icon: Icons.badge_outlined,
+        title: 'Scan ID',
+        body: 'Use a clear passport, national ID, or driving licence.'
+      ),
+      (
+        icon: Icons.face_retouching_natural_rounded,
+        title: 'Liveness',
+        body: 'A quick passive face check confirms you are a real person.'
+      ),
+      (
+        icon: Icons.shield_outlined,
+        title: 'Trust update',
+        body:
+            'EchoProof receives only the verification result and updates trust.'
+      ),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+        border: Border.all(color: AppColors.borderSubtle),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.035),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          for (var i = 0; i < steps.length; i++) ...[
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: 1),
+              duration: Duration(milliseconds: 360 + (i * 90)),
+              curve: Curves.easeOutCubic,
+              builder: (context, value, child) => Opacity(
+                opacity: value,
+                child: Transform.translate(
+                  offset: Offset(0, (1 - value) * 10),
+                  child: child,
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: AppColors.fernGreenLight,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      steps[i].icon,
+                      size: 18,
+                      color: AppColors.fernGreenDark,
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          steps[i].title,
+                          style: GoogleFonts.josefinSans(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.charcoal,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          steps[i].body,
+                          style: GoogleFonts.josefinSans(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                            height: 1.45,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (i != steps.length - 1)
+              Padding(
+                padding: const EdgeInsets.only(left: 16),
+                child: Container(
+                  width: 2,
+                  height: 18,
+                  color: AppColors.borderSubtle,
+                ),
+              ),
+          ],
         ],
       ),
     );

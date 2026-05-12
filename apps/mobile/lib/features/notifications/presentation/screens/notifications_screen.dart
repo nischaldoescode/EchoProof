@@ -10,6 +10,7 @@ import '../../../../app/theme/typography.dart';
 import '../services/notification_service.dart';
 import '../../../../shared/widgets/app_bottom_nav.dart';
 import '../../../../app/app.dart';
+import '../../../../core/utils/snack.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -120,6 +121,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                           style: AppTypography
                                               .textTheme.labelMedium,
                                         ),
+                                        if (n.type == 'follow_request' &&
+                                            n.data?['handled'] != true) ...[
+                                          const SizedBox(height: AppSpacing.sm),
+                                          _FollowRequestActions(item: n),
+                                        ],
                                       ],
                                     ),
                                   ),
@@ -178,6 +184,60 @@ class _EmptyNotifications extends StatelessWidget {
   }
 }
 
+class _FollowRequestActions extends StatelessWidget {
+  const _FollowRequestActions({required this.item});
+  final NotificationItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final service = context.read<NotificationService>();
+
+    return Row(
+      children: [
+        TextButton.icon(
+          onPressed: () async {
+            try {
+              await service.acceptFollowRequest(item);
+              if (context.mounted) {
+                showSuccessSnack(context, 'Request accepted');
+              }
+            } catch (_) {
+              if (context.mounted) {
+                showErrorSnack(context, 'Could not accept request');
+              }
+            }
+          },
+          icon: const Icon(Icons.check_rounded, size: 16),
+          label: const Text('Accept'),
+          style: TextButton.styleFrom(
+            foregroundColor: AppColors.fernGreenDark,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+          ),
+        ),
+        const SizedBox(width: AppSpacing.xs),
+        TextButton.icon(
+          onPressed: () async {
+            try {
+              await service.rejectFollowRequest(item);
+              if (context.mounted) showInfoSnack(context, 'Request ignored');
+            } catch (_) {
+              if (context.mounted) {
+                showErrorSnack(context, 'Could not update request');
+              }
+            }
+          },
+          icon: const Icon(Icons.close_rounded, size: 16),
+          label: const Text('Ignore'),
+          style: TextButton.styleFrom(
+            foregroundColor: AppColors.textSecondary,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _NotificationIcon extends StatelessWidget {
   const _NotificationIcon({required this.type});
   final String type;
@@ -200,6 +260,11 @@ class _NotificationIcon extends StatelessWidget {
           AppColors.sunsetCoral
         ),
       'identity_verified' => (Icons.verified_user_rounded, AppColors.fernGreen),
+      'follow_request' => (Icons.person_add_alt_1_rounded, AppColors.fernGreen),
+      'follow_request_accepted' => (
+          Icons.how_to_reg_rounded,
+          AppColors.fernGreen
+        ),
       _ => (Icons.notifications_outlined, AppColors.textTertiary),
     };
 

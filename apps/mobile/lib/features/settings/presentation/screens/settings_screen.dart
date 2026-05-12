@@ -15,7 +15,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../onboarding/presentation/services/onboarding_service.dart';
 import '../../../../core/services/ad_service.dart';
 import 'package:flutter/services.dart';
-import '../../../subscription/presentation/services/subscription_service.dart';
 import '../../../../core/utils/snack.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -496,6 +495,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                       ? 'Usually takes a few minutes'
                       : null,
               color: _isVerified ? AppColors.fernGreen : null,
+              showChevron: !_isVerified && !_isVerificationPending,
               onTap: _isVerified || _isVerificationPending
                   ? () {} // Disabled — show nothing or a snack
                   : () => context.push('/verify-identity'),
@@ -515,18 +515,18 @@ class _SettingsScreenState extends State<SettingsScreen>
           ]),
           _Section(title: 'Subscription', tiles: [
             _Tile(
-              icon: Icons.star_outline_rounded,
-              label: 'Echoproof Pro',
-              trailing: const _ProBadge(),
-              onTap: () => {
-                showInfoSnack(
-                  context,
-                  'Echoproof Pro is coming soon! In the meantime,\n you can support us by sharing the app with friends.',
-                )
-              }
+                icon: Icons.star_outline_rounded,
+                label: 'Echoproof Pro',
+                trailing: const _ProBadge(),
+                onTap: () => {
+                      showInfoSnack(
+                        context,
+                        'Echoproof Pro is coming soon! In the meantime,\n you can support us by sharing the app with friends.',
+                      )
+                    }
 
-              // context.push('/subscribe'),
-            ),
+                // context.push('/subscribe'),
+                ),
           ]),
           _Section(title: 'Notifications', tiles: [
             _SwitchTile(
@@ -588,6 +588,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               icon: Icons.shield_outlined,
               label: 'End-to-end encryption',
               subtitle: 'All echoes encrypted in transit and at rest',
+              showChevron: false,
               onTap: () {},
             ),
             _Tile(
@@ -604,17 +605,26 @@ class _SettingsScreenState extends State<SettingsScreen>
             _Tile(
               icon: Icons.info_outline_rounded,
               label: 'About Echoproof',
-              onTap: () => _launchUrl('https://echoproof.online/'),
+              onTap: () => _showLinkChoiceSheet(
+                url: 'https://echoproof.online/',
+                title: 'About Echoproof',
+              ),
             ),
             _Tile(
               icon: Icons.description_outlined,
               label: 'Terms of service',
-              onTap: () => _launchUrl('https://echoproof.online/terms'),
+              onTap: () => _showLinkChoiceSheet(
+                url: 'https://echoproof.online/terms',
+                title: 'Terms of service',
+              ),
             ),
             _Tile(
               icon: Icons.privacy_tip_outlined,
               label: 'Privacy policy',
-              onTap: () => _launchUrl('https://echoproof.online/privacy'),
+              onTap: () => _showLinkChoiceSheet(
+                url: 'https://echoproof.online/privacy',
+                title: 'Privacy policy',
+              ),
             ),
             _Tile(
               icon: Icons.support_agent_rounded,
@@ -624,6 +634,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             _Tile(
               icon: Icons.code_rounded,
               label: _version.isEmpty ? 'Version...' : 'Version $_version',
+              showChevron: false,
               onTap: () {},
             ),
           ]),
@@ -674,11 +685,109 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
-  Future<void> _launchUrl(String url) async {
+  Future<void> _launchUrl(
+    String url, {
+    LaunchMode mode = LaunchMode.externalApplication,
+  }) async {
     final uri = Uri.parse(url);
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+    if (!await launchUrl(uri, mode: mode)) {
       AppLogger.warn('settings: could not launch $url');
     }
+  }
+
+  void _showLinkChoiceSheet({
+    required String url,
+    required String title,
+  }) {
+    final uri = Uri.parse(url);
+
+    showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            AppSpacing.xl,
+            AppSpacing.lg,
+            AppSpacing.xl,
+            AppSpacing.xl + MediaQuery.paddingOf(ctx).bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.borderMedium,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: 1),
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutCubic,
+                builder: (_, value, child) => Opacity(
+                  opacity: value,
+                  child: Transform.translate(
+                    offset: Offset(0, (1 - value) * 12),
+                    child: child,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Open $title?',
+                      style: GoogleFonts.josefinSans(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.charcoal,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.xs),
+                    Text(
+                      uri.host,
+                      style: GoogleFonts.josefinSans(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              _OpenLinkAction(
+                icon: Icons.open_in_browser_rounded,
+                title: 'Open in app',
+                subtitle: 'Use a secure in-app browser',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _launchUrl(url, mode: LaunchMode.inAppBrowserView);
+                },
+              ),
+              _OpenLinkAction(
+                icon: Icons.north_east_rounded,
+                title: 'Open in browser',
+                subtitle: 'Switch to your default browser',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _launchUrl(url);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _showContactSheet(BuildContext context) {
@@ -1205,7 +1314,81 @@ class _SecretDevPanelState extends State<_SecretDevPanel>
   }
 }
 
-class _Tile extends StatelessWidget {
+class _OpenLinkAction extends StatelessWidget {
+  const _OpenLinkAction({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceSecondary,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.borderSubtle),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: AppColors.fernGreenLight,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, size: 19, color: AppColors.fernGreenDark),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: GoogleFonts.josefinSans(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.charcoal,
+                      ),
+                    ),
+                    Text(
+                      subtitle,
+                      style: GoogleFonts.josefinSans(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: 17,
+                color: AppColors.textTertiary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Tile extends StatefulWidget {
   const _Tile({
     required this.icon,
     required this.label,
@@ -1213,6 +1396,7 @@ class _Tile extends StatelessWidget {
     this.subtitle,
     this.trailing,
     this.color,
+    this.showChevron = true,
   });
   final IconData icon;
   final String label;
@@ -1220,51 +1404,73 @@ class _Tile extends StatelessWidget {
   final Widget? trailing;
   final Color? color;
   final VoidCallback onTap;
+  final bool showChevron;
+
+  @override
+  State<_Tile> createState() => _TileState();
+}
+
+class _TileState extends State<_Tile> {
+  bool _pressed = false;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.lg,
-          vertical: AppSpacing.md,
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: color ?? AppColors.charcoal),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: GoogleFonts.josefinSans(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: color ?? AppColors.charcoal,
-                    ),
-                  ),
-                  if (subtitle != null)
+    return AnimatedScale(
+      scale: _pressed ? 0.985 : 1,
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOut,
+      child: InkWell(
+        onTap: widget.onTap,
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapCancel: () => setState(() => _pressed = false),
+        onTapUp: (_) => setState(() => _pressed = false),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          child: Row(
+            children: [
+              Icon(
+                widget.icon,
+                size: 20,
+                color: widget.color ?? AppColors.charcoal,
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      subtitle!,
+                      widget.label,
                       style: GoogleFonts.josefinSans(
-                        fontSize: 12,
-                        color: AppColors.textTertiary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: widget.color ?? AppColors.charcoal,
                       ),
                     ),
-                ],
-              ),
-            ),
-            trailing ??
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  size: 16,
-                  color: AppColors.textTertiary,
+                    if (widget.subtitle != null)
+                      Text(
+                        widget.subtitle!,
+                        style: GoogleFonts.josefinSans(
+                          fontSize: 12,
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
+                  ],
                 ),
-          ],
+              ),
+              widget.trailing ??
+                  (widget.showChevron
+                      ? const Icon(
+                          Icons.chevron_right_rounded,
+                          size: 16,
+                          color: AppColors.textTertiary,
+                        )
+                      : const SizedBox(width: 16)),
+            ],
+          ),
         ),
       ),
     );
@@ -1494,7 +1700,8 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
                       await Supabase.instance.client.auth.updateUser(
                         UserAttributes(password: _controller.text),
                       );
-                      if (mounted) Navigator.pop(context);
+                      if (!context.mounted) return;
+                      Navigator.pop(context);
                     },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.charcoal,

@@ -25,8 +25,7 @@ class VerifiedEchoRecord extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final explorerUrl = SolanaService.explorerUrl(transactionSignature);
-    final shortSig =
-        '${transactionSignature.substring(0, 8)}...${transactionSignature.substring(transactionSignature.length - 8)}';
+    final shortSig = SolanaService.shortSignature(transactionSignature);
 
     return Container(
       padding: const EdgeInsets.all(AppSpacing.lg),

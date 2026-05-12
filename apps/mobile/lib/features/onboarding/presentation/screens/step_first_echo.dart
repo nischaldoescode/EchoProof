@@ -88,194 +88,215 @@ class _StepFirstEchoState extends State<StepFirstEcho> {
         Scaffold(
           backgroundColor: AppColors.white,
           body: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: AppSpacing.xl),
-                  const OnboardingProgress(currentStep: 6, totalSteps: 6),
-                  const SizedBox(height: AppSpacing.xxl),
-                  Text(
-                    'Share your first Echo',
-                    style: AppTypography.textTheme.headlineMedium,
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  Text(
-                    'Optional — you can always create one later from the feed.',
-                    style: AppTypography.textTheme.bodyMedium?.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.xxl),
-                  ValueListenableBuilder<TextEditingValue>(
-                    valueListenable: _controller,
-                    builder: (context, value, _) {
-                      final len = value.text.length;
-                      final remaining = _maxChars - len;
-                      final isOver = remaining < 0;
-                      final isNear = remaining <= 30 && !isOver;
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final minHeight = constraints.maxHeight;
 
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          TextField(
-                            controller: _controller,
-                            maxLines: 5,
-                            maxLength: _maxChars,
-                            maxLengthEnforcement: MaxLengthEnforcement.enforced,
-                            buildCounter: (_,
-                                    {required currentLength,
-                                    required isFocused,
-                                    maxLength}) =>
-                                const SizedBox.shrink(),
-                            decoration: const InputDecoration(
-                              hintText:
-                                  'What do you want the community to verify?',
-                              alignLabelWithHint: true,
-                            ),
-                            style: AppTypography.textTheme.bodyMedium,
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              if (isNear || isOver)
-                                SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    value: (len / _maxChars).clamp(0.0, 1.0),
-                                    strokeWidth: 2.5,
-                                    backgroundColor: AppColors.borderSubtle,
-                                    color: isOver
-                                        ? AppColors.sunsetCoral
-                                        : const Color(0xFFE8A000),
-                                  ),
-                                ),
-                              if (isNear || isOver) const SizedBox(width: 6),
-                              Text(
-                                isOver ? '$remaining' : '$len / $_maxChars',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: (isOver || isNear)
-                                      ? FontWeight.w600
-                                      : FontWeight.w400,
-                                  color: isOver
-                                      ? AppColors.sunsetCoral
-                                      : isNear
-                                          ? const Color(0xFFE8A000)
-                                          : AppColors.textTertiary,
-                                  fontFamily: AppTypography.fontFamily,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-                  SizedBox(
-                    height: 38,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      children: EchoCategory.values.map((cat) {
-                        final selected = _selectedCategory == cat;
-                        return GestureDetector(
-                          onTap: () => setState(() => _selectedCategory = cat),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 180),
-                            margin: const EdgeInsets.only(right: AppSpacing.sm),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: AppSpacing.md,
-                              vertical: AppSpacing.xs,
-                            ),
-                            decoration: BoxDecoration(
-                              color: selected
-                                  ? AppColors.charcoal
-                                  : AppColors.softSand,
-                              borderRadius: BorderRadius.circular(
-                                AppSpacing.radiusFull,
-                              ),
-                              border: Border.all(
-                                color: selected
-                                    ? AppColors.charcoal
-                                    : AppColors.borderSubtle,
-                              ),
-                            ),
-                            child: Text(
-                              cat.displayName,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: selected
-                                    ? FontWeight.w600
-                                    : FontWeight.w400,
-                                color: selected
-                                    ? AppColors.white
-                                    : AppColors.textPrimary,
-                                fontFamily: AppTypography.fontFamily,
-                              ),
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                  const Spacer(),
-                  ValueListenableBuilder<TextEditingValue>(
-                    valueListenable: _controller,
-                    builder: (context, value, _) {
-                      final canPost = value.text.trim().isNotEmpty &&
-                          _selectedCategory != null &&
-                          value.text.length <= _maxChars &&
-                          !createService.isSubmitting;
-
-                      return SizedBox(
-                        width: double.infinity,
-                        child: AnimatedOpacity(
-                          opacity: canPost ? 1.0 : 0.45,
-                          duration: const Duration(milliseconds: 200),
-                          child: ElevatedButton(
-                            onPressed: canPost ? _submit : null,
-                            child: createService.isSubmitting
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: AppColors.white,
-                                    ),
-                                  )
-                                : const Text('Publish and enter'),
+                return SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: minHeight),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: AppSpacing.xl),
+                        const OnboardingProgress(currentStep: 6, totalSteps: 6),
+                        const SizedBox(height: AppSpacing.xxl),
+                        Text(
+                          'Share your first Echo',
+                          style: AppTypography.textTheme.headlineMedium,
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        Text(
+                          'Optional — you can always create one later from the feed.',
+                          style: AppTypography.textTheme.bodyMedium?.copyWith(
+                            color: AppColors.textSecondary,
                           ),
                         ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  Center(
-                    child: TextButton(
-                      onPressed: _skipLoading ? null : _skip,
-                      child: _skipLoading
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: AppColors.textSecondary,
+                        const SizedBox(height: AppSpacing.xxl),
+                        ValueListenableBuilder<TextEditingValue>(
+                          valueListenable: _controller,
+                          builder: (context, value, _) {
+                            final len = value.text.length;
+                            final remaining = _maxChars - len;
+                            final isOver = remaining < 0;
+                            final isNear = remaining <= 30 && !isOver;
+
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                TextField(
+                                  controller: _controller,
+                                  maxLines: 5,
+                                  maxLength: _maxChars,
+                                  maxLengthEnforcement:
+                                      MaxLengthEnforcement.enforced,
+                                  buildCounter: (_,
+                                          {required currentLength,
+                                          required isFocused,
+                                          maxLength}) =>
+                                      const SizedBox.shrink(),
+                                  decoration: const InputDecoration(
+                                    hintText:
+                                        'What do you want the community to verify?',
+                                    alignLabelWithHint: true,
+                                  ),
+                                  style: AppTypography.textTheme.bodyMedium,
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    if (isNear || isOver)
+                                      SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          value:
+                                              (len / _maxChars).clamp(0.0, 1.0),
+                                          strokeWidth: 2.5,
+                                          backgroundColor:
+                                              AppColors.borderSubtle,
+                                          color: isOver
+                                              ? AppColors.sunsetCoral
+                                              : const Color(0xFFE8A000),
+                                        ),
+                                      ),
+                                    if (isNear || isOver)
+                                      const SizedBox(width: 6),
+                                    Text(
+                                      isOver
+                                          ? '$remaining'
+                                          : '$len / $_maxChars',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: (isOver || isNear)
+                                            ? FontWeight.w600
+                                            : FontWeight.w400,
+                                        color: isOver
+                                            ? AppColors.sunsetCoral
+                                            : isNear
+                                                ? const Color(0xFFE8A000)
+                                                : AppColors.textTertiary,
+                                        fontFamily: AppTypography.fontFamily,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        SizedBox(
+                          height: 38,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            children: EchoCategory.values.map((cat) {
+                              final selected = _selectedCategory == cat;
+                              return GestureDetector(
+                                onTap: () =>
+                                    setState(() => _selectedCategory = cat),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 180),
+                                  margin: const EdgeInsets.only(
+                                      right: AppSpacing.sm),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: AppSpacing.md,
+                                    vertical: AppSpacing.xs,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: selected
+                                        ? AppColors.charcoal
+                                        : AppColors.softSand,
+                                    borderRadius: BorderRadius.circular(
+                                      AppSpacing.radiusFull,
+                                    ),
+                                    border: Border.all(
+                                      color: selected
+                                          ? AppColors.charcoal
+                                          : AppColors.borderSubtle,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    cat.displayName,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: selected
+                                          ? FontWeight.w600
+                                          : FontWeight.w400,
+                                      color: selected
+                                          ? AppColors.white
+                                          : AppColors.textPrimary,
+                                      fontFamily: AppTypography.fontFamily,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.xxl),
+                        ValueListenableBuilder<TextEditingValue>(
+                          valueListenable: _controller,
+                          builder: (context, value, _) {
+                            final canPost = value.text.trim().isNotEmpty &&
+                                _selectedCategory != null &&
+                                value.text.length <= _maxChars &&
+                                !createService.isSubmitting;
+
+                            return SizedBox(
+                              width: double.infinity,
+                              child: AnimatedOpacity(
+                                opacity: canPost ? 1.0 : 0.45,
+                                duration: const Duration(milliseconds: 200),
+                                child: ElevatedButton(
+                                  onPressed: canPost ? _submit : null,
+                                  child: createService.isSubmitting
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: AppColors.white,
+                                          ),
+                                        )
+                                      : const Text('Publish and enter'),
+                                ),
                               ),
-                            )
-                          : Text(
-                              'Skip for now',
-                              style: AppTypography.textTheme.bodyMedium
-                                  ?.copyWith(color: AppColors.textSecondary),
-                            ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                        Center(
+                          child: TextButton(
+                            onPressed: _skipLoading ? null : _skip,
+                            child: _skipLoading
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  )
+                                : Text(
+                                    'Skip for now',
+                                    style: AppTypography.textTheme.bodyMedium
+                                        ?.copyWith(
+                                            color: AppColors.textSecondary),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.xl),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: AppSpacing.xl),
-                ],
-              ),
+                );
+              },
             ),
           ),
         ),

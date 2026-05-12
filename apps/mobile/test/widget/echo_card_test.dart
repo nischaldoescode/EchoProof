@@ -9,6 +9,7 @@ import 'package:echoproof/app/theme/app_theme.dart';
 import 'package:echoproof/features/echo/domain/entities/echo_status.dart';
 import 'package:echoproof/features/echo/presentation/widgets/echo_card.dart';
 import 'package:echoproof/features/echo/presentation/services/echo_feed_service.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 import '../helpers/mock_echo_entity.dart';
 
 // wraps widget in app theme + provider for EchoFeedService
@@ -24,6 +25,10 @@ Widget wrapWithApp(Widget child) {
 }
 
 void main() {
+  setUpAll(() {
+    VisibilityDetectorController.instance.updateInterval = Duration.zero;
+  });
+
   testWidgets('renders title and content correctly', (tester) async {
     await tester.pumpWidget(
       wrapWithApp(EchoCard(echo: makeMockEcho())),
@@ -37,7 +42,7 @@ void main() {
       wrapWithApp(
         EchoCard(
           echo: makeMockEcho(
-            status:     EchoStatus.verified,
+            status: EchoStatus.verified,
             confidence: 82,
           ),
         ),
@@ -52,7 +57,7 @@ void main() {
       wrapWithApp(
         EchoCard(
           echo: makeMockEcho(
-            status:     EchoStatus.disputed,
+            status: EchoStatus.disputed,
             confidence: 22,
           ),
         ),
@@ -67,14 +72,14 @@ void main() {
       wrapWithApp(
         EchoCard(
           echo: makeMockEcho(
-            status:     EchoStatus.controversial,
+            status: EchoStatus.controversial,
             confidence: 51,
           ),
         ),
       ),
     );
     await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text('Controversial — community split'), findsOneWidget);
+    expect(find.text('Controversial'), findsOneWidget);
   });
 
   testWidgets('confidence bar shows correct percentage', (tester) async {
@@ -92,7 +97,7 @@ void main() {
       wrapWithApp(
         EchoCard(
           echo: makeMockEcho(
-            status:     EchoStatus.pendingVerification,
+            status: EchoStatus.pendingVerification,
             confidence: 0,
           ),
         ),
