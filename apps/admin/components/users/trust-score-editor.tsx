@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { adminPath } from "@/lib/routes";
 
 interface TrustScoreEditorProps {
   userId: string;
@@ -17,14 +17,23 @@ export function TrustScoreEditor({ userId, currentScore, currentTier }: TrustSco
 
   async function save() {
     setSaving(true);
-    const supabase = createClient();
-    await supabase
-      .from("users_public")
-      .update({ trust_score: score })
-      .eq("id", userId);
-    await supabase.rpc("update_user_trust_tier", { p_user_id: userId });
-    router.refresh();
-    setSaving(false);
+    try {
+      const response = await fetch(adminPath("/api/admin/users/trust-score"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, score }),
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        alert(body.error || "Could not update trust score.");
+        return;
+      }
+      router.refresh();
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (

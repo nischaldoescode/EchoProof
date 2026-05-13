@@ -14,9 +14,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import '../../../../core/utils/snack.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
-final GlobalKey<ScaffoldMessengerState> appScaffoldMessengerKey =
-    GlobalKey<ScaffoldMessengerState>();
-
 class EchoProofApp extends StatelessWidget {
   const EchoProofApp({super.key, required this.router});
   final GoRouter router;
@@ -52,7 +49,6 @@ class EchoProofApp extends StatelessWidget {
       theme: buildAppTheme(),
       locale: locale,
       supportedLocales: _localeMap.values.toList(),
-      scaffoldMessengerKey: appScaffoldMessengerKey,
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,

@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../features/echo/domain/entities/echo_entity.dart';
 import '../../features/echo/domain/entities/echo_status.dart';
+import 'connectivity_service.dart';
 import '../utils/logger.dart';
 
 class EchoInteractionResult {
@@ -24,6 +25,10 @@ class EchoInteractionService {
     required String type,
     required String jwtToken,
   }) async {
+    if (!ConnectivityService.instance.isOnline) {
+      throw Exception('No internet connection. Try again when you are online.');
+    }
+
     final supabaseUrl = Supabase.instance.client.auth.currentSession != null
         ? _supabaseUrl
         : _supabaseUrl;

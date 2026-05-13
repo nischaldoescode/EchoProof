@@ -27,6 +27,7 @@ class _OtpScreenState extends State<OtpScreen>
   bool _isVerifying = false;
   bool _hasError = false;
   bool _canResend = false;
+  String _otp = '';
   int _resendSecs = _resendCooldownSeconds;
   Timer? _cooldownTimer;
 
@@ -80,6 +81,7 @@ class _OtpScreenState extends State<OtpScreen>
   }
 
   bool get _canLeave => _canResend || _resendSecs <= 0;
+  bool get _canVerify => !_isVerifying && _otp.length == 6;
 
   void _handleBack() {
     if (!_canLeave) {
@@ -100,6 +102,7 @@ class _OtpScreenState extends State<OtpScreen>
   Future<void> _verify() async {
     final otp = _ctrl.text;
     if (otp.length != 6 || _isVerifying) return;
+    if (showOfflineSnackIfNeeded(context)) return;
     setState(() {
       _isVerifying = true;
       _hasError = false;
@@ -237,7 +240,10 @@ class _OtpScreenState extends State<OtpScreen>
                             enableErrorShake: false,
                           ),
                           onChanged: (v) {
-                            if (_hasError) setState(() => _hasError = false);
+                            setState(() {
+                              _otp = v;
+                              if (_hasError) _hasError = false;
+                            });
                             if (v.length == 6) _verify();
                           },
                           onCompleted: (_) => _verify(),
@@ -275,9 +281,12 @@ class _OtpScreenState extends State<OtpScreen>
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
-                          onPressed: _isVerifying ? null : _verify,
+                          onPressed: _canVerify ? _verify : null,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.charcoal,
+                            disabledBackgroundColor:
+                                AppColors.borderMedium.withValues(alpha: 0.7),
+                            disabledForegroundColor: AppColors.textTertiary,
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),
@@ -306,6 +315,9 @@ class _OtpScreenState extends State<OtpScreen>
                         child: TextButton(
                           onPressed: _canResend
                               ? () async {
+                                  if (showOfflineSnackIfNeeded(context)) {
+                                    return;
+                                  }
                                   setState(() => _canResend = false);
                                   final auth = context.read<AuthService>();
                                   final sent = await auth.resendOtp(

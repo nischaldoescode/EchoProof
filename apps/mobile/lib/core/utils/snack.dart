@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hyper_snackbar/hyper_snackbar.dart';
 import '../../app/theme/colors.dart';
 import '../../app/theme/spacing.dart';
-import '../../app/theme/typography.dart';
+import '../services/connectivity_service.dart';
 
 enum SnackType { success, error, warning, info }
 
@@ -55,6 +55,15 @@ void showWarningSnack(BuildContext context, String message) =>
 
 void showInfoSnack(BuildContext context, String message) =>
     showAppSnack(context, message, type: SnackType.info);
+
+bool showOfflineSnackIfNeeded(
+  BuildContext context, {
+  String message = 'No internet connection. Try again when you are online.',
+}) {
+  if (ConnectivityService.instance.isOnline) return false;
+  showWarningSnack(context, message);
+  return true;
+}
 
 String _snackTitle(SnackType type) => switch (type) {
       SnackType.success => 'Success',

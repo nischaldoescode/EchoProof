@@ -511,9 +511,31 @@ class EchoFeedService extends ChangeNotifier {
           .order('created_at', ascending: false)
           .limit(80);
 
+      final rowList = List<Map<String, dynamic>>.from(rows as List);
+      final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+      final likedReplyIds = <String>{};
+      if (currentUserId != null && rowList.isNotEmpty) {
+        final replyIds = rowList
+            .map((row) => row['id'] as String?)
+            .whereType<String>()
+            .join(',');
+        if (replyIds.isNotEmpty) {
+          final likedRows = await Supabase.instance.client
+              .from('echo_reply_interactions')
+              .select('reply_id')
+              .eq('user_id', currentUserId)
+              .eq('type', 'like')
+              .filter('reply_id', 'in', '($replyIds)');
+          likedReplyIds.addAll(
+            List<Map<String, dynamic>>.from(likedRows as List)
+                .map((row) => row['reply_id'] as String?)
+                .whereType<String>(),
+          );
+        }
+      }
+
       final byEcho = <String, EchoReplyPreview>{};
-      for (final raw in rows as List) {
-        final row = raw as Map<String, dynamic>;
+      for (final row in rowList) {
         if (row['parent_reply_id'] != null) continue;
         final echoId = row['echo_id'] as String?;
         if (echoId == null || byEcho.containsKey(echoId)) continue;
@@ -534,6 +556,7 @@ class EchoFeedService extends ChangeNotifier {
           userTrustTier: trustTier,
           userIsVerified: trustTier == 'high' || trustTier == 'elite',
           userIsPro: user['is_pro'] as bool? ?? false,
+          isLiked: likedReplyIds.contains(row['id'] as String),
           likeCount: (row['like_count'] as num?)?.toInt() ?? 0,
           childReplyCount: (row['child_reply_count'] as num?)?.toInt() ?? 0,
           createdAt: _parseDate(row['created_at']),

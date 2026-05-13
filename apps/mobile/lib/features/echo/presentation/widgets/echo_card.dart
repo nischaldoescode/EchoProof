@@ -27,6 +27,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../shared/widgets/image_viewer.dart';
 import '../../../../core/services/video_playback_coordinator.dart';
 import '../../../../core/utils/formatters.dart';
+import '../../../../core/utils/snack.dart';
 import 'echo_video_player.dart';
 import 'link_preview_card.dart';
 
@@ -358,6 +359,58 @@ class _ReplyPreviewCard extends StatefulWidget {
 
 class _ReplyPreviewCardState extends State<_ReplyPreviewCard> {
   bool _previewUnavailable = false;
+  late bool _liked;
+  late int _likeCount;
+
+  @override
+  void initState() {
+    super.initState();
+    _liked = widget.reply.isLiked;
+    _likeCount = widget.reply.likeCount;
+  }
+
+  @override
+  void didUpdateWidget(covariant _ReplyPreviewCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.reply.id != widget.reply.id) {
+      _previewUnavailable = false;
+      _liked = widget.reply.isLiked;
+      _likeCount = widget.reply.likeCount;
+    }
+  }
+
+  Future<void> _toggleLike() async {
+    if (showOfflineSnackIfNeeded(context)) return;
+
+    final nextLiked = !_liked;
+    final previousLiked = _liked;
+    final previousCount = _likeCount;
+    setState(() {
+      _liked = nextLiked;
+      _likeCount =
+          (_likeCount + (nextLiked ? 1 : -1)).clamp(0, 1 << 31).toInt();
+    });
+
+    try {
+      final rows = await Supabase.instance.client.rpc(
+        'toggle_echo_reply_like',
+        params: {'p_reply_id': widget.reply.id},
+      ) as List;
+      final row = rows.isEmpty ? null : rows.first as Map<String, dynamic>?;
+      if (!mounted || row == null) return;
+      setState(() {
+        _liked = row['liked'] as bool? ?? nextLiked;
+        _likeCount = (row['like_count'] as num?)?.toInt() ?? _likeCount;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _liked = previousLiked;
+        _likeCount = previousCount;
+      });
+      showErrorSnack(context, 'Could not update reply like.');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -461,23 +514,40 @@ class _ReplyPreviewCardState extends State<_ReplyPreviewCard> {
                             color: AppColors.textTertiary,
                           ),
                         ),
-                        if (widget.reply.likeCount > 0) ...[
-                          const SizedBox(width: AppSpacing.md),
-                          const Icon(
-                            Icons.favorite_border_rounded,
-                            size: 13,
-                            color: AppColors.textTertiary,
+                        const SizedBox(width: AppSpacing.md),
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _toggleLike,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 180),
+                                child: Icon(
+                                  _liked
+                                      ? Icons.favorite_rounded
+                                      : Icons.favorite_border_rounded,
+                                  key: ValueKey(_liked),
+                                  size: 13,
+                                  color: _liked
+                                      ? AppColors.fernGreen
+                                      : AppColors.textTertiary,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _likeCount > 0 ? '$_likeCount' : 'Like',
+                                style: GoogleFonts.josefinSans(
+                                  fontSize: 11,
+                                  color: _liked
+                                      ? AppColors.fernGreenDark
+                                      : AppColors.textTertiary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '${widget.reply.likeCount}',
-                            style: GoogleFonts.josefinSans(
-                              fontSize: 11,
-                              color: AppColors.textTertiary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
+                        ),
                       ],
                     ),
                   ],
