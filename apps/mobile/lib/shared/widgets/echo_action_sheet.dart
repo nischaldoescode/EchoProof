@@ -393,20 +393,11 @@ class _ReportSheetState extends State<_ReportSheet> {
           e.toString().contains('duplicate') || e.toString().contains('unique');
 
       if (widget.parentContext.mounted) {
-        ScaffoldMessenger.of(widget.parentContext).showSnackBar(
-          SnackBar(
-            content: Text(
-              isDuplicate
-                  ? 'You already reported this echo'
-                  : 'Report failed, try again',
-            ),
-            backgroundColor: AppColors.sunsetCoral,
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
+        showErrorSnack(
+          widget.parentContext,
+          isDuplicate
+              ? 'You already reported this echo'
+              : 'Report failed, try again',
         );
       }
     }

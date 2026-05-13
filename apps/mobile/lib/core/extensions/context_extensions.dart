@@ -2,6 +2,7 @@
 // provides shorthand access to theme, size, and navigation
 
 import 'package:flutter/material.dart';
+import '../utils/snack.dart';
 
 extension ContextExtensions on BuildContext {
   ThemeData get theme => Theme.of(this);
@@ -14,17 +15,10 @@ extension ContextExtensions on BuildContext {
   bool get isPhone => MediaQuery.sizeOf(this).width <= 700;
 
   void showSnackbar(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(this).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor:
-            isError ? const Color(0xFFFF7759) : const Color(0xFF1A1A1A),
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.only(bottom: 88, left: 16, right: 16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
-      ),
-    );
+    if (isError) {
+      showErrorSnack(this, message);
+    } else {
+      showInfoSnack(this, message);
+    }
   }
 }

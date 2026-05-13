@@ -7,15 +7,24 @@ Internal moderation and operations panel for Echoproof.
 Set these in the admin app deployment:
 
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
-ADMIN_ALLOWED_EMAILS=support@echoproof.online,nischala389@gmail.com
+ADMIN_EMAIL=support@echoproof.online
+ADMIN_PASSWORD=
+ADMIN_SESSION_SECRET=
+ADMIN_ALLOWED_EMAILS=support@echoproof.online
 ADMIN_PUBLIC_URL=https://echoproof-admin.onrender.com
 ```
 
-`ADMIN_ALLOWED_EMAILS` is required in production. You can also use
-`ADMIN_EMAIL_ALLOWLIST` as the same setting name.
+`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are used server-side for admin
+operations. `SUPABASE_ANON_KEY` is only kept for compatibility with older auth
+paths; the current login does not depend on Supabase OAuth.
+
+`ADMIN_PASSWORD` is the private admin login password. `ADMIN_ACCESS_PASSWORD`
+and `ADMIN_ACCESS_KEY` are accepted aliases, but prefer `ADMIN_PASSWORD`.
+`ADMIN_SESSION_SECRET` must be a different long random value used to sign the
+admin session cookie.
 
 `ADMIN_PUBLIC_URL` is recommended on Render because the app can see Render's
 internal host, such as `localhost:10000`, while handling OAuth callbacks. Set it
@@ -23,28 +32,9 @@ to the external admin URL so redirects never bounce to the internal host.
 
 ## Login
 
-The admin login supports:
-
-- GitHub OAuth, if the GitHub provider is enabled in Supabase Auth.
-- Google OAuth, if the Google provider is enabled in Supabase Auth.
-- Magic link, if Email OTP is enabled in Supabase Auth.
-- Optional recovery access key, if configured.
-
-Whichever method you use, the final admin email must be listed in
+The admin login is email + server password only. The default email is
+`support@echoproof.online`, and it must still be present in
 `ADMIN_ALLOWED_EMAILS`.
-
-If magic link returns `Signups not allowed for otp`, either enable Email OTP
-signups in Supabase Auth or create the admin email first in Authentication >
-Users. Your Supabase Dashboard login is separate from this app's Auth users.
-
-To enable the non-Supabase recovery login, set both:
-
-```bash
-ADMIN_ACCESS_KEY=
-ADMIN_SESSION_SECRET=
-```
-
-Use long random values. The email must still be allowlisted.
 
 ## Deploying Under `/admin`
 

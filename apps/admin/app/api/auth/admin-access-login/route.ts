@@ -5,17 +5,18 @@ import {
   ADMIN_SESSION_COOKIE,
   createAdminSessionToken,
   hasStaticAdminLoginConfig,
-  verifyAdminAccessKey,
+  staticAdminEmail,
+  verifyAdminPassword,
 } from "@/lib/auth/admin-session";
 
 export async function POST(request: NextRequest) {
   let email = "";
-  let accessKey = "";
+  let password = "";
 
   try {
     const body = await request.json();
     email = String(body.email ?? "").trim().toLowerCase();
-    accessKey = String(body.accessKey ?? "");
+    password = String(body.password ?? body.accessKey ?? "");
   } catch {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
@@ -24,22 +25,27 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Admin access login is not configured. Set ADMIN_ACCESS_KEY and ADMIN_SESSION_SECRET.",
+          "Admin password login is not configured. Set ADMIN_PASSWORD and ADMIN_SESSION_SECRET.",
       },
       { status: 500 },
     );
   }
 
-  if (!email || !accessKey) {
+  if (!email || !password) {
     return NextResponse.json(
-      { error: "Email and admin access key are required." },
+      { error: "Email and admin password are required." },
       { status: 400 },
     );
   }
 
-  if (!isAllowedAdminEmail(email) || !verifyAdminAccessKey(accessKey)) {
+  const expectedEmail = staticAdminEmail();
+  if (
+    email !== expectedEmail ||
+    !isAllowedAdminEmail(email) ||
+    !verifyAdminPassword(password)
+  ) {
     return NextResponse.json(
-      { error: "Invalid admin email or access key." },
+      { error: "Invalid admin email or password." },
       { status: 401 },
     );
   }
