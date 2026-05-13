@@ -40,6 +40,7 @@ class InteractionButtons extends StatelessWidget {
         children: [
           Expanded(
             child: _InteractionButton(
+              key: ValueKey('${echo.id}:reply'),
               count: echo.replyCount,
               label: context.l('Reply'),
               icon: Icons.chat_bubble_outline_rounded,
@@ -52,15 +53,17 @@ class InteractionButtons extends StatelessWidget {
           ),
           Expanded(
             child: _InteractionButton(
+              key: ValueKey('${echo.id}:support'),
               count: echo.supportCount,
-              label: context.l('Like'),
-              icon: Icons.favorite_border_rounded,
+              label: context.l('Support'),
+              icon: Icons.thumb_up_alt_outlined,
               onTap: () => _interact(context, 'support'),
               flashColor: AppColors.fernGreen,
             ),
           ),
           Expanded(
             child: _InteractionButton(
+              key: ValueKey('${echo.id}:challenge'),
               count: echo.challengeCount,
               label: context.l('Challenge'),
               icon: Icons.arrow_downward_rounded,
@@ -70,6 +73,7 @@ class InteractionButtons extends StatelessWidget {
           ),
           Expanded(
             child: _InteractionButton(
+              key: ValueKey('${echo.id}:bonds'),
               count: echo.bondCount,
               label: context.l('Bonds'),
               icon: Icons.link_outlined,
@@ -102,6 +106,7 @@ class InteractionButtons extends StatelessWidget {
   }
 
   void _openBonds(BuildContext context) {
+    if (showOfflineSnackIfNeeded(context)) return;
     showInfoSnack(context, context.l('Opening echo bonds and evidence.'));
     context.push('/feed/echo/${echo.id}');
   }
@@ -121,6 +126,8 @@ class InteractionButtons extends StatelessWidget {
   }
 
   Future<bool> _interact(BuildContext context, String type) async {
+    if (showOfflineSnackIfNeeded(context)) return false;
+
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
     if (echo.userId.isNotEmpty && echo.userId == currentUserId) {
       showInfoSnack(
@@ -140,6 +147,7 @@ class InteractionButtons extends StatelessWidget {
 
     if (session == null) {
       feed.revertOptimisticInteraction(echoId: echo.id, type: type);
+      showInfoSnack(context, context.l('Sign in again to continue.'));
       return false;
     }
 
@@ -176,6 +184,7 @@ class InteractionButtons extends StatelessWidget {
 
 class _InteractionButton extends StatefulWidget {
   const _InteractionButton({
+    super.key,
     required this.count,
     required this.label,
     required this.icon,
@@ -198,7 +207,6 @@ class _InteractionButtonState extends State<_InteractionButton>
   late final AnimationController _controller;
   late final Animation<double> _scale;
   bool _isFlashing = false;
-  bool _isActive = false;
 
   @override
   void initState() {
@@ -220,11 +228,13 @@ class _InteractionButtonState extends State<_InteractionButton>
   }
 
   Future<void> _handleTap() async {
-    setState(() => _isFlashing = true);
     await _controller.forward();
     await _controller.reverse();
     final shouldActivate = await widget.onTap();
-    if (mounted && shouldActivate) setState(() => _isActive = true);
+    if (!mounted) return;
+    if (shouldActivate) {
+      setState(() => _isFlashing = true);
+    }
     await Future<void>.delayed(const Duration(milliseconds: 420));
     if (mounted) setState(() => _isFlashing = false);
   }
@@ -233,9 +243,7 @@ class _InteractionButtonState extends State<_InteractionButton>
   Widget build(BuildContext context) {
     final label =
         widget.count > 0 ? '${widget.count} ${widget.label}' : widget.label;
-    final color = (_isFlashing || _isActive)
-        ? widget.flashColor
-        : AppColors.textSecondary;
+    final color = _isFlashing ? widget.flashColor : AppColors.textSecondary;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,

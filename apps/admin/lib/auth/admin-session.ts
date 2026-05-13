@@ -61,13 +61,30 @@ export async function adminSessionFromRequest(request: NextRequest) {
 }
 
 export function hasStaticAdminLoginConfig() {
-  return Boolean(process.env.ADMIN_ACCESS_KEY && sessionSecret());
+  return Boolean(adminPassword() && sessionSecret());
 }
 
-export function verifyAdminAccessKey(value: string) {
-  const configured = process.env.ADMIN_ACCESS_KEY;
+export function verifyAdminPassword(value: string) {
+  const configured = adminPassword();
   if (!configured) return false;
   return timingSafeEqual(value, configured);
+}
+
+export const verifyAdminAccessKey = verifyAdminPassword;
+
+export function staticAdminEmail() {
+  return (process.env.ADMIN_EMAIL || "support@echoproof.online")
+    .trim()
+    .toLowerCase();
+}
+
+function adminPassword() {
+  return (
+    process.env.ADMIN_PASSWORD ||
+    process.env.ADMIN_ACCESS_PASSWORD ||
+    process.env.ADMIN_ACCESS_KEY ||
+    ""
+  );
 }
 
 function sessionSecret() {
@@ -77,7 +94,7 @@ function sessionSecret() {
 async function sign(value: string) {
   const secret = sessionSecret();
   if (!secret) {
-    throw new Error("ADMIN_SESSION_SECRET is required for admin access login");
+    throw new Error("ADMIN_SESSION_SECRET is required for admin password login");
   }
 
   const key = await crypto.subtle.importKey(

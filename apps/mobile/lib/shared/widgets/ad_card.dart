@@ -216,7 +216,12 @@ class _AdCardState extends State<AdCard> with SingleTickerProviderStateMixin {
         }
       },
       onDismissed: () {
-        if (mounted) setState(() => _isWatching = false);
+        if (!mounted) return;
+        final earned = _earned;
+        setState(() => _isWatching = false);
+        if (!earned) {
+          showWarningSnack(context, 'Ad closed before the reward was earned.');
+        }
       },
     );
 

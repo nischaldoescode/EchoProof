@@ -233,6 +233,8 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
       if (proceed != true) return;
     }
 
+    if (!mounted) return;
+    if (showOfflineSnackIfNeeded(context)) return;
     await service.submit();
   }
 

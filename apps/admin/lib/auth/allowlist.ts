@@ -1,5 +1,10 @@
 export function getAdminAllowlist() {
-  return (process.env.ADMIN_ALLOWED_EMAILS || process.env.ADMIN_EMAIL_ALLOWLIST || "")
+  return (
+    process.env.ADMIN_ALLOWED_EMAILS ||
+    process.env.ADMIN_EMAIL_ALLOWLIST ||
+    process.env.ADMIN_EMAIL ||
+    "support@echoproof.online"
+  )
     .split(",")
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean);

@@ -85,6 +85,7 @@ class _TruthBondButtonState extends State<TruthBondButton>
   Future<void> _bond() async {
     if (_hasBonded || _isLoading) return;
     if (widget.status != EchoStatus.verified) return;
+    if (showOfflineSnackIfNeeded(context)) return;
 
     setState(() => _isLoading = true);
     HapticFeedback.mediumImpact();
@@ -92,7 +93,11 @@ class _TruthBondButtonState extends State<TruthBondButton>
     try {
       final client = Supabase.instance.client;
       final userId = client.auth.currentUser?.id;
-      if (userId == null) throw Exception('not authenticated');
+      if (userId == null) {
+        showInfoSnack(context, 'Sign in again to create a bond.');
+        setState(() => _isLoading = false);
+        return;
+      }
 
       final inserted = await client
           .from('truth_bonds')

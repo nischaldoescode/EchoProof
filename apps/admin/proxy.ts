@@ -2,6 +2,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import type { User } from "@supabase/supabase-js";
 import { isAllowedAdminEmail } from "@/lib/auth/allowlist";
 import { adminSessionFromRequest } from "@/lib/auth/admin-session";
 import { adminUrl } from "@/lib/public-url";
@@ -9,29 +10,6 @@ import { adminPath } from "@/lib/routes";
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => request.cookies.getAll(),
-        setAll: (cookiesToSet) => {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value),
-          );
-          response = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options),
-          );
-        },
-      },
-    },
-  );
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
   const loginPath = adminPath("/login");
   const callbackPath = adminPath("/auth/callback");
@@ -49,11 +27,45 @@ export async function proxy(request: NextRequest) {
     path === adminPath("/api/auth/admin-access-login") ||
     path === "/api/auth/admin-logout" ||
     path === adminPath("/api/auth/admin-logout");
-  const isAllowedAdmin = isAllowedAdminEmail(user?.email);
   const staticAdmin = await adminSessionFromRequest(request);
-  const isAuthenticatedAdmin = isAllowedAdmin || Boolean(staticAdmin);
 
-  if (!user && !staticAdmin && !isPublicAuthPath) {
+  if (staticAdmin) {
+    if (isLoginPage) {
+      return NextResponse.redirect(adminUrl(request, "/"));
+    }
+    return response;
+  }
+
+  const supabaseUrl =
+    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey =
+    process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  let user: User | null = null;
+
+  if (supabaseUrl && supabaseAnonKey) {
+    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+      cookies: {
+        getAll: () => request.cookies.getAll(),
+        setAll: (cookiesToSet) => {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value),
+          );
+          response = NextResponse.next({ request });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options),
+          );
+        },
+      },
+    });
+
+    const result = await supabase.auth.getUser();
+    user = result.data.user;
+  }
+
+  const isAllowedAdmin = isAllowedAdminEmail(user?.email);
+  const isAuthenticatedAdmin = isAllowedAdmin;
+
+  if (!user && !isPublicAuthPath) {
     return NextResponse.redirect(adminUrl(request, "/login"));
   }
 

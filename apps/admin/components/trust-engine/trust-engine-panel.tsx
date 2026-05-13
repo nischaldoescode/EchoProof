@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { adminPath } from "@/lib/routes";
 
 interface PendingEcho {
   id: string;
@@ -24,21 +24,16 @@ export function TrustEnginePanel({ pendingEchoes }: TrustEnginePanelProps) {
     setResult(null);
 
     try {
-      const supabase   = createClient();
-      const session    = await supabase.auth.getSession();
-      const accessToken = session.data.session?.access_token;
-
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const res = await fetch(`${supabaseUrl}/functions/v1/trust-engine`, {
+      const res = await fetch(adminPath("/api/admin/trust-engine/run"), {
         method: "POST",
-        headers: {
-          "Authorization": `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
       });
 
       const data = await res.json();
-      setResult(JSON.stringify(data.results, null, 2));
+      if (!res.ok) {
+        setResult(`error: ${JSON.stringify(data, null, 2)}`);
+        return;
+      }
+      setResult(JSON.stringify(data.results ?? data, null, 2));
     } catch (err) {
       setResult(`error: ${err}`);
     }

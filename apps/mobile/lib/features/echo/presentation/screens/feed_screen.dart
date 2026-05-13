@@ -29,6 +29,7 @@ import '../../../../core/constants/storage_keys.dart';
 import '../../../../core/localization/app_copy.dart';
 import '../../../../core/services/ad_service.dart';
 import '../../../subscription/presentation/services/subscription_service.dart';
+import '../../../../core/utils/snack.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
@@ -216,6 +217,11 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _refreshFeed() async {
+    if (showOfflineSnackIfNeeded(context)) return;
+    await context.read<EchoFeedService>().refresh();
+  }
+
   List<EchoEntity> _filtered(List<EchoEntity> echoes) {
     return _filter.apply(echoes);
   }
@@ -242,7 +248,7 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
         96;
     return RefreshIndicator(
       color: AppColors.fernGreen,
-      onRefresh: () => context.read<EchoFeedService>().refresh(),
+      onRefresh: _refreshFeed,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
@@ -269,7 +275,7 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
             appBar: _FeedAppBar(
               filterActive: _filter.isActive,
               onFilterTap: _openFilter,
-              onRefreshTap: () => context.read<EchoFeedService>().refresh(),
+              onRefreshTap: _refreshFeed,
             ),
             floatingActionButton: const _CreateFab(),
             bottomNavigationBar: const AppBottomNav(currentLocation: '/feed'),
@@ -320,11 +326,11 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
                 )
               : const SizedBox.shrink(),
         ),
-        _RefreshHint(onTap: () => context.read<EchoFeedService>().refresh()),
+        _RefreshHint(onTap: _refreshFeed),
         Expanded(
           child: RefreshIndicator(
             color: AppColors.fernGreen,
-            onRefresh: () => context.read<EchoFeedService>().refresh(),
+            onRefresh: _refreshFeed,
             child: ListView.builder(
               controller: _scrollCtrl,
               physics: const AlwaysScrollableScrollPhysics(),
