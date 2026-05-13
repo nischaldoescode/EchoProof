@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@/lib/supabase/client";
 import type { PublicUser } from "@/types/user";
 import Link from "next/link";
+import { adminPath } from "@/lib/routes";
 
 const TIER_COLORS: Record<string, string> = {
   unverified: "bg-gray-100 text-gray-500",
@@ -63,24 +63,43 @@ export function UserTable({ users }: UserTableProps) {
 
   async function toggleSuspend(user: ExtendedUser) {
     setLoading(user.id);
-    const supabase = createBrowserClient();
-    await supabase
-      .from("users_public")
-      .update({ is_suspended: !user.is_suspended })
-      .eq("id", user.id);
-    router.refresh();
-    setLoading(null);
+    try {
+      await updateUserFlag(user.id, "is_suspended", !user.is_suspended);
+    } finally {
+      setLoading(null);
+    }
   }
 
   async function toggleShadowBan(user: ExtendedUser) {
     setLoading(user.id);
-    const supabase = createBrowserClient();
-    await supabase
-      .from("users_public")
-      .update({ is_shadow_banned: !user.is_shadow_banned })
-      .eq("id", user.id);
+    try {
+      await updateUserFlag(
+        user.id,
+        "is_shadow_banned",
+        !user.is_shadow_banned,
+      );
+    } finally {
+      setLoading(null);
+    }
+  }
+
+  async function updateUserFlag(
+    userId: string,
+    field: "is_suspended" | "is_shadow_banned",
+    value: boolean,
+  ) {
+    const response = await fetch(adminPath("/api/admin/users/update"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, field, value }),
+    });
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      alert(body.error || "Could not update user.");
+    }
     router.refresh();
-    setLoading(null);
   }
 
   return (

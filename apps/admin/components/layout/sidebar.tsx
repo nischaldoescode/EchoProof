@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { createBrowserClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -52,8 +51,6 @@ export function Sidebar() {
   const router = useRouter();
 
   async function handleSignOut() {
-    const supabase = createBrowserClient();
-    await supabase.auth.signOut();
     await fetch(adminPath("/api/auth/admin-logout"), { method: "POST" });
     router.push(adminPath("/login"));
   }

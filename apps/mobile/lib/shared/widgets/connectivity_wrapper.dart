@@ -17,6 +17,10 @@ class _ConnectivityWrapperState extends State<ConnectivityWrapper> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || ConnectivityService.instance.isOnline) return;
+      showWarningSnack(context, 'No internet connection');
+    });
     _sub =
         ConnectivityService.instance.onConnectivityChanged.listen((isOnline) {
       if (!mounted) return;

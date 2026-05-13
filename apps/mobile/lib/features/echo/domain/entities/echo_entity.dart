@@ -347,6 +347,7 @@ class EchoReplyPreview extends Equatable {
     this.userTrustTier = 'unverified',
     this.userIsVerified = false,
     this.userIsPro = false,
+    this.isLiked = false,
     this.likeCount = 0,
     this.childReplyCount = 0,
     this.createdAt,
@@ -361,6 +362,7 @@ class EchoReplyPreview extends Equatable {
   final String userTrustTier;
   final bool userIsVerified;
   final bool userIsPro;
+  final bool isLiked;
   final int likeCount;
   final int childReplyCount;
   final DateTime? createdAt;
@@ -378,6 +380,7 @@ class EchoReplyPreview extends Equatable {
       userTrustTier: json['user_trust_tier'] as String? ?? 'unverified',
       userIsVerified: json['user_is_verified'] as bool? ?? false,
       userIsPro: json['user_is_pro'] as bool? ?? false,
+      isLiked: json['is_liked'] as bool? ?? false,
       likeCount: (json['like_count'] as num?)?.toInt() ?? 0,
       childReplyCount: (json['child_reply_count'] as num?)?.toInt() ?? 0,
       createdAt: EchoEntity._dateFromJson(json['created_at']),
@@ -395,6 +398,7 @@ class EchoReplyPreview extends Equatable {
         userTrustTier,
         userIsVerified,
         userIsPro,
+        isLiked,
         likeCount,
         childReplyCount,
         createdAt,
