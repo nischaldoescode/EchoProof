@@ -1,7 +1,8 @@
-import { createServer } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { notFound } from "next/navigation";
+import { adminPath } from "@/lib/routes";
 
 export const dynamic = "force-dynamic";
 
@@ -21,11 +22,11 @@ interface AdminPublicProfile {
   is_pro: boolean;
   pro_plan: string | null;
   pro_expires_at: string | null;
-  age: number | null;
   gender: string | null;
   date_of_birth: string | null;
   follower_count: number | null;
   following_count: number | null;
+  onboarding_complete: boolean | null;
   is_public: boolean;
   categories: string[] | null;
   created_at: string;
@@ -47,17 +48,18 @@ export default async function UserDetailPage({
 }: {
   params: { id: string };
 }) {
-  const supabase = await createServer();
+  const supabase = createAdminClient();
 
   const { data: publicProfileData } = await supabase
     .from("users_public")
     .select(
       "id, username, display_name, avatar_url, trust_tier, trust_score, echo_count, " +
         "proof_count, is_suspended, is_shadow_banned, wallet_address, bio, is_pro, " +
-        "pro_plan, pro_expires_at, age, gender, date_of_birth, follower_count, following_count, " +
-        "is_public, categories, created_at",
+        "pro_plan, pro_expires_at, gender, date_of_birth, follower_count, following_count, " +
+        "onboarding_complete, is_public, categories, created_at",
     )
     .eq("id", params.id)
+    .eq("onboarding_complete", true)
     .single();
 
   const publicProfile =
@@ -96,6 +98,7 @@ export default async function UserDetailPage({
     (b) => b.bond_status === "contested",
   ).length;
   const active = (bonds ?? []).filter((b) => b.bond_status === "active").length;
+  const age = ageFromDob(publicProfile.date_of_birth);
 
   return (
     <div className="flex min-h-screen">
@@ -107,7 +110,7 @@ export default async function UserDetailPage({
         />
         <div className="p-4 pb-24 sm:p-6 sm:pb-24 md:pb-6 space-y-6 max-w-3xl">
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="bg-white rounded-xl border border-border-subtle p-5 space-y-3">
+            <div className="admin-soft-card bg-white rounded-xl border border-border-subtle p-5 space-y-3">
               <p className="text-xs font-medium text-gray-400">
                 Public profile
               </p>
@@ -144,9 +147,7 @@ export default async function UserDetailPage({
               )}
               <Row
                 label="Age"
-                value={
-                  publicProfile.age != null ? `${publicProfile.age} yrs` : "—"
-                }
+                value={age != null ? `${age} yrs` : "—"}
               />
               <Row
                 label="Gender"
@@ -178,7 +179,7 @@ export default async function UserDetailPage({
             </div>
 
             {privateProfile && (
-              <div className="bg-white rounded-xl border border-border-subtle p-5 space-y-3">
+              <div className="admin-soft-card bg-white rounded-xl border border-border-subtle p-5 space-y-3">
                 <p className="text-xs font-medium text-gray-400">
                   Private data
                 </p>
@@ -213,7 +214,7 @@ export default async function UserDetailPage({
             )}
           </div>
 
-          <div className="bg-white rounded-xl border border-border-subtle p-5">
+          <div className="admin-soft-card bg-white rounded-xl border border-border-subtle p-5">
             <p className="text-xs font-medium text-gray-400 mb-3">
               Truth bonds
             </p>
@@ -233,14 +234,14 @@ export default async function UserDetailPage({
           </div>
 
           {(echoes ?? []).length > 0 && (
-            <div className="bg-white rounded-xl border border-border-subtle overflow-hidden">
+            <div className="admin-soft-card bg-white rounded-xl border border-border-subtle overflow-hidden">
               <p className="px-4 py-3 text-xs font-medium text-charcoal border-b border-border-subtle">
                 Recent echoes
               </p>
               {echoes?.map((e) => (
                 <a
                   key={e.id}
-                  href={`/echoes/${e.id}`}
+                  href={adminPath(`/echoes/${e.id}`)}
                   className="flex items-center justify-between px-4 py-3 border-b border-border-subtle last:border-0 hover:bg-soft-sand transition-colors"
                 >
                   <span className="text-xs text-charcoal truncate max-w-xs">
@@ -299,4 +300,17 @@ function BondStat({
       <p className="text-xs text-gray-400">{label}</p>
     </div>
   );
+}
+
+function ageFromDob(value?: string | null) {
+  if (!value) return null;
+  const dob = new Date(value);
+  if (Number.isNaN(dob.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - dob.getFullYear();
+  const monthDiff = now.getMonth() - dob.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < dob.getDate())) {
+    age -= 1;
+  }
+  return age >= 0 && age < 130 ? age : null;
 }

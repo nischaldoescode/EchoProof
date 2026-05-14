@@ -7,6 +7,10 @@ import { isAllowedAdminEmail } from "@/lib/auth/allowlist";
 import { adminSessionFromRequest } from "@/lib/auth/admin-session";
 import { adminUrl } from "@/lib/public-url";
 import { adminPath } from "@/lib/routes";
+import {
+  getSupabaseAnonKey,
+  getSupabaseProjectUrl,
+} from "@/lib/supabase-env";
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -36,10 +40,8 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
-  const supabaseUrl =
-    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey =
-    process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseUrl = getSupabaseProjectUrl();
+  const supabaseAnonKey = getSupabaseAnonKey();
   let user: User | null = null;
 
   if (supabaseUrl && supabaseAnonKey) {

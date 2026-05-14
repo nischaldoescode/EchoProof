@@ -20,10 +20,10 @@ interface ExtendedUser extends PublicUser {
   is_pro?: boolean;
   pro_plan?: string | null;
   pro_expires_at?: string | null;
-  age?: number | null;
+  date_of_birth?: string | null;
   gender?: string | null;
-  follower_count?: number;
-  following_count?: number;
+  follower_count?: number | null;
+  following_count?: number | null;
 }
 
 interface UserTableProps {
@@ -103,7 +103,7 @@ export function UserTable({ users }: UserTableProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 animate-admin-enter">
       {/* search + filter bar */}
       <div className="flex flex-wrap items-center gap-3">
         <input
@@ -142,8 +142,24 @@ export function UserTable({ users }: UserTableProps) {
       </div>
 
       <div className="admin-soft-card overflow-hidden rounded-xl border border-[#E6E6E6] bg-white">
+        <div className="grid gap-3 p-3 md:hidden">
+          {filtered.map((user) => (
+            <UserMobileCard
+              key={user.id}
+              user={user}
+              loading={loading === user.id}
+              onSuspend={() => toggleSuspend(user)}
+              onShadowBan={() => toggleShadowBan(user)}
+            />
+          ))}
+          {filtered.length === 0 && (
+            <div className="rounded-lg border border-dashed border-border-subtle p-8 text-center text-sm text-gray-400">
+              No completed-onboarding users match this filter
+            </div>
+          )}
+        </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[900px]">
+          <table className="hidden w-full min-w-[900px] text-sm md:table">
             <thead>
               <tr className="border-b border-[#E6E6E6] bg-[#F8F7F5]">
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-400">
@@ -176,12 +192,12 @@ export function UserTable({ users }: UserTableProps) {
               {filtered.map((user) => (
                 <tr
                   key={user.id}
-                  className="hover:bg-[#F8F7F5] transition-colors"
+                  className="admin-table-row hover:bg-[#F8F7F5]"
                 >
                   <td className="px-4 py-3">
                     <div className="flex flex-col">
                       <Link
-                        href={`/users/${user.id}`}
+                        href={adminPath(`/users/${user.id}`)}
                         className="font-medium text-[#1A1A1A] text-xs hover:text-[#4CAF6E] transition-colors cursor-pointer"
                       >
                         @{user.username}
@@ -239,9 +255,9 @@ export function UserTable({ users }: UserTableProps) {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-col">
-                      {user.age != null && (
+                      {ageFromDob(user.date_of_birth) != null && (
                         <span className="text-xs text-gray-600">
-                          {user.age} yrs
+                          {ageFromDob(user.date_of_birth)} yrs
                         </span>
                       )}
                       {user.gender && (
@@ -298,7 +314,7 @@ export function UserTable({ users }: UserTableProps) {
                     colSpan={8}
                     className="px-4 py-10 text-center text-gray-400 text-sm"
                   >
-                    No users match this filter
+                    No completed-onboarding users match this filter
                   </td>
                 </tr>
               )}
@@ -308,4 +324,100 @@ export function UserTable({ users }: UserTableProps) {
       </div>
     </div>
   );
+}
+
+function UserMobileCard({
+  user,
+  loading,
+  onSuspend,
+  onShadowBan,
+}: {
+  user: ExtendedUser;
+  loading: boolean;
+  onSuspend: () => void;
+  onShadowBan: () => void;
+}) {
+  const age = ageFromDob(user.date_of_birth);
+
+  return (
+    <div className="rounded-lg border border-border-subtle bg-white p-4 shadow-sm transition-transform duration-200 active:scale-[0.99]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <Link
+            href={adminPath(`/users/${user.id}`)}
+            className="truncate text-sm font-semibold text-charcoal"
+          >
+            @{user.username}
+          </Link>
+          {user.display_name && (
+            <p className="truncate text-xs text-gray-400">
+              {user.display_name}
+            </p>
+          )}
+        </div>
+        <span
+          className={`shrink-0 rounded-md px-2 py-0.5 text-xs ${TIER_COLORS[user.trust_tier] ?? "bg-gray-100 text-gray-500"}`}
+        >
+          {user.trust_tier}
+        </span>
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
+        <MiniStat label="Score" value={user.trust_score} />
+        <MiniStat label="Echoes" value={user.echo_count} />
+        <MiniStat label="Followers" value={user.follower_count ?? 0} />
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-500">
+        <span>{user.is_pro ? `Pro ${user.pro_plan ?? ""}` : "Free"}</span>
+        {age != null && <span>{age} yrs</span>}
+        {user.gender && <span className="capitalize">{user.gender}</span>}
+        {user.is_suspended && <span className="text-coral-dark">suspended</span>}
+        {user.is_shadow_banned && <span>shadow banned</span>}
+      </div>
+
+      <div className="mt-4 flex gap-2">
+        <button
+          onClick={onSuspend}
+          disabled={loading}
+          className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${
+            user.is_suspended
+              ? "border-fern-green text-fern-dark"
+              : "border-sunset-coral text-coral-dark"
+          } disabled:opacity-40`}
+        >
+          {user.is_suspended ? "Unsuspend" : "Suspend"}
+        </button>
+        <button
+          onClick={onShadowBan}
+          disabled={loading}
+          className="flex-1 rounded-lg border border-border-subtle px-3 py-2 text-xs font-medium text-gray-500 disabled:opacity-40"
+        >
+          {user.is_shadow_banned ? "Unban" : "Shadow ban"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg bg-[#F8F7F5] p-2">
+      <p className="text-sm font-semibold text-charcoal">{value}</p>
+      <p className="text-[11px] text-gray-400">{label}</p>
+    </div>
+  );
+}
+
+function ageFromDob(value?: string | null) {
+  if (!value) return null;
+  const dob = new Date(value);
+  if (Number.isNaN(dob.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - dob.getFullYear();
+  const monthDiff = now.getMonth() - dob.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < dob.getDate())) {
+    age -= 1;
+  }
+  return age >= 0 && age < 130 ? age : null;
 }

@@ -21,12 +21,12 @@ export const dynamic = "force-dynamic";
 export default async function SubscriptionsPage() {
   const supabase = createAdminClient();
 
-  const { data: subscribers } = await supabase
+  const { data: subscribers, error: subscribersError } = await supabase
     .from("subscriptions")
     .select(
       `
     *,
-    users_public!inner(username, trust_tier, is_pro, pro_plan, pro_expires_at)
+    users_public(username, trust_tier, is_pro, pro_plan, pro_expires_at)
   `,
     )
     .order("created_at", { ascending: false });
@@ -44,6 +44,32 @@ export default async function SubscriptionsPage() {
     .select("*")
     .single();
 
+  const { data: eligibleUsers, error: eligibleUsersError } = await supabase
+    .from("users_public")
+    .select(
+      "id, username, display_name, trust_tier, is_pro, pro_plan, onboarding_complete",
+    )
+    .eq("onboarding_complete", true)
+    .not("username", "is", null)
+    .order("username", { ascending: true })
+    .limit(500);
+
+  let signedUpRows: Array<{ id: string }> = [];
+  let signedUpUsersError: { message: string } | null = null;
+  const eligibleIds = (eligibleUsers ?? []).map((user) => user.id);
+  if (eligibleIds.length > 0) {
+    const result = await supabase
+      .from("users_private")
+      .select("id")
+      .in("id", eligibleIds);
+    signedUpRows = (result.data ?? []) as Array<{ id: string }>;
+    signedUpUsersError = result.error;
+  }
+  const signedUpIds = new Set(signedUpRows.map((user) => user.id));
+  const eligibleGrantUsers = (eligibleUsers ?? []).filter((user) =>
+    Boolean(user.username?.trim()) && signedUpIds.has(user.id),
+  );
+
   return (
     <div className="flex min-h-screen">
       <Sidebar />
@@ -52,8 +78,51 @@ export default async function SubscriptionsPage() {
           title="Subscriptions"
           subtitle="Manual grants, revokes, and pricing controls"
         />
-        <div className="p-4 pb-24 sm:p-6 sm:pb-24 md:pb-6 space-y-6">
+        <div className="admin-stagger p-4 pb-24 sm:p-6 sm:pb-24 md:pb-6 space-y-6">
       <Heading size="6">Subscriptions</Heading>
+
+      {(subscribersError || eligibleUsersError || signedUpUsersError) && (
+        <div className="rounded-xl border border-coral-dark/20 bg-coral-light p-4 text-sm text-coral-dark">
+          {subscribersError?.message ??
+            eligibleUsersError?.message ??
+            signedUpUsersError?.message}
+        </div>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div className="admin-soft-card rounded-xl border border-border-subtle bg-white p-4">
+          <p className="text-xs text-gray-400">Active subscriber rows</p>
+          <p className="mt-1 text-2xl font-semibold text-charcoal">
+            {subscribers?.length ?? 0}
+          </p>
+        </div>
+        <div className="admin-soft-card rounded-xl border border-border-subtle bg-white p-4">
+          <p className="text-xs text-gray-400">Eligible signed-up users</p>
+          <p className="mt-1 text-2xl font-semibold text-charcoal">
+            {eligibleGrantUsers.length}
+          </p>
+        </div>
+        <div className="admin-soft-card rounded-xl border border-border-subtle bg-white p-4">
+          <p className="text-xs text-gray-400">ID verified users</p>
+          <p className="mt-1 text-2xl font-semibold text-charcoal">
+            {verifiedIds.size}
+          </p>
+        </div>
+      </div>
+
+      {eligibleGrantUsers.length === 0 && (
+        <div className="rounded-xl border border-border-subtle bg-white p-4 text-sm leading-6 text-gray-500 shadow-sm">
+          <p className="font-medium text-charcoal">
+            Manual grants unlock after a real app signup finishes onboarding.
+          </p>
+          <p className="mt-1">
+            The dropdown only includes rows that exist in both `users_public`
+            and `users_private`, have a username, and have
+            `onboarding_complete=true`. That prevents Pro access from being
+            attached to partial or auth-only accounts.
+          </p>
+        </div>
+      )}
 
       {/* pricing controls */}
       <Card>
@@ -117,7 +186,7 @@ export default async function SubscriptionsPage() {
         </Box>
       </Card>
 
-      {/* grant subscription to any user */}
+      {/* grant subscription to an onboarded user */}
       <Card>
         <Box p="4">
           <Heading size="4" mb="4">
@@ -127,13 +196,26 @@ export default async function SubscriptionsPage() {
             <Flex gap="3" align="end" wrap="wrap" className="w-full">
               <Box className="w-full sm:w-auto">
                 <Text size="2" color="gray">
-                  Username
+                  Completed user
                 </Text>
-                <input
+                <select
                   name="username"
-                  placeholder="@username"
-                  className="border rounded p-2 w-full sm:w-48 mt-1"
-                />
+                  disabled={eligibleGrantUsers.length === 0}
+                  className="border rounded p-2 w-full sm:w-72 mt-1 bg-white disabled:bg-gray-100 disabled:text-gray-400"
+                  required
+                >
+                  {eligibleGrantUsers.length === 0 ? (
+                    <option value="">No completed users yet</option>
+                  ) : (
+                    eligibleGrantUsers.map((user) => (
+                      <option key={user.id} value={user.username ?? ""}>
+                        @{user.username}
+                        {user.display_name ? ` - ${user.display_name}` : ""}
+                        {user.is_pro ? " - Pro" : " - Free"}
+                      </option>
+                    ))
+                  )}
+                </select>
               </Box>
               <Box className="w-[calc(50%-6px)] sm:w-auto">
                 <Text size="2" color="gray">
@@ -177,14 +259,20 @@ export default async function SubscriptionsPage() {
                   </option>
                 </select>
               </Box>
-              <Button type="submit" color="green" className="w-full sm:w-auto">
+              <Button
+                type="submit"
+                color="green"
+                className="w-full sm:w-auto"
+                disabled={eligibleGrantUsers.length === 0}
+              >
                 Grant
               </Button>
             </Flex>
             <Text size="1" color="gray" mt="3" as="p">
-              Mock history is for admin-only manual grants and uses the same
-              expiry as the granted subscription. Real Google Play purchases
-              should still come through server validation.
+              Only signed-up users who completed onboarding appear here. Mock
+              history is for admin-only manual grants and uses the same expiry
+              as the granted subscription. Real Google Play purchases should
+              still come through server validation.
             </Text>
           </form>
         </Box>
@@ -260,6 +348,15 @@ export default async function SubscriptionsPage() {
                   </Table.Cell>
                 </Table.Row>
               ))}
+              {(subscribers ?? []).length === 0 && (
+                <Table.Row>
+                  <Table.Cell colSpan={6}>
+                    <div className="py-8 text-center text-sm text-gray-400">
+                      No active subscription rows yet
+                    </div>
+                  </Table.Cell>
+                </Table.Row>
+              )}
             </Table.Body>
           </Table.Root>
           </div>

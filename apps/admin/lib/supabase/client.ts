@@ -5,13 +5,23 @@ import {
   type SupabaseClient,
 } from '@supabase/supabase-js';
 import { createBrowserClient as createSupabaseBrowserClient } from '@supabase/ssr';
+import {
+  getSupabaseBrowserAnonKey,
+  getSupabaseBrowserUrl,
+} from '@/lib/supabase-env';
 
-const supabaseUrl  = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseUrl = getSupabaseBrowserUrl();
+const supabaseAnon = getSupabaseBrowserAnonKey();
 let browserClient: SupabaseClient | null = null;
 
 // client-side client — uses anon key, subject to RLS
 export function createBrowserClient() {
+  if (!supabaseUrl || !supabaseAnon) {
+    throw new Error(
+      'NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are required',
+    );
+  }
+
   browserClient ??= createSupabaseBrowserClient(supabaseUrl, supabaseAnon, {
     auth: {
       storageKey: 'echoproof-admin-auth',
