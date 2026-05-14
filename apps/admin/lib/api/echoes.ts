@@ -1,8 +1,8 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { Echo } from "@/types/echo";
 
 export async function getEchoes(status?: string): Promise<Echo[]> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   let query = supabase
     .from("echoes")
@@ -35,7 +35,7 @@ export async function updateEchoStatus(
   adminNote?: string,
   adminVerified?: boolean | null
 ): Promise<void> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   await supabase
     .from("echoes")
     .update({

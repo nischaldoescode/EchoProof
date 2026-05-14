@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { ReportQueue } from "@/components/reports/report-queue";
@@ -6,9 +6,9 @@ import { ReportQueue } from "@/components/reports/report-queue";
 export const dynamic = "force-dynamic";
 
 export default async function ReportsPage() {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
-  const { data: reports } = await supabase
+  const { data: reports, error } = await supabase
     .from("echo_reports")
     .select(`
       id, echo_id, reporter_id, reason, description, reporter_weight, resolved, created_at,
@@ -39,6 +39,11 @@ export default async function ReportsPage() {
           subtitle="Grouped by echo so moderation decisions use multiple signals, not one loud report"
         />
         <div className="p-4 pb-24 sm:p-6 sm:pb-24 md:pb-6">
+          {error && (
+            <div className="mb-4 rounded-xl border border-coral-dark/20 bg-coral-light p-4 text-sm text-coral-dark">
+              {error.message}
+            </div>
+          )}
           <ReportQueue reports={transformedReports} />
         </div>
       </main>

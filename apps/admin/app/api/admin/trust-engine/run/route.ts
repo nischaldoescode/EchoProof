@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { getSupabaseProjectUrl } from "@/lib/supabase-env";
 
 export async function POST() {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
-  const supabaseUrl =
-    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseUrl = getSupabaseProjectUrl();
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !serviceRoleKey) {

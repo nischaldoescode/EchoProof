@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { EchoTable } from "@/components/echoes/echo-table";
@@ -7,9 +7,9 @@ import type { Echo } from "@/types/echo";
 export const dynamic = "force-dynamic";
 
 export default async function EchoesPage() {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
-  const { data: echoes } = await supabase
+  const { data: echoes, error } = await supabase
     .from("echoes")
     .select(`
       id, title, content, category, status,
@@ -34,6 +34,11 @@ export default async function EchoesPage() {
       <main className="flex-1 min-w-0 flex flex-col">
         <Topbar title="Echo moderation" subtitle="Review, verify, or remove echoes" />
         <div className="p-4 pb-24 sm:p-6 sm:pb-24 md:pb-6">
+          {error && (
+            <div className="mb-4 rounded-xl border border-coral-dark/20 bg-coral-light p-4 text-sm text-coral-dark">
+              {error.message}
+            </div>
+          )}
           <EchoTable echoes={normalizedEchoes} />
         </div>
       </main>

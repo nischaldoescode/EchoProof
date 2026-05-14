@@ -251,7 +251,7 @@ function ReportCard({
           </div>
 
           <Link
-            href={`/echoes/${group.echo.id}`}
+            href={adminPath(`/echoes/${group.echo.id}`)}
             className="block text-sm font-semibold leading-snug text-charcoal transition-colors hover:text-fern-dark"
           >
             {preview}

@@ -1,0 +1,5 @@
+.log
+.err.log
+.next/
+node_modules/
+dist/
