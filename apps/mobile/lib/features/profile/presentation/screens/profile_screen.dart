@@ -898,7 +898,8 @@ class _ProfileScreenState extends State<ProfileScreen>
             .select(
               'id, title, content, category, category_detail, status, trust_score, '
               'confidence_score, controversy_score, support_count, '
-              'challenge_count, reply_count, created_at, media_urls, '
+              'challenge_count, context_support_count, context_challenge_count, '
+              'public_verdict, reply_count, created_at, media_urls, '
               'created_record_tx, created_record_at, solana_status, solana_error, '
               'verified_record_tx, verified_record_at, '
               'verified_record_status, verified_record_error, bond_count',
@@ -948,8 +949,17 @@ class _ProfileScreenState extends State<ProfileScreen>
           confidenceScore: (r['confidence_score'] as num?)?.toDouble() ?? 0,
           trustScore: (r['trust_score'] as num?)?.toInt() ?? 0,
           controversyScore: (r['controversy_score'] as num?)?.toDouble() ?? 0,
-          supportCount: (r['support_count'] as num?)?.toInt() ?? 0,
-          challengeCount: (r['challenge_count'] as num?)?.toInt() ?? 0,
+          supportCount: (r['context_support_count'] as num?)?.toInt() ??
+              (r['support_count'] as num?)?.toInt() ??
+              0,
+          challengeCount: (r['context_challenge_count'] as num?)?.toInt() ??
+              (r['challenge_count'] as num?)?.toInt() ??
+              0,
+          contextSupportCount:
+              (r['context_support_count'] as num?)?.toInt() ?? 0,
+          contextChallengeCount:
+              (r['context_challenge_count'] as num?)?.toInt() ?? 0,
+          publicVerdict: r['public_verdict'] as String? ?? 'open',
           timeAgo: Formatters.timeAgo(created),
           userIsPro: profile['is_pro'] as bool? ?? false,
           mediaUrls: (r['media_urls'] as List?)?.cast<String>() ?? const [],

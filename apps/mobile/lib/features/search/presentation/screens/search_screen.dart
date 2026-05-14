@@ -110,7 +110,11 @@ class _SearchScreenState extends State<SearchScreen>
           .from('echoes')
           .select(
             'id, user_id, title, content, category, status, media_urls, '
-            'support_count, challenge_count, reply_count, created_at, '
+            'support_count, challenge_count, context_support_count, '
+            'context_challenge_count, context_score, public_verdict, '
+            'public_verdict_at, public_context_closes_at, '
+            'public_context_min_count, public_context_decision_reason, '
+            'reply_count, created_at, '
             'users_public!inner(username, display_name, trust_tier, avatar_url, is_pro, is_public)',
           )
           .or('title.ilike.$pattern,content.ilike.$pattern')
@@ -569,8 +573,12 @@ class _EchoResultCard extends StatelessWidget {
     final echoId = echo['id'] as String;
     final title = echo['title'] as String? ?? '';
     final content = echo['content'] as String? ?? '';
-    final support = (echo['support_count'] as num?)?.toInt() ?? 0;
-    final challenge = (echo['challenge_count'] as num?)?.toInt() ?? 0;
+    final support = (echo['context_support_count'] as num?)?.toInt() ??
+        (echo['support_count'] as num?)?.toInt() ??
+        0;
+    final challenge = (echo['context_challenge_count'] as num?)?.toInt() ??
+        (echo['challenge_count'] as num?)?.toInt() ??
+        0;
     final replies = (echo['reply_count'] as num?)?.toInt() ?? 0;
     final status = echo['status'] as String? ?? 'active';
     final username = user['username'] as String? ?? 'unknown';

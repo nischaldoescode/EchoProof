@@ -15,6 +15,7 @@ void showAppSnack(
   VoidCallback? onAction,
 }) {
   final colors = _snackColors(type);
+  final bottomInset = MediaQuery.maybeOf(context)?.viewInsets.bottom ?? 0;
 
   HyperSnackbar.show(
     title: _snackTitle(type),
@@ -28,7 +29,7 @@ void showAppSnack(
     textColor: colors.fg,
     border: Border.all(color: colors.border),
     borderRadius: AppSpacing.radiusMd,
-    margin: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+    margin: EdgeInsets.fromLTRB(14, 0, 14, bottomInset + 14),
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
     maxWidth: 520,
     alignment: Alignment.bottomCenter,

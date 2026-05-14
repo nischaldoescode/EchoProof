@@ -43,7 +43,9 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
   const { data: echo, error: echoError } = await supabase
     .from("echoes")
-    .select("id, user_id, title, content, status")
+    .select(
+      "id, user_id, title, content, status, public_verdict, admin_override_used",
+    )
     .eq("id", id)
     .single();
 
@@ -51,9 +53,27 @@ export async function POST(req: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: "echo not found" }, { status: 404 });
   }
 
+  if (echo.public_verdict && echo.public_verdict !== "open") {
+    return NextResponse.json(
+      {
+        error:
+          "public verdict is already decided; admin moderation cannot override it",
+      },
+      { status: 409 },
+    );
+  }
+
+  if (echo.admin_override_used) {
+    return NextResponse.json(
+      { error: "admin override was already used for this echo" },
+      { status: 409 },
+    );
+  }
+
   const updates: Record<string, unknown> = {
     status,
     admin_note: payload.admin_note ?? null,
+    admin_override_used: true,
   };
 
   if ("admin_verified" in payload) {

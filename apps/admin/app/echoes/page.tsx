@@ -14,7 +14,11 @@ export default async function EchoesPage() {
     .select(`
       id, title, content, category, status,
       trust_score, confidence_score, report_score,
-      support_count, challenge_count, admin_verified, admin_note,
+      support_count, challenge_count, context_support_count,
+      context_challenge_count, context_score, public_verdict,
+      public_verdict_at, public_context_closes_at,
+      public_context_min_count, public_context_decision_reason,
+      admin_override_used, admin_verified, admin_note,
       verified_record_tx, created_at,
       users_public!inner(username, trust_tier)
     `)

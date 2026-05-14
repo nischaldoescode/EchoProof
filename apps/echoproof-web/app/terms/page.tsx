@@ -77,15 +77,19 @@ const sections = [
   },
   {
     title: "Content you post",
-    body: "You retain ownership of the content you post on Echoproof. By posting, you grant us a worldwide, non-exclusive, royalty-free licence to display, distribute, and store your content on the platform. You are solely responsible for ensuring your content does not violate any laws or third-party rights.",
+    body: "You retain ownership of the content you post on Echoproof, including echoes, replies, support context, challenge context, images, and videos. By posting, you grant us a worldwide, non-exclusive, royalty-free licence to display, distribute, moderate, and store your content on the platform. You are solely responsible for ensuring your content does not violate any laws or third-party rights.",
+  },
+  {
+    title: "Public context and verdicts",
+    body: "Support and challenge actions require a written reason or context. Other users may like those context entries, and public context signals may decide whether an echo is supported, contested, or not supported. Public context normally remains open for seven days, but may close earlier when enough weighted context is received. Context may include images or videos within the app limits, including a maximum of two attachments per context and one media-backed context per day. Admins may review undecided echoes for safety and abuse, but once the public context verdict is decided, admin status changes are locked except where required by law or platform safety.",
   },
   {
     title: "Prohibited conduct",
-    body: "You agree not to: post content that is illegal, threatening, harassing, defamatory, or that infringes intellectual property rights; attempt to manipulate trust scores through coordinated inauthentic behaviour; create multiple accounts to circumvent bans or limits; use automated tools to interact with the platform without our written permission; post personal information of others without their consent.",
+    body: "You agree not to: post content that is illegal, threatening, harassing, defamatory, or that infringes intellectual property rights; attempt to manipulate trust scores, public context, or context likes through coordinated inauthentic behaviour; create multiple accounts to circumvent bans or limits; use automated tools to interact with the platform without our written permission; post personal information of others without their consent.",
   },
   {
     title: "Content moderation",
-    body: "We use automated systems and human review to moderate content. We reserve the right to remove any content that violates these terms or our community guidelines without prior notice. Repeated violations may result in account suspension or permanent ban. Moderation decisions are logged internally for audit purposes.",
+    body: "We use automated systems and human review to moderate content, including AI text checks and AI-generated image or video checks for echo and context attachments. We reserve the right to remove any content that violates these terms or our community guidelines without prior notice. Repeated violations may result in account suspension or permanent ban. Moderation decisions are logged internally for audit purposes.",
   },
   {
     title: "Identity verification",

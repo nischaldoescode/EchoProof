@@ -13,6 +13,7 @@ import '../../domain/entities/echo_status.dart';
 import '../widgets/confidence_bar.dart';
 import '../widgets/trust_badge.dart';
 import '../widgets/interaction_buttons.dart';
+import '../widgets/signal_response_sheet.dart';
 import '../widgets/proof_attachment.dart';
 import '../widgets/truth_bond_button.dart';
 import '../widgets/verified_echo_record.dart';
@@ -23,6 +24,7 @@ import '../../../../shared/widgets/rich_text_display.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../core/utils/media_file_safety.dart';
+import '../../../../core/utils/snack.dart';
 import '../../../../core/localization/app_copy.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../../core/services/video_playback_coordinator.dart';
@@ -42,8 +44,10 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
 
   EchoEntity? _echo;
   List<Map<String, dynamic>> _proofs = [];
+  List<Map<String, dynamic>> _contexts = [];
   List<Map<String, dynamic>> _replies = [];
   bool _isLoading = true;
+  bool _isContextsLoading = true;
   bool _isRepliesLoading = true;
   bool _previewUnavailable = false;
   String? _error;
@@ -56,6 +60,12 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
   EchoStatus? _liveStatus;
   int? _liveSupport;
   int? _liveChallenge;
+  int? _liveContextScore;
+  String? _livePublicVerdict;
+  DateTime? _livePublicVerdictAt;
+  DateTime? _livePublicContextClosesAt;
+  int? _livePublicContextMinCount;
+  String? _livePublicContextDecisionReason;
   int? _liveBondCount;
   String? _liveCreatedRecordTx;
   String? _liveVerifiedRecordTx;
@@ -69,6 +79,7 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
     super.initState();
     _loadEcho();
     _loadProofs();
+    _loadContexts();
     _loadReplies();
     _subscribeRealtime();
   }
@@ -87,6 +98,10 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
               id, user_id, title, content, category, category_detail, status, media_urls, reply_count,
               trust_score, confidence_score, controversy_score,
               support_count, challenge_count, created_at,
+              context_support_count, context_challenge_count,
+              context_score, public_verdict, public_verdict_at,
+              public_context_closes_at, public_context_min_count,
+              public_context_decision_reason,
               created_record_tx, created_record_at, solana_status, solana_error,
               verified_record_tx, verified_record_at,
               verified_record_status, verified_record_error,
@@ -138,6 +153,52 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
       setState(() => _proofs = List<Map<String, dynamic>>.from(rows));
     } catch (e) {
       AppLogger.warn('echo detail: proofs load failed');
+    }
+  }
+
+  Future<void> _loadContexts() async {
+    try {
+      final client = Supabase.instance.client;
+      final rows = await client
+          .from('signal_responses')
+          .select('''
+            id, user_id, content, stance, like_count, media_urls, media_types,
+            created_at,
+            users_public!inner(id, username, display_name, avatar_url, trust_tier, is_pro)
+          ''')
+          .eq('echo_id', widget.echoId)
+          .filter('stance', 'in', '("support","challenge")')
+          .eq('moderation_status', 'approved')
+          .order('like_count', ascending: false)
+          .order('created_at', ascending: false)
+          .limit(20);
+
+      final contextRows = List<Map<String, dynamic>>.from(rows as List);
+      final currentUserId = client.auth.currentUser?.id;
+      if (currentUserId != null && contextRows.isNotEmpty) {
+        final responseIds =
+            contextRows.map((row) => row['id'] as String).join(',');
+        final likes = await client
+            .from('signal_response_likes')
+            .select('response_id')
+            .eq('user_id', currentUserId)
+            .filter('response_id', 'in', '($responseIds)');
+        final likedIds = (likes as List)
+            .map((row) => (row as Map<String, dynamic>)['response_id'])
+            .whereType<String>()
+            .toSet();
+        for (final row in contextRows) {
+          row['is_liked'] = likedIds.contains(row['id']);
+        }
+      }
+
+      setState(() {
+        _contexts = contextRows;
+        _isContextsLoading = false;
+      });
+    } catch (e) {
+      AppLogger.warn('echo detail: public context load failed');
+      setState(() => _isContextsLoading = false);
     }
   }
 
@@ -200,8 +261,21 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                   (newRow['confidence_score'] as num?)?.toDouble();
               _liveStatus =
                   _parseStatus(newRow['status'] as String? ?? 'active');
-              _liveSupport = (newRow['support_count'] as num?)?.toInt();
-              _liveChallenge = (newRow['challenge_count'] as num?)?.toInt();
+              _liveSupport =
+                  (newRow['context_support_count'] as num?)?.toInt() ??
+                      (newRow['support_count'] as num?)?.toInt();
+              _liveChallenge =
+                  (newRow['context_challenge_count'] as num?)?.toInt() ??
+                      (newRow['challenge_count'] as num?)?.toInt();
+              _liveContextScore = (newRow['context_score'] as num?)?.toInt();
+              _livePublicVerdict = newRow['public_verdict'] as String?;
+              _livePublicVerdictAt = _parseDate(newRow['public_verdict_at']);
+              _livePublicContextClosesAt =
+                  _parseDate(newRow['public_context_closes_at']);
+              _livePublicContextMinCount =
+                  (newRow['public_context_min_count'] as num?)?.toInt();
+              _livePublicContextDecisionReason =
+                  newRow['public_context_decision_reason'] as String?;
               _liveBondCount = (newRow['bond_count'] as num?)?.toInt();
               _liveCreatedRecordTx = newRow['created_record_tx'] as String?;
               _liveVerifiedRecordTx = newRow['verified_record_tx'] as String?;
@@ -242,8 +316,23 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
       confidenceScore: (row['confidence_score'] as num?)?.toDouble() ?? 0.0,
       trustScore: (row['trust_score'] as num?)?.toInt() ?? 0,
       controversyScore: (row['controversy_score'] as num?)?.toDouble() ?? 0.0,
-      supportCount: (row['support_count'] as num?)?.toInt() ?? 0,
-      challengeCount: (row['challenge_count'] as num?)?.toInt() ?? 0,
+      supportCount: (row['context_support_count'] as num?)?.toInt() ??
+          (row['support_count'] as num?)?.toInt() ??
+          0,
+      challengeCount: (row['context_challenge_count'] as num?)?.toInt() ??
+          (row['challenge_count'] as num?)?.toInt() ??
+          0,
+      contextSupportCount: (row['context_support_count'] as num?)?.toInt() ?? 0,
+      contextChallengeCount:
+          (row['context_challenge_count'] as num?)?.toInt() ?? 0,
+      publicVerdict: row['public_verdict'] as String? ?? 'open',
+      publicVerdictAt: _parseDate(row['public_verdict_at']),
+      publicContextClosesAt: _parseDate(row['public_context_closes_at']),
+      publicContextMinCount:
+          (row['public_context_min_count'] as num?)?.toInt() ?? 7,
+      publicContextDecisionReason:
+          row['public_context_decision_reason'] as String?,
+      contextScore: (row['context_score'] as num?)?.toInt() ?? 0,
       replyCount: (row['reply_count'] as num?)?.toInt() ?? 0,
       mediaUrls: (row['media_urls'] as List?)?.cast<String>() ?? const [],
       createdRecordTx: row['created_record_tx'] as String?,
@@ -299,6 +388,17 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
       status: _liveStatus ?? _echo!.status,
       supportCount: _liveSupport ?? _echo!.supportCount,
       challengeCount: _liveChallenge ?? _echo!.challengeCount,
+      contextSupportCount: _liveSupport ?? _echo!.contextSupportCount,
+      contextChallengeCount: _liveChallenge ?? _echo!.contextChallengeCount,
+      contextScore: _liveContextScore ?? _echo!.contextScore,
+      publicVerdict: _livePublicVerdict ?? _echo!.publicVerdict,
+      publicVerdictAt: _livePublicVerdictAt ?? _echo!.publicVerdictAt,
+      publicContextClosesAt:
+          _livePublicContextClosesAt ?? _echo!.publicContextClosesAt,
+      publicContextMinCount:
+          _livePublicContextMinCount ?? _echo!.publicContextMinCount,
+      publicContextDecisionReason: _livePublicContextDecisionReason ??
+          _echo!.publicContextDecisionReason,
       createdRecordTx: _liveCreatedRecordTx ?? _echo!.createdRecordTx,
       createdRecordAt: _liveCreatedRecordAt ?? _echo!.createdRecordAt,
       solanaStatus: _liveSolanaStatus ?? _echo!.solanaStatus,
@@ -321,6 +421,7 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
           await Future.wait([
             _loadEcho(),
             _loadProofs(),
+            _loadContexts(),
             _loadReplies(),
           ]);
         },
@@ -470,6 +571,9 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                       _LiveScoreSection(
                         echo: displayed,
                         onEchoHidden: _handleEchoHidden,
+                        onContextPosted: () async {
+                          await Future.wait([_loadEcho(), _loadContexts()]);
+                        },
                       ),
                       const SizedBox(height: AppSpacing.md),
                       Wrap(
@@ -490,6 +594,19 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                               compact: false,
                             ),
                         ],
+                      ),
+
+                      const SizedBox(height: AppSpacing.xl),
+                      const Divider(),
+                      const SizedBox(height: AppSpacing.lg),
+
+                      _PublicContextSection(
+                        echo: displayed,
+                        contexts: _contexts,
+                        isLoading: _isContextsLoading,
+                        onRefresh: () async {
+                          await Future.wait([_loadEcho(), _loadContexts()]);
+                        },
                       ),
 
                       const SizedBox(height: AppSpacing.xl),
@@ -745,10 +862,536 @@ class _EchoDetailMediaTile extends StatelessWidget {
   }
 }
 
+class _PublicContextSection extends StatelessWidget {
+  const _PublicContextSection({
+    required this.echo,
+    required this.contexts,
+    required this.isLoading,
+    required this.onRefresh,
+  });
+
+  final EchoEntity echo;
+  final List<Map<String, dynamic>> contexts;
+  final bool isLoading;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final verdict = _publicVerdictLabel(echo.publicVerdict);
+    final color = _publicVerdictColor(echo.publicVerdict);
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    final isOwnEcho = currentUserId != null && currentUserId == echo.userId;
+    final now = DateTime.now();
+    final closesAt = echo.publicContextClosesAt;
+    final isClosed = echo.publicVerdict != 'open' ||
+        (closesAt != null && !closesAt.isAfter(now));
+
+    void openSheet(String stance) {
+      if (isOwnEcho) {
+        showInfoSnack(
+          context,
+          'You cannot support or challenge your own echo.',
+        );
+        return;
+      }
+      if (isClosed) {
+        showInfoSnack(
+          context,
+          'Public context is closed for this echo.',
+        );
+        return;
+      }
+      showSignalResponseSheet(
+        context: context,
+        echoId: echo.id,
+        initialStance: stance,
+        onPosted: onRefresh,
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '#echo context',
+                style: AppTypography.textTheme.titleMedium,
+              ),
+            ),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.sm,
+                vertical: 6,
+              ),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+                border: Border.all(color: color.withValues(alpha: 0.35)),
+              ),
+              child: Text(
+                verdict,
+                style: AppTypography.textTheme.labelSmall?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        _ContextEvaluationNote(echo: echo),
+        const SizedBox(height: AppSpacing.md),
+        _ContextBalanceBar(
+          support: echo.supportCount,
+          challenge: echo.challengeCount,
+          minCount: echo.publicContextMinCount,
+        ),
+        const SizedBox(height: AppSpacing.md),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => openSheet('support'),
+                icon: const Icon(Icons.thumb_up_alt_outlined, size: 16),
+                label: const Text('Support with context'),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => openSheet('challenge'),
+                icon: const Icon(Icons.report_problem_outlined, size: 16),
+                label: const Text('Challenge'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        if (isLoading)
+          const LinearProgressIndicator(minHeight: 2)
+        else if (contexts.isEmpty)
+          Text(
+            'No public context yet. Add a clear reason so the community can decide.',
+            style: AppTypography.textTheme.bodySmall,
+          )
+        else
+          ...List.generate(contexts.length, (index) {
+            return TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: 1),
+              duration: Duration(milliseconds: 220 + index * 45),
+              curve: Curves.easeOutCubic,
+              builder: (context, value, child) {
+                return Opacity(
+                  opacity: value,
+                  child: Transform.translate(
+                    offset: Offset(0, 10 * (1 - value)),
+                    child: child,
+                  ),
+                );
+              },
+              child: _ContextRow(
+                row: contexts[index],
+                isLast: index == contexts.length - 1,
+                onChanged: onRefresh,
+              ),
+            );
+          }),
+      ],
+    );
+  }
+}
+
+class _ContextEvaluationNote extends StatelessWidget {
+  const _ContextEvaluationNote({required this.echo});
+
+  final EchoEntity echo;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = echo.supportCount + echo.challengeCount;
+    final remaining =
+        (echo.publicContextMinCount - total).clamp(0, 1 << 31).toInt();
+    final closesAt = echo.publicContextClosesAt;
+    final verdict = echo.publicVerdict;
+    final decidedAt = echo.publicVerdictAt;
+
+    final text = switch (verdict) {
+      'supported' ||
+      'not_supported' ||
+      'contested' =>
+        'Decided by public context${decidedAt == null ? '' : ' ${Formatters.timeAgo(decidedAt)}'}.',
+      _ when echo.publicContextDecisionReason == 'insufficient_context' =>
+        'The review window ended with too little public context, so this echo is still open.',
+      _ when closesAt != null =>
+        'Evaluation closes ${_relativeWindow(closesAt)} or after $remaining more context point${remaining == 1 ? '' : 's'}.',
+      _ =>
+        'Evaluation closes after enough public support or challenge context is received.',
+    };
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 180),
+      child: Text(
+        text,
+        key: ValueKey(text),
+        style: AppTypography.textTheme.bodySmall?.copyWith(
+          color: AppColors.textSecondary,
+        ),
+      ),
+    );
+  }
+}
+
+class _ContextBalanceBar extends StatelessWidget {
+  const _ContextBalanceBar({
+    required this.support,
+    required this.challenge,
+    required this.minCount,
+  });
+
+  final int support;
+  final int challenge;
+  final int minCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = support + challenge;
+    final supportShare = total == 0 ? 0.5 : support / total;
+    final progress =
+        minCount <= 0 ? 1.0 : (total / minCount).clamp(0.0, 1.0).toDouble();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+          child: SizedBox(
+            height: 9,
+            child: Row(
+              children: [
+                Expanded(
+                  flex: (supportShare * 1000).round().clamp(1, 999).toInt(),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 260),
+                    color: AppColors.fernGreen,
+                  ),
+                ),
+                Expanded(
+                  flex:
+                      ((1 - supportShare) * 1000).round().clamp(1, 999).toInt(),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 260),
+                    color: AppColors.sunsetCoral,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Text(
+              '$support support',
+              style: AppTypography.textTheme.labelSmall?.copyWith(
+                color: AppColors.fernGreenDark,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '${(progress * 100).round()}% of evaluation threshold',
+              style: AppTypography.textTheme.labelSmall,
+            ),
+            const Spacer(),
+            Text(
+              '$challenge challenge',
+              style: AppTypography.textTheme.labelSmall?.copyWith(
+                color: AppColors.sunsetCoralDark,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _ContextRow extends StatefulWidget {
+  const _ContextRow({
+    required this.row,
+    required this.isLast,
+    required this.onChanged,
+  });
+
+  final Map<String, dynamic> row;
+  final bool isLast;
+  final Future<void> Function() onChanged;
+
+  @override
+  State<_ContextRow> createState() => _ContextRowState();
+}
+
+class _ContextRowState extends State<_ContextRow> {
+  bool _liked = false;
+  late int _likeCount;
+
+  @override
+  void initState() {
+    super.initState();
+    _liked = widget.row['is_liked'] as bool? ?? false;
+    _likeCount = (widget.row['like_count'] as num?)?.toInt() ?? 0;
+  }
+
+  @override
+  void didUpdateWidget(covariant _ContextRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.row['id'] != widget.row['id']) {
+      _liked = widget.row['is_liked'] as bool? ?? false;
+      _likeCount = (widget.row['like_count'] as num?)?.toInt() ?? 0;
+    }
+  }
+
+  Future<void> _toggleLike() async {
+    if (showOfflineSnackIfNeeded(context)) return;
+    final previousLiked = _liked;
+    final previousCount = _likeCount;
+    setState(() {
+      _liked = !_liked;
+      _likeCount = (_likeCount + (_liked ? 1 : -1)).clamp(0, 1 << 31).toInt();
+    });
+
+    try {
+      final rows = await Supabase.instance.client.rpc(
+        'toggle_signal_response_like',
+        params: {'p_response_id': widget.row['id']},
+      ) as List;
+      final row = rows.isEmpty ? null : rows.first as Map<String, dynamic>?;
+      if (!mounted || row == null) return;
+      setState(() {
+        _liked = row['liked'] as bool? ?? _liked;
+        _likeCount = (row['like_count'] as num?)?.toInt() ?? _likeCount;
+      });
+      await widget.onChanged();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _liked = previousLiked;
+        _likeCount = previousCount;
+      });
+      final message = e.toString().toLowerCase();
+      showErrorSnack(
+        context,
+        message.contains('public_context_closed')
+            ? 'Public context is closed for this echo.'
+            : message.contains('own_context')
+                ? 'You cannot like your own context.'
+                : 'Could not update context like.',
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = widget.row['users_public'] as Map<String, dynamic>? ?? {};
+    final displayName =
+        (user['display_name'] as String?)?.trim().isNotEmpty == true
+            ? user['display_name'] as String
+            : user['username'] as String? ?? 'unknown';
+    final username = user['username'] as String? ?? 'unknown';
+    final avatarUrl = user['avatar_url'] as String?;
+    final stance = widget.row['stance'] as String? ?? 'support';
+    final color =
+        stance == 'support' ? AppColors.fernGreen : AppColors.sunsetCoralDark;
+    final mediaUrls =
+        (widget.row['media_urls'] as List?)?.cast<String>() ?? const <String>[];
+    final created = _parseContextDate(widget.row['created_at']);
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 30,
+            child: Column(
+              children: [
+                CircleAvatar(
+                  radius: 14,
+                  backgroundColor: AppColors.softSand,
+                  backgroundImage: avatarUrl == null || avatarUrl.isEmpty
+                      ? null
+                      : CachedNetworkImageProvider(avatarUrl),
+                  child: avatarUrl == null || avatarUrl.isEmpty
+                      ? const Icon(
+                          Icons.person_outline_rounded,
+                          size: 15,
+                          color: AppColors.textTertiary,
+                        )
+                      : null,
+                ),
+                if (!widget.isLast)
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      margin: const EdgeInsets.only(top: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.borderSubtle,
+                        borderRadius: BorderRadius.circular(1),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(
+                bottom: widget.isLast ? 0 : AppSpacing.lg,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 2,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        displayName,
+                        style: AppTypography.textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.charcoal,
+                        ),
+                      ),
+                      Text(
+                        '@$username${created == null ? '' : ' · ${Formatters.timeAgo(created)}'}',
+                        style: AppTypography.textTheme.labelSmall,
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.1),
+                          borderRadius:
+                              BorderRadius.circular(AppSpacing.radiusFull),
+                        ),
+                        child: Text(
+                          stance == 'support' ? 'Supports' : 'Challenges',
+                          style: AppTypography.textTheme.labelSmall?.copyWith(
+                            color: color,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  RichTextDisplay(
+                    text: widget.row['content'] as String? ?? '',
+                    style: AppTypography.textTheme.bodyMedium,
+                    hideUrls: false,
+                  ),
+                  if (mediaUrls.isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    _EchoDetailMediaGallery(
+                      echoId: 'context_${widget.row['id']}',
+                      urls: mediaUrls,
+                    ),
+                  ],
+                  const SizedBox(height: AppSpacing.xs),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _toggleLike,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          AnimatedScale(
+                            scale: _liked ? 1.16 : 1,
+                            duration: const Duration(milliseconds: 180),
+                            curve: Curves.easeOutBack,
+                            child: Icon(
+                              _liked
+                                  ? Icons.favorite_rounded
+                                  : Icons.favorite_border_rounded,
+                              size: 15,
+                              color: _liked
+                                  ? AppColors.fernGreen
+                                  : AppColors.textTertiary,
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            _likeCount > 0 ? '$_likeCount' : 'Like context',
+                            style: AppTypography.textTheme.labelSmall?.copyWith(
+                              color: _liked
+                                  ? AppColors.fernGreenDark
+                                  : AppColors.textTertiary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+DateTime? _parseContextDate(dynamic value) {
+  if (value is String) return DateTime.tryParse(value);
+  return null;
+}
+
+String _relativeWindow(DateTime target) {
+  final diff = target.difference(DateTime.now());
+  final past = diff.isNegative;
+  final duration = past ? diff.abs() : diff;
+  final value = duration.inDays >= 1
+      ? '${duration.inDays}d'
+      : duration.inHours >= 1
+          ? '${duration.inHours}h'
+          : '${duration.inMinutes.clamp(1, 59)}m';
+  return past ? '$value ago' : 'in $value';
+}
+
+String _publicVerdictLabel(String verdict) => switch (verdict) {
+      'supported' => 'Supported',
+      'not_supported' => 'Not supported',
+      'contested' => 'Contested',
+      _ => 'Open',
+    };
+
+Color _publicVerdictColor(String verdict) => switch (verdict) {
+      'supported' => AppColors.fernGreenDark,
+      'not_supported' => AppColors.sunsetCoralDark,
+      'contested' => AppColors.statusControversial,
+      _ => AppColors.textTertiary,
+    };
+
 class _LiveScoreSection extends StatelessWidget {
-  const _LiveScoreSection({required this.echo, this.onEchoHidden});
+  const _LiveScoreSection({
+    required this.echo,
+    this.onEchoHidden,
+    this.onContextPosted,
+  });
   final EchoEntity echo;
   final VoidCallback? onEchoHidden;
+  final Future<void> Function()? onContextPosted;
 
   @override
   Widget build(BuildContext context) {
@@ -762,7 +1405,11 @@ class _LiveScoreSection extends StatelessWidget {
         const SizedBox(height: AppSpacing.md),
         ConfidenceBar(confidence: echo.confidenceScore, status: echo.status),
         const SizedBox(height: AppSpacing.md),
-        InteractionButtons(echo: echo, onEchoHidden: onEchoHidden),
+        InteractionButtons(
+          echo: echo,
+          onEchoHidden: onEchoHidden,
+          onContextPosted: onContextPosted,
+        ),
       ],
     );
   }

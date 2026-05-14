@@ -88,6 +88,13 @@ class _ExitConfirmWrapperState extends State<ExitConfirmWrapper> {
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop || !widget.enabled) return;
 
+        final keyboardOpen =
+            (MediaQuery.maybeOf(context)?.viewInsets.bottom ?? 0) > 0;
+        if (keyboardOpen) {
+          FocusManager.instance.primaryFocus?.unfocus();
+          return;
+        }
+
         final now = DateTime.now();
         final isDoubleTap = _lastBackPress != null &&
             now.difference(_lastBackPress!) < const Duration(seconds: 2);
