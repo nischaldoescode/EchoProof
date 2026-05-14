@@ -15,21 +15,69 @@ import {
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { adminPath } from "@/lib/routes";
+import { SubscriptionGrantForm } from "@/components/subscriptions/subscription-grant-form";
 
 export const dynamic = "force-dynamic";
+
+type SubscriptionRow = {
+  id: string;
+  user_id: string;
+  plan: string;
+  status: string;
+  expires_at: string | null;
+  created_at: string;
+};
+
+type SubscriptionUser = {
+  id: string;
+  username: string | null;
+  display_name?: string | null;
+  trust_tier?: string | null;
+  is_pro?: boolean | null;
+  pro_plan?: string | null;
+  pro_expires_at?: string | null;
+  onboarding_complete?: boolean | null;
+  created_at?: string | null;
+};
+
+type DisplaySubscriptionRow = SubscriptionRow & {
+  users_public: SubscriptionUser | null;
+  profileOnly?: boolean;
+};
 
 export default async function SubscriptionsPage() {
   const supabase = createAdminClient();
 
-  const { data: subscribers, error: subscribersError } = await supabase
+  const { data: subscriptionRows, error: subscribersError } = await supabase
     .from("subscriptions")
-    .select(
-      `
-    *,
-    users_public(username, trust_tier, is_pro, pro_plan, pro_expires_at)
-  `,
-    )
+    .select("id, user_id, plan, status, expires_at, created_at")
     .order("created_at", { ascending: false });
+
+  const subscriptions = (subscriptionRows ?? []) as SubscriptionRow[];
+  const subscriptionUserIds = subscriptions.map((sub) => sub.user_id);
+  const { data: subscriberProfiles } = subscriptionUserIds.length
+    ? await supabase
+        .from("users_public")
+        .select(
+          "id, username, display_name, trust_tier, is_pro, pro_plan, pro_expires_at, created_at",
+        )
+        .in("id", subscriptionUserIds)
+    : { data: [] };
+  const profileById = new Map(
+    ((subscriberProfiles ?? []) as SubscriptionUser[]).map((profile) => [
+      profile.id,
+      profile,
+    ]),
+  );
+  const subscribers: DisplaySubscriptionRow[] = subscriptions.map((sub) => ({
+    ...sub,
+    users_public: profileById.get(sub.user_id) ?? null,
+  }));
+  const activeSubscriptionUserIds = new Set(
+    subscriptions
+      .filter((sub) => isActiveSubscription(sub.status, sub.expires_at))
+      .map((sub) => sub.user_id),
+  );
 
   // Also fetch identity-verified users for context.
   const { data: verifiedUsers } = await supabase
@@ -47,7 +95,7 @@ export default async function SubscriptionsPage() {
   const { data: eligibleUsers, error: eligibleUsersError } = await supabase
     .from("users_public")
     .select(
-      "id, username, display_name, trust_tier, is_pro, pro_plan, onboarding_complete",
+      "id, username, display_name, trust_tier, is_pro, pro_plan, pro_expires_at, onboarding_complete, created_at",
     )
     .eq("onboarding_complete", true)
     .not("username", "is", null)
@@ -66,9 +114,30 @@ export default async function SubscriptionsPage() {
     signedUpUsersError = result.error;
   }
   const signedUpIds = new Set(signedUpRows.map((user) => user.id));
-  const eligibleGrantUsers = (eligibleUsers ?? []).filter((user) =>
-    Boolean(user.username?.trim()) && signedUpIds.has(user.id),
+  const completedUsers = (eligibleUsers ?? []) as SubscriptionUser[];
+  const activeProUsers = completedUsers.filter(isActiveProfilePro);
+  const proWithoutSubscription = activeProUsers.filter(
+    (user) => !activeSubscriptionUserIds.has(user.id),
   );
+  const eligibleGrantUsers = (eligibleUsers ?? []).filter((user) =>
+    Boolean(user.username?.trim()) &&
+    signedUpIds.has(user.id) &&
+    !isActiveProfilePro(user) &&
+    !activeSubscriptionUserIds.has(user.id),
+  );
+  const displaySubscribers: DisplaySubscriptionRow[] = [
+    ...subscribers,
+    ...proWithoutSubscription.map((profile) => ({
+      id: `profile-${profile.id}`,
+      user_id: profile.id,
+      plan: profile.pro_plan ?? "profile_pro",
+      status: "profile-only",
+      expires_at: profile.pro_expires_at ?? null,
+      created_at: profile.created_at ?? new Date().toISOString(),
+      users_public: profile,
+      profileOnly: true,
+    })),
+  ];
 
   return (
     <div className="flex min-h-screen">
@@ -91,13 +160,13 @@ export default async function SubscriptionsPage() {
 
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="admin-soft-card rounded-xl border border-border-subtle bg-white p-4">
-          <p className="text-xs text-gray-400">Active subscriber rows</p>
+          <p className="text-xs text-gray-400">Subscription rows</p>
           <p className="mt-1 text-2xl font-semibold text-charcoal">
             {subscribers?.length ?? 0}
           </p>
         </div>
         <div className="admin-soft-card rounded-xl border border-border-subtle bg-white p-4">
-          <p className="text-xs text-gray-400">Eligible signed-up users</p>
+          <p className="text-xs text-gray-400">Eligible free users</p>
           <p className="mt-1 text-2xl font-semibold text-charcoal">
             {eligibleGrantUsers.length}
           </p>
@@ -109,6 +178,21 @@ export default async function SubscriptionsPage() {
           </p>
         </div>
       </div>
+
+      {proWithoutSubscription.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+          <p className="font-medium">
+            {proWithoutSubscription.length} Pro profile
+            {proWithoutSubscription.length === 1 ? "" : "s"} do not have an
+            active subscription row.
+          </p>
+          <p className="mt-1">
+            These users have `users_public.is_pro=true`, so they are hidden from
+            manual grants, but the `subscriptions` table has no active row for
+            them. They are shown below as profile-only rows.
+          </p>
+        </div>
+      )}
 
       {eligibleGrantUsers.length === 0 && (
         <div className="rounded-xl border border-border-subtle bg-white p-4 text-sm leading-6 text-gray-500 shadow-sm">
@@ -192,89 +276,7 @@ export default async function SubscriptionsPage() {
           <Heading size="4" mb="4">
             Grant subscription manually
           </Heading>
-          <form action={adminPath("/api/admin/subscription/grant")} method="POST">
-            <Flex gap="3" align="end" wrap="wrap" className="w-full">
-              <Box className="w-full sm:w-auto">
-                <Text size="2" color="gray">
-                  Completed user
-                </Text>
-                <select
-                  name="username"
-                  disabled={eligibleGrantUsers.length === 0}
-                  className="border rounded p-2 w-full sm:w-72 mt-1 bg-white disabled:bg-gray-100 disabled:text-gray-400"
-                  required
-                >
-                  {eligibleGrantUsers.length === 0 ? (
-                    <option value="">No completed users yet</option>
-                  ) : (
-                    eligibleGrantUsers.map((user) => (
-                      <option key={user.id} value={user.username ?? ""}>
-                        @{user.username}
-                        {user.display_name ? ` - ${user.display_name}` : ""}
-                        {user.is_pro ? " - Pro" : " - Free"}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </Box>
-              <Box className="w-[calc(50%-6px)] sm:w-auto">
-                <Text size="2" color="gray">
-                  Plan
-                </Text>
-                <select
-                  name="plan_type"
-                  defaultValue="pro_monthly"
-                  className="border rounded p-2 w-full sm:w-40 mt-1 bg-white"
-                >
-                  <option value="pro_monthly">Pro monthly</option>
-                  <option value="pro_yearly">Pro yearly</option>
-                </select>
-              </Box>
-              <Box className="w-[calc(50%-6px)] sm:w-auto">
-                <Text size="2" color="gray">
-                  Duration (days)
-                </Text>
-                <input
-                  name="days"
-                  type="number"
-                  min={1}
-                  max={3650}
-                  defaultValue={30}
-                  className="border rounded p-2 w-full sm:w-24 mt-1"
-                />
-              </Box>
-              <Box className="w-full sm:w-auto">
-                <Text size="2" color="gray">
-                  Purchase history
-                </Text>
-                <select
-                  name="purchase_history_mode"
-                  defaultValue="none"
-                  className="border rounded p-2 w-full sm:w-64 mt-1 bg-white"
-                >
-                  <option value="none">Do not generate</option>
-                  <option value="active">Generate active mock order</option>
-                  <option value="acknowledged">
-                    Generate acknowledged mock order
-                  </option>
-                </select>
-              </Box>
-              <Button
-                type="submit"
-                color="green"
-                className="w-full sm:w-auto"
-                disabled={eligibleGrantUsers.length === 0}
-              >
-                Grant
-              </Button>
-            </Flex>
-            <Text size="1" color="gray" mt="3" as="p">
-              Only signed-up users who completed onboarding appear here. Mock
-              history is for admin-only manual grants and uses the same expiry
-              as the granted subscription. Real Google Play purchases should
-              still come through server validation.
-            </Text>
-          </form>
+          <SubscriptionGrantForm users={eligibleGrantUsers} />
         </Box>
       </Card>
 
@@ -282,7 +284,7 @@ export default async function SubscriptionsPage() {
       <Card>
         <Box p="4">
           <Heading size="4" mb="4">
-            Subscribers ({subscribers?.length ?? 0})
+            Subscribers ({displaySubscribers.length})
           </Heading>
           <div className="overflow-x-auto">
           <Table.Root className="min-w-[720px]">
@@ -297,11 +299,16 @@ export default async function SubscriptionsPage() {
               </Table.Row>
             </Table.Header>
             <Table.Body>
-              {(subscribers ?? []).map((sub: any) => (
+              {displaySubscribers.map((sub) => (
                 <Table.Row key={sub.id}>
                   <Table.Cell>
                     <div>
-                      <p>@{sub.users_public?.username ?? "—"}</p>
+                      <p>@{sub.users_public?.username ?? "unknown"}</p>
+                      {sub.profileOnly && (
+                        <p className="text-[10px] font-semibold text-amber-700">
+                          Profile Pro, no subscription row
+                        </p>
+                      )}
                       {verifiedIds.has(sub.user_id) && (
                         <p
                           style={{
@@ -319,7 +326,15 @@ export default async function SubscriptionsPage() {
                     <Badge color="purple">{sub.plan}</Badge>
                   </Table.Cell>
                   <Table.Cell>
-                    <Badge color={sub.status === "active" ? "green" : "gray"}>
+                    <Badge
+                      color={
+                        sub.status === "active"
+                          ? "green"
+                          : sub.profileOnly
+                            ? "orange"
+                            : "gray"
+                      }
+                    >
                       {sub.status}
                     </Badge>
                   </Table.Cell>
@@ -332,23 +347,29 @@ export default async function SubscriptionsPage() {
                       : "—"}
                   </Table.Cell>
                   <Table.Cell>
-                    <form
-                      action={adminPath("/api/admin/subscription/revoke")}
-                      method="POST"
-                    >
-                      <input
-                        type="hidden"
-                        name="subscription_id"
-                        value={sub.id}
-                      />
-                      <Button type="submit" color="red" variant="soft" size="1">
-                        Revoke
-                      </Button>
-                    </form>
+                    {sub.profileOnly ? (
+                      <Text size="1" color="gray">
+                        No row to revoke
+                      </Text>
+                    ) : (
+                      <form
+                        action={adminPath("/api/admin/subscription/revoke")}
+                        method="POST"
+                      >
+                        <input
+                          type="hidden"
+                          name="subscription_id"
+                          value={sub.id}
+                        />
+                        <Button type="submit" color="red" variant="soft" size="1">
+                          Revoke
+                        </Button>
+                      </form>
+                    )}
                   </Table.Cell>
                 </Table.Row>
               ))}
-              {(subscribers ?? []).length === 0 && (
+              {displaySubscribers.length === 0 && (
                 <Table.Row>
                   <Table.Cell colSpan={6}>
                     <div className="py-8 text-center text-sm text-gray-400">
@@ -366,4 +387,19 @@ export default async function SubscriptionsPage() {
       </main>
     </div>
   );
+}
+
+function isActiveSubscription(status: string, expiresAt: string | null) {
+  if (status !== "active") return false;
+  if (!expiresAt) return true;
+  return new Date(expiresAt).getTime() > Date.now();
+}
+
+function isActiveProfilePro(user: {
+  is_pro?: boolean | null;
+  pro_expires_at?: string | null;
+}) {
+  if (!user.is_pro) return false;
+  if (!user.pro_expires_at) return true;
+  return new Date(user.pro_expires_at).getTime() > Date.now();
 }
