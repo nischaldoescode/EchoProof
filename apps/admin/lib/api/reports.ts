@@ -1,7 +1,7 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function getUnresolvedReports() {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data } = await supabase
     .from("echo_reports")
     .select(`
@@ -16,6 +16,6 @@ export async function getUnresolvedReports() {
 }
 
 export async function resolveReport(reportId: string): Promise<void> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   await supabase.from("echo_reports").update({ resolved: true }).eq("id", reportId);
 }

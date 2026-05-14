@@ -7,6 +7,10 @@ import {
   verifyAdminSessionToken,
 } from "@/lib/auth/admin-session";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  getSupabaseAnonKey,
+  getSupabaseProjectUrl,
+} from "@/lib/supabase-env";
 
 export async function createServer() {
   const cookieStore = await cookies();
@@ -15,10 +19,8 @@ export async function createServer() {
   );
   if (staticSession) return createAdminClient();
 
-  const supabaseUrl =
-    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey =
-    process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseUrl = getSupabaseProjectUrl();
+  const supabaseAnonKey = getSupabaseAnonKey();
 
   if (!supabaseUrl || !supabaseAnonKey) {
     return createAdminClient();
