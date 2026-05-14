@@ -15,7 +15,7 @@ export default async function EchoesPage() {
       id, title, content, category, status,
       trust_score, confidence_score, report_score,
       support_count, challenge_count, admin_verified, admin_note,
-      verified_record_tx, ai_metadata, created_at,
+      verified_record_tx, created_at,
       users_public!inner(username, trust_tier)
     `)
     .order("report_score", { ascending: false })
@@ -23,6 +23,7 @@ export default async function EchoesPage() {
 
   const normalizedEchoes = (echoes ?? []).map((echo: any) => ({
     ...echo,
+    ai_metadata: null,
     users_public: Array.isArray(echo.users_public)
       ? echo.users_public[0]
       : echo.users_public,

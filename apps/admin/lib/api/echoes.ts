@@ -10,7 +10,7 @@ export async function getEchoes(status?: string): Promise<Echo[]> {
       id, title, content, category, status,
       trust_score, confidence_score, report_score,
       support_count, challenge_count, bond_count,
-      admin_verified, admin_note, verified_record_tx, ai_metadata, created_at,
+      admin_verified, admin_note, verified_record_tx, created_at,
       users_public!inner(username, trust_tier)
     `)
     .order("report_score", { ascending: false })
@@ -23,6 +23,7 @@ export async function getEchoes(status?: string): Promise<Echo[]> {
   const { data } = await query;
   return ((data ?? []).map((echo: any) => ({
     ...echo,
+    ai_metadata: null,
     users_public: Array.isArray(echo.users_public)
       ? echo.users_public[0]
       : echo.users_public,
