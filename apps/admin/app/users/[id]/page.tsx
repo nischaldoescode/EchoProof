@@ -46,8 +46,9 @@ interface AdminPrivateProfile {
 export default async function UserDetailPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }> | { id: string };
 }) {
+  const { id } = await Promise.resolve(params);
   const supabase = createAdminClient();
 
   const { data: publicProfileData } = await supabase
@@ -58,14 +59,11 @@ export default async function UserDetailPage({
         "pro_plan, pro_expires_at, gender, date_of_birth, follower_count, following_count, " +
         "onboarding_complete, is_public, categories, created_at",
     )
-    .eq("id", params.id)
-    .eq("onboarding_complete", true)
-    .single();
+    .eq("id", id)
+    .maybeSingle();
 
   const publicProfile =
     publicProfileData as unknown as AdminPublicProfile | null;
-
-  if (!publicProfile) notFound();
 
   const { data: privateProfileData } = await supabase
     .from("users_private")
@@ -73,23 +71,25 @@ export default async function UserDetailPage({
       "email, identity_score, is_identity_verified, ip_risk_score, created_at, " +
         "verification_rejection_at, verification_attempt_count, last_verification_request_at",
     )
-    .eq("id", params.id)
-    .single();
+    .eq("id", id)
+    .maybeSingle();
 
   const privateProfile =
     privateProfileData as unknown as AdminPrivateProfile | null;
 
+  if (!publicProfile && !privateProfile) notFound();
+
   const { data: echoes } = await supabase
     .from("echoes")
     .select("id, title, status, trust_score, created_at")
-    .eq("user_id", params.id)
+    .eq("user_id", id)
     .order("created_at", { ascending: false })
     .limit(10);
 
   const { data: bonds } = await supabase
     .from("truth_bonds")
     .select("id, bond_status, created_at")
-    .eq("user_id", params.id);
+    .eq("user_id", id);
 
   const settled = (bonds ?? []).filter(
     (b) => b.bond_status === "settled",
@@ -98,85 +98,111 @@ export default async function UserDetailPage({
     (b) => b.bond_status === "contested",
   ).length;
   const active = (bonds ?? []).filter((b) => b.bond_status === "active").length;
-  const age = ageFromDob(publicProfile.date_of_birth);
+  const age = ageFromDob(publicProfile?.date_of_birth);
+  const title = publicProfile?.username
+    ? `@${publicProfile.username}`
+    : privateProfile?.email ?? "User detail";
+  const subtitle = publicProfile
+    ? `${publicProfile.trust_tier} - score ${publicProfile.trust_score}`
+    : "Private profile only";
 
   return (
     <div className="flex min-h-screen">
       <Sidebar />
       <main className="flex-1 min-w-0 flex flex-col">
         <Topbar
-          title={`@${publicProfile.username}`}
-          subtitle={`${publicProfile.trust_tier} · score ${publicProfile.trust_score}`}
+          title={title}
+          subtitle={subtitle}
         />
-        <div className="p-4 pb-24 sm:p-6 sm:pb-24 md:pb-6 space-y-6 max-w-3xl">
+        <div className="admin-stagger w-full max-w-4xl space-y-6 p-4 pb-24 sm:p-6 sm:pb-24 md:pb-6">
+          <a
+            href={adminPath("/users")}
+            className="inline-flex text-xs font-medium text-gray-500 transition-colors hover:text-charcoal"
+          >
+            Back to users
+          </a>
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="admin-soft-card bg-white rounded-xl border border-border-subtle p-5 space-y-3">
-              <p className="text-xs font-medium text-gray-400">
-                Public profile
-              </p>
-              <Row label="Username" value={`@${publicProfile.username}`} />
-              {publicProfile.display_name && (
-                <Row label="Display name" value={publicProfile.display_name} />
-              )}
-              <Row label="Trust tier" value={publicProfile.trust_tier} />
-              <Row label="Trust score" value={publicProfile.trust_score} />
-              <Row label="Echoes" value={publicProfile.echo_count} />
-              <Row
-                label="Followers"
-                value={publicProfile.follower_count ?? 0}
-              />
-              <Row
-                label="Following"
-                value={publicProfile.following_count ?? 0}
-              />
-              <Row
-                label="Pro"
-                value={
-                  publicProfile.is_pro
-                    ? `Yes — ${publicProfile.pro_plan ?? ""}`
-                    : "No"
-                }
-              />
-              {publicProfile.pro_expires_at && (
+            {publicProfile ? (
+              <div className="admin-soft-card bg-white rounded-xl border border-border-subtle p-5 space-y-3 shadow-sm">
+                <p className="text-xs font-medium text-gray-400">
+                  Public profile
+                </p>
+                <Row label="User ID" value={id} />
+                <Row label="Username" value={`@${publicProfile.username}`} />
+                {publicProfile.display_name && (
+                  <Row label="Display name" value={publicProfile.display_name} />
+                )}
+                <Row label="Onboarding" value={publicProfile.onboarding_complete ? "complete" : "partial"} />
+                <Row label="Visibility" value={publicProfile.is_public ? "public" : "private"} />
+                <Row label="Trust tier" value={publicProfile.trust_tier} />
+                <Row label="Trust score" value={publicProfile.trust_score} />
+                <Row label="Echoes" value={publicProfile.echo_count} />
+                <Row label="Proofs" value={publicProfile.proof_count} />
                 <Row
-                  label="Pro expires"
-                  value={new Date(
-                    publicProfile.pro_expires_at,
-                  ).toLocaleDateString()}
+                  label="Followers"
+                  value={publicProfile.follower_count ?? 0}
                 />
-              )}
-              <Row
-                label="Age"
-                value={age != null ? `${age} yrs` : "—"}
-              />
-              <Row
-                label="Gender"
-                value={publicProfile.gender?.replace("_", " ") ?? "—"}
-              />
-              {publicProfile.date_of_birth && (
                 <Row
-                  label="Date of birth"
-                  value={publicProfile.date_of_birth}
+                  label="Following"
+                  value={publicProfile.following_count ?? 0}
                 />
-              )}
-              <Row
-                label="Suspended"
-                value={publicProfile.is_suspended ? "yes" : "no"}
-              />
-              <Row
-                label="Shadow banned"
-                value={publicProfile.is_shadow_banned ? "yes" : "no"}
-              />
-              {publicProfile.wallet_address && (
                 <Row
-                  label="Wallet"
-                  value={`${publicProfile.wallet_address.slice(0, 8)}...`}
+                  label="Pro"
+                  value={
+                    publicProfile.is_pro
+                      ? `Yes - ${publicProfile.pro_plan ?? ""}`
+                      : "No"
+                  }
                 />
-              )}
-              {publicProfile.bio && (
-                <Row label="Bio" value={publicProfile.bio} />
-              )}
-            </div>
+                {publicProfile.pro_expires_at && (
+                  <Row
+                    label="Pro expires"
+                    value={new Date(
+                      publicProfile.pro_expires_at,
+                    ).toLocaleDateString()}
+                  />
+                )}
+                <Row
+                  label="Age"
+                  value={age != null ? `${age} yrs` : "-"}
+                />
+                <Row
+                  label="Gender"
+                  value={publicProfile.gender?.replace("_", " ") ?? "-"}
+                />
+                {publicProfile.date_of_birth && (
+                  <Row
+                    label="Date of birth"
+                    value={publicProfile.date_of_birth}
+                  />
+                )}
+                <Row
+                  label="Suspended"
+                  value={publicProfile.is_suspended ? "yes" : "no"}
+                />
+                <Row
+                  label="Shadow banned"
+                  value={publicProfile.is_shadow_banned ? "yes" : "no"}
+                />
+                {publicProfile.wallet_address && (
+                  <Row
+                    label="Wallet"
+                    value={`${publicProfile.wallet_address.slice(0, 8)}...`}
+                  />
+                )}
+                {publicProfile.bio && (
+                  <Row label="Bio" value={publicProfile.bio} />
+                )}
+              </div>
+            ) : (
+              <div className="admin-soft-card rounded-xl border border-border-subtle bg-white p-5 text-sm leading-6 text-gray-500 shadow-sm">
+                <p className="font-medium text-charcoal">No public profile row</p>
+                <p className="mt-1">
+                  This account exists privately but has not created or completed
+                  its `users_public` profile yet.
+                </p>
+              </div>
+            )}
 
             {privateProfile && (
               <div className="admin-soft-card bg-white rounded-xl border border-border-subtle p-5 space-y-3">

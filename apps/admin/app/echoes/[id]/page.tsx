@@ -19,10 +19,11 @@ import {
 export const dynamic = "force-dynamic";
 
 interface Props {
-  params: { id: string };
+  params: Promise<{ id: string }> | { id: string };
 }
 
 export default async function EchoDetailPage({ params }: Props) {
+  const { id } = await Promise.resolve(params);
   const supabase = createAdminClient();
 
   const { data: echo, error } = await supabase
@@ -35,7 +36,7 @@ export default async function EchoDetailPage({ params }: Props) {
       echo_proofs(id, proof_type, proof_url, description)
     `,
     )
-    .eq("id", params.id)
+    .eq("id", id)
     .single();
 
   if (error || !echo) return notFound();
@@ -143,25 +144,25 @@ export default async function EchoDetailPage({ params }: Props) {
           <Flex gap="3" wrap="wrap">
             <ModerationButton
               label="Mark verified"
-              echoId={params.id}
+              echoId={id}
               action="verified"
               color="green"
             />
             <ModerationButton
               label="Mark disputed"
-              echoId={params.id}
+              echoId={id}
               action="disputed"
               color="yellow"
             />
             <ModerationButton
               label="Hide echo"
-              echoId={params.id}
+              echoId={id}
               action="hidden"
               color="red"
             />
             <ModerationButton
               label="Reject echo"
-              echoId={params.id}
+              echoId={id}
               action="rejected"
               color="red"
             />
