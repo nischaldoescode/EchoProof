@@ -13,12 +13,17 @@ export async function POST(req: NextRequest) {
     .trim()
     .replace(/^@+/, '')
     .toLowerCase();
-  const rawDays = parseInt((body.get('days') as string | null) ?? '30', 10);
-  const days = Number.isFinite(rawDays)
-    ? Math.min(Math.max(rawDays, 1), 3650)
-    : 30;
   const planType =
     body.get('plan_type') === 'pro_yearly' ? 'pro_yearly' : 'pro_monthly';
+  const rawDurationCount = parseInt(
+    ((body.get('duration_count') as string | null) ??
+      (body.get('days') as string | null) ??
+      '1'),
+    10,
+  );
+  const durationCount = Number.isFinite(rawDurationCount)
+    ? rawDurationCount
+    : 1;
   const historyMode =
     body.get('purchase_history_mode') === 'acknowledged'
       ? 'acknowledged'
@@ -35,7 +40,7 @@ export async function POST(req: NextRequest) {
 
   const { data: user, error: userError } = await supabase
     .from('users_public')
-    .select('id, username, onboarding_complete')
+    .select('id, username, onboarding_complete, is_pro, pro_expires_at')
     .eq('username', username)
     .maybeSingle();
 
@@ -56,6 +61,31 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  if (isActiveProfilePro(user)) {
+    return NextResponse.json(
+      { error: `@${username} already has active Pro` },
+      { status: 400 },
+    );
+  }
+
+  const { data: activeSubscription } = await supabase
+    .from('subscriptions')
+    .select('id, expires_at, status')
+    .eq('user_id', user.id)
+    .eq('status', 'active')
+    .maybeSingle();
+
+  if (
+    activeSubscription &&
+    (!activeSubscription.expires_at ||
+      new Date(activeSubscription.expires_at).getTime() > Date.now())
+  ) {
+    return NextResponse.json(
+      { error: `@${username} already has an active subscription row` },
+      { status: 400 },
+    );
+  }
+
   const { data: privateProfile, error: privateProfileError } = await supabase
     .from('users_private')
     .select('id')
@@ -72,8 +102,26 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  if (planType === 'pro_monthly' && (durationCount < 1 || durationCount > 2)) {
+    return NextResponse.json(
+      { error: 'Monthly manual grants can only be 1 or 2 months.' },
+      { status: 400 },
+    );
+  }
+
+  if (planType === 'pro_yearly' && durationCount !== 1) {
+    return NextResponse.json(
+      { error: 'Yearly manual grants can only be 1 year.' },
+      { status: 400 },
+    );
+  }
+
   const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + days);
+  if (planType === 'pro_yearly') {
+    expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+  } else {
+    expiresAt.setMonth(expiresAt.getMonth() + durationCount);
+  }
 
   const { error } = await supabase.from('subscriptions').upsert({
     user_id: user.id,
@@ -110,7 +158,8 @@ export async function POST(req: NextRequest) {
         purchase_time_ms: nowMs,
         expires_time_ms: expiresAt.getTime(),
         obfuscated_account_id: user.id,
-        amount_micros: planType === 'pro_yearly' ? 39990000 : 4990000,
+        amount_micros:
+          planType === 'pro_yearly' ? 39990000 : 4990000 * durationCount,
         currency_code: 'USD',
         country_code: 'US',
         acknowledged: historyMode === 'acknowledged',
@@ -129,4 +178,13 @@ export async function POST(req: NextRequest) {
     adminUrl(req, '/subscription'),
     { status: 303 },
   );
+}
+
+function isActiveProfilePro(user: {
+  is_pro?: boolean | null;
+  pro_expires_at?: string | null;
+}) {
+  if (!user.is_pro) return false;
+  if (!user.pro_expires_at) return true;
+  return new Date(user.pro_expires_at).getTime() > Date.now();
 }
