@@ -83,7 +83,17 @@ class _OtpScreenState extends State<OtpScreen>
   bool get _canLeave => _canResend || _resendSecs <= 0;
   bool get _canVerify => !_isVerifying && _otp.length == 6;
 
+  bool _dismissKeyboardIfOpen() {
+    final keyboardOpen =
+        (MediaQuery.maybeOf(context)?.viewInsets.bottom ?? 0) > 0;
+    if (!keyboardOpen) return false;
+    FocusManager.instance.primaryFocus?.unfocus();
+    return true;
+  }
+
   void _handleBack() {
+    FocusManager.instance.primaryFocus?.unfocus();
+
     if (!_canLeave) {
       showWarningSnack(
         context,
@@ -97,6 +107,11 @@ class _OtpScreenState extends State<OtpScreen>
     } else {
       context.go('/login');
     }
+  }
+
+  void _handleSystemBack() {
+    if (_dismissKeyboardIfOpen()) return;
+    _handleBack();
   }
 
   Future<void> _verify() async {
@@ -126,6 +141,10 @@ class _OtpScreenState extends State<OtpScreen>
       }
     } else {
       _shakeCtrl.forward(from: 0);
+      showErrorSnack(
+        context,
+        auth.error ?? context.tx('otp.incorrect'),
+      );
       setState(() {
         _isVerifying = false;
         _hasError = true;
@@ -136,9 +155,9 @@ class _OtpScreenState extends State<OtpScreen>
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: _canLeave,
+      canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && !_canLeave) _handleBack();
+        if (!didPop) _handleSystemBack();
       },
       child: Scaffold(
         backgroundColor: const Color(0xFFF5FAF7),

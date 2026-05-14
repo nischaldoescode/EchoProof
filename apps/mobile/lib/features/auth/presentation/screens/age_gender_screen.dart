@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../core/localization/app_copy.dart';
+import '../../../../core/utils/snack.dart';
 import '../services/auth_service.dart';
 
 class AgeGenderScreen extends StatefulWidget {
@@ -81,6 +82,13 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
   }
 
   Future<bool> _onWillPop() async {
+    final keyboardOpen =
+        (MediaQuery.maybeOf(context)?.viewInsets.bottom ?? 0) > 0;
+    if (keyboardOpen) {
+      FocusManager.instance.primaryFocus?.unfocus();
+      return false;
+    }
+
     final shouldLeave = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -125,43 +133,53 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
 
   // opens the platform date picker — restricts to valid birth date range
   Future<void> _pickDob() async {
+    HapticFeedback.selectionClick();
     final now = DateTime.now();
     // oldest allowed: 120 years ago; youngest allowed: 13 years ago
     final firstDate = DateTime(now.year - 120, now.month, now.day);
     final lastDate = DateTime(now.year - 13, now.month, now.day);
 
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _dob ?? DateTime(now.year - 18, now.month, now.day),
-      firstDate: firstDate,
-      lastDate: lastDate,
-      helpText: context.l('select your date of birth'),
-      fieldLabelText: context.l('date of birth'),
-      builder: (ctx, child) {
-        return Theme(
-          data: Theme.of(ctx).copyWith(
-            colorScheme: ColorScheme.light(
-              primary: AppColors.fernGreen,
-              onPrimary: Colors.white,
-              surface: Colors.white,
-              onSurface: AppColors.charcoal,
-            ),
-            textButtonTheme: TextButtonThemeData(
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.fernGreen,
-                textStyle: GoogleFonts.josefinSans(
-                  fontWeight: FontWeight.w600,
+    try {
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: _dob ?? DateTime(now.year - 18, now.month, now.day),
+        firstDate: firstDate,
+        lastDate: lastDate,
+        useRootNavigator: true,
+        helpText: context.l('select your date of birth'),
+        fieldLabelText: context.l('date of birth'),
+        builder: (ctx, child) {
+          return Theme(
+            data: Theme.of(ctx).copyWith(
+              colorScheme: ColorScheme.light(
+                primary: AppColors.fernGreen,
+                onPrimary: Colors.white,
+                surface: Colors.white,
+                onSurface: AppColors.charcoal,
+              ),
+              textButtonTheme: TextButtonThemeData(
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.fernGreen,
+                  textStyle: GoogleFonts.josefinSans(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),
-          ),
-          child: child!,
-        );
-      },
-    );
+            child: child!,
+          );
+        },
+      );
 
-    if (picked != null) {
-      setState(() => _dob = picked);
+      if (picked != null) {
+        setState(() => _dob = picked);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      showInfoSnack(
+        context,
+        context.l('Could not open date picker. Try again.'),
+      );
     }
   }
 
@@ -356,90 +374,101 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
                           const SizedBox(height: AppSpacing.sm),
 
                           // dob picker tap target
-                          GestureDetector(
-                            onTap: _pickDob,
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              decoration: BoxDecoration(
-                                color: _dob != null
-                                    ? Colors.white
-                                    : const Color(0xFFF0F4F2),
+                          Semantics(
+                            button: true,
+                            label: context.l('Select your date of birth'),
+                            child: Material(
+                              color: Colors.transparent,
+                              borderRadius: BorderRadius.circular(14),
+                              child: InkWell(
+                                onTap: _isSubmitting ? null : _pickDob,
                                 borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: _dob != null
-                                      ? AppColors.fernGreen
-                                      : AppColors.borderSubtle,
-                                  width: _dob != null ? 2 : 1,
-                                ),
-                                boxShadow: _dob != null
-                                    ? [
-                                        BoxShadow(
-                                          color: AppColors.fernGreen
-                                              .withValues(alpha: 0.1),
-                                          blurRadius: 12,
-                                          offset: const Offset(0, 3),
-                                        ),
-                                      ]
-                                    : [],
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    Icons.cake_outlined,
-                                    size: 18,
-                                    color: _dob != null
-                                        ? AppColors.fernGreen
-                                        : AppColors.textTertiary,
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: _dob != null
+                                          ? AppColors.fernGreen
+                                          : AppColors.borderSubtle,
+                                      width: _dob != null ? 2 : 1,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: (_dob != null
+                                                ? AppColors.fernGreen
+                                                : AppColors.charcoal)
+                                            .withValues(
+                                                alpha:
+                                                    _dob != null ? 0.1 : 0.04),
+                                        blurRadius: _dob != null ? 12 : 8,
+                                        offset: const Offset(0, 3),
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      _dob != null
-                                          ? _formatDob(_dob!)
-                                          : context
-                                              .l('Select your date of birth'),
-                                      style: GoogleFonts.josefinSans(
-                                        fontSize: _dob != null ? 15 : 14,
-                                        fontWeight: _dob != null
-                                            ? FontWeight.w600
-                                            : FontWeight.w400,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 14,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        Icons.calendar_month_rounded,
+                                        size: 19,
                                         color: _dob != null
-                                            ? AppColors.charcoal
-                                            : AppColors.textTertiary,
+                                            ? AppColors.fernGreen
+                                            : AppColors.textSecondary,
                                       ),
-                                    ),
-                                  ),
-                                  // show calculated age as a soft badge once dob is selected
-                                  if (age != null)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.fernGreenLight,
-                                        borderRadius: BorderRadius.circular(20),
-                                      ),
-                                      child: Text(
-                                        context.l('{age} yrs', {'age': age}),
-                                        style: GoogleFonts.josefinSans(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
-                                          color: AppColors.fernGreenDark,
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          _dob != null
+                                              ? _formatDob(_dob!)
+                                              : context.l(
+                                                  'Select your date of birth'),
+                                          style: GoogleFonts.josefinSans(
+                                            fontSize: _dob != null ? 15 : 14,
+                                            fontWeight: _dob != null
+                                                ? FontWeight.w600
+                                                : FontWeight.w500,
+                                            color: _dob != null
+                                                ? AppColors.charcoal
+                                                : AppColors.textSecondary,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  const SizedBox(width: 4),
-                                  const Icon(
-                                    Icons.chevron_right_rounded,
-                                    size: 18,
-                                    color: AppColors.textTertiary,
+                                      // show calculated age as a soft badge once dob is selected
+                                      if (age != null)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.fernGreenLight,
+                                            borderRadius:
+                                                BorderRadius.circular(20),
+                                          ),
+                                          child: Text(
+                                            context
+                                                .l('{age} yrs', {'age': age}),
+                                            style: GoogleFonts.josefinSans(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color: AppColors.fernGreenDark,
+                                            ),
+                                          ),
+                                        ),
+                                      const SizedBox(width: 4),
+                                      const Icon(
+                                        Icons.chevron_right_rounded,
+                                        size: 18,
+                                        color: AppColors.textTertiary,
+                                      ),
+                                    ],
                                   ),
-                                ],
+                                ),
                               ),
                             ),
                           ),

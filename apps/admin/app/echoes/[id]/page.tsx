@@ -33,13 +33,20 @@ export default async function EchoDetailPage({ params }: Props) {
       *,
       users_public(username, trust_tier, avatar_url),
       echo_reports(id, reason, reporter_id, created_at),
-      echo_proofs(id, proof_type, proof_url, description)
+      echo_proofs(id, proof_type, proof_url, description),
+      signal_responses(
+        id, content, stance, like_count, moderation_status, media_urls, created_at,
+        users_public(username)
+      )
     `,
     )
     .eq("id", id)
     .single();
 
   if (error || !echo) return notFound();
+  const publicLocked =
+    echo.public_verdict && echo.public_verdict !== "open";
+  const adminLocked = publicLocked || echo.admin_override_used;
 
   return (
     <div className="flex min-h-screen">
@@ -132,6 +139,19 @@ export default async function EchoDetailPage({ params }: Props) {
             </Text>
             <Badge color={statusColor(echo.status)}>{echo.status}</Badge>
           </Flex>
+          <Flex align="center" gap="2" wrap="wrap">
+            <Text size="2" color="gray">
+              Public verdict:
+            </Text>
+            <Badge color={verdictColor(echo.public_verdict)}>
+              {verdictLabel(echo.public_verdict)}
+            </Badge>
+            <Text size="2" color="gray">
+              {echo.context_support_count ?? 0} support ·{" "}
+              {echo.context_challenge_count ?? 0} challenge ·{" "}
+              {evaluationLabel(echo)}
+            </Text>
+          </Flex>
         </Flex>
       </Card>
 
@@ -141,34 +161,81 @@ export default async function EchoDetailPage({ params }: Props) {
           <Heading size="4" mb="4">
             Moderation actions
           </Heading>
+          {adminLocked && (
+            <Text size="2" color="gray" as="p" mb="3">
+              {publicLocked
+                ? "Public context has already decided this echo, so admin status actions are locked."
+                : "The one admin override for this echo has already been used."}
+            </Text>
+          )}
           <Flex gap="3" wrap="wrap">
             <ModerationButton
               label="Mark verified"
               echoId={id}
               action="verified"
               color="green"
+              disabled={adminLocked}
             />
             <ModerationButton
               label="Mark disputed"
               echoId={id}
               action="disputed"
               color="yellow"
+              disabled={adminLocked}
             />
             <ModerationButton
               label="Hide echo"
               echoId={id}
               action="hidden"
               color="red"
+              disabled={adminLocked}
             />
             <ModerationButton
               label="Reject echo"
               echoId={id}
               action="rejected"
               color="red"
+              disabled={adminLocked}
             />
           </Flex>
         </Box>
       </Card>
+
+      {echo.signal_responses?.length > 0 && (
+        <Card>
+          <Box p="4">
+            <Heading size="4" mb="4">
+              Public context ({echo.signal_responses.length})
+            </Heading>
+            <div className="space-y-3">
+              {echo.signal_responses.map((r: any) => (
+                <div key={r.id} className="rounded-lg border border-gray-200 p-3">
+                  <Flex align="center" gap="2" wrap="wrap">
+                    <Badge color={r.stance === "support" ? "green" : "red"}>
+                      {r.stance}
+                    </Badge>
+                    <Text size="2" weight="bold">
+                      @{r.users_public?.username ?? "unknown"}
+                    </Text>
+                    <Text size="2" color="gray">
+                      {r.like_count ?? 0} likes · {r.moderation_status}
+                    </Text>
+                  </Flex>
+                  <Text size="2" as="p" mt="2">
+                    {r.content}
+                  </Text>
+                  {r.media_urls?.length > 0 && (
+                    <Text size="2" color="gray" as="p" mt="2">
+                      {r.media_urls.length} media attachment
+                      {r.media_urls.length === 1 ? "" : "s"}
+                    </Text>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Box>
+        </Card>
+      )}
 
       {/* reports */}
       {echo.echo_reports?.length > 0 && (
@@ -251,22 +318,57 @@ function statusColor(
   );
 }
 
+function verdictLabel(verdict?: string | null) {
+  return (
+    {
+      supported: "supported",
+      not_supported: "not supported",
+      contested: "contested",
+      open: "open",
+    }[verdict ?? "open"] ?? "open"
+  );
+}
+
+function verdictColor(
+  verdict?: string | null,
+): "gray" | "green" | "red" | "yellow" {
+  return (
+    ({
+      supported: "green",
+      not_supported: "red",
+      contested: "yellow",
+      open: "gray",
+    }[verdict ?? "open"] as any) ?? "gray"
+  );
+}
+
+function evaluationLabel(echo: any) {
+  if (echo.public_verdict && echo.public_verdict !== "open") return "locked";
+  if (!echo.public_context_closes_at) return "7d window";
+  const ms = new Date(echo.public_context_closes_at).getTime() - Date.now();
+  if (ms <= 0) return "window ended";
+  const hours = Math.ceil(ms / 36e5);
+  return hours >= 24 ? `${Math.ceil(hours / 24)}d left` : `${hours}h left`;
+}
+
 // client component for moderation actions
 function ModerationButton({
   label,
   echoId,
   action,
   color,
+  disabled,
 }: {
   label: string;
   echoId: string;
   action: string;
   color: string;
+  disabled?: boolean;
 }) {
   return (
     <form action={adminPath(`/api/admin/echo/${echoId}/status`)} method="POST">
       <input type="hidden" name="status" value={action} />
-      <Button type="submit" color={color as any} variant="soft">
+      <Button type="submit" color={color as any} variant="soft" disabled={disabled}>
         {label}
       </Button>
     </form>
