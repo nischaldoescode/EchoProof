@@ -17,7 +17,7 @@ interface TrustEnginePanelProps {
 
 export function TrustEnginePanel({ pendingEchoes }: TrustEnginePanelProps) {
   const [running, setRunning] = useState(false);
-  const [result, setResult]   = useState<string | null>(null);
+  const [result, setResult] = useState<string | null>(null);
 
   async function triggerEngineRun() {
     setRunning(true);
@@ -36,9 +36,9 @@ export function TrustEnginePanel({ pendingEchoes }: TrustEnginePanelProps) {
       setResult(JSON.stringify(data.results ?? data, null, 2));
     } catch (err) {
       setResult(`error: ${err}`);
+    } finally {
+      setRunning(false);
     }
-
-    setRunning(false);
   }
 
   return (
@@ -54,7 +54,7 @@ export function TrustEnginePanel({ pendingEchoes }: TrustEnginePanelProps) {
           <button
             onClick={triggerEngineRun}
             disabled={running}
-            className="px-4 py-2 bg-charcoal text-white text-xs font-semibold rounded-lg disabled:opacity-50 hover:bg-charcoal/90 transition-colors"
+            className="w-full rounded-lg bg-charcoal px-4 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-charcoal/90 disabled:translate-y-0 disabled:opacity-50 sm:w-auto"
           >
             {running ? "Running..." : "Run now"}
           </button>
@@ -84,8 +84,11 @@ export function TrustEnginePanel({ pendingEchoes }: TrustEnginePanelProps) {
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle">
-              {pendingEchoes.map(echo => (
-                <tr key={echo.id} className="hover:bg-soft-sand">
+              {pendingEchoes.map((echo) => (
+                <tr
+                  key={echo.id}
+                  className="admin-table-row hover:bg-soft-sand"
+                >
                   <td className="px-4 py-2 font-mono text-charcoal">
                     {echo.id.slice(0, 12)}...
                   </td>

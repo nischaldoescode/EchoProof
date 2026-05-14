@@ -31,7 +31,7 @@ export function ActivityChart({ echoes }: ActivityChartProps) {
   });
 
   return (
-    <div className="bg-white rounded-xl border border-border-subtle p-5">
+    <div className="admin-soft-card bg-white rounded-xl border border-border-subtle p-4 sm:p-5">
       <p className="text-sm font-medium text-charcoal mb-4">Echo activity — last 14 days</p>
       <ResponsiveContainer width="100%" height={200}>
         <LineChart data={days} margin={{ top: 0, right: 0, bottom: 0, left: -20 }}>

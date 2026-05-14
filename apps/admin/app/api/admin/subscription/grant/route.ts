@@ -33,17 +33,42 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // find user by username
   const { data: user, error: userError } = await supabase
     .from('users_public')
-    .select('id, username')
+    .select('id, username, onboarding_complete')
     .eq('username', username)
-    .single();
+    .maybeSingle();
 
   if (userError || !user) {
     return NextResponse.json(
       { error: `user @${username} not found` },
       { status: 404 },
+    );
+  }
+
+  if (!user.onboarding_complete) {
+    return NextResponse.json(
+      {
+        error:
+          `@${username} has not completed onboarding, so Pro cannot be granted yet`,
+      },
+      { status: 400 },
+    );
+  }
+
+  const { data: privateProfile, error: privateProfileError } = await supabase
+    .from('users_private')
+    .select('id')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (privateProfileError || !privateProfile) {
+    return NextResponse.json(
+      {
+        error:
+          `@${username} does not have a signed-up private profile row yet, so Pro cannot be granted`,
+      },
+      { status: 400 },
     );
   }
 

@@ -1,4 +1,4 @@
-import { createServer } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { DashboardStats } from "@/components/dashboard/stats-card";
@@ -7,7 +7,7 @@ import { ActivityChart } from "@/components/dashboard/activity-chart";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const supabase = await createServer();
+  const supabase = createAdminClient();
 
   const [
     { count: totalUsers },
@@ -53,7 +53,7 @@ export default async function DashboardPage() {
       <Sidebar />
       <main className="flex-1 min-w-0 flex flex-col">
         <Topbar title="Dashboard" subtitle="Trust engine overview" />
-        <div className="p-4 pb-24 sm:p-6 sm:pb-24 md:pb-6 space-y-6">
+        <div className="admin-stagger p-4 pb-24 sm:p-6 sm:pb-24 md:pb-6 space-y-6">
           <DashboardStats
             totalUsers={totalUsers ?? 0}
             verifiedUsers={verifiedUsers ?? 0}

@@ -1,8 +1,8 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { PublicUser } from "@/types/user";
 
 export async function getUsers(): Promise<PublicUser[]> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data } = await supabase
     .from("users_public")
     .select("id, username, avatar_url, trust_tier, trust_score, echo_count, proof_count, is_suspended, is_shadow_banned, wallet_address, created_at")
@@ -12,7 +12,7 @@ export async function getUsers(): Promise<PublicUser[]> {
 }
 
 export async function suspendUser(userId: string, suspend: boolean): Promise<void> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   await supabase
     .from("users_public")
     .update({ is_suspended: suspend })
