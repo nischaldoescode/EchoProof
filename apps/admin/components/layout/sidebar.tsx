@@ -127,27 +127,12 @@ export function Sidebar() {
 
 function BrandMark() {
   return (
-    <div className="w-7 h-7 rounded-lg bg-fern-light flex items-center justify-center flex-shrink-0">
-      <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
-        <circle cx="10" cy="10" r="2" fill="#4CAF6E" />
-        <circle
-          cx="10"
-          cy="10"
-          r="5"
-          stroke="#4CAF6E"
-          strokeWidth="1.2"
-          fill="none"
-        />
-        <circle
-          cx="10"
-          cy="10"
-          r="8"
-          stroke="#4CAF6E"
-          strokeWidth="0.8"
-          fill="none"
-          opacity="0.5"
-        />
-      </svg>
+    <div className="w-7 h-7 overflow-hidden rounded-lg bg-white flex items-center justify-center flex-shrink-0">
+      <img
+        src={adminPath("/logo.png")}
+        alt=""
+        className="h-full w-full object-cover"
+      />
     </div>
   );
 }
