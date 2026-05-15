@@ -116,6 +116,23 @@ async function checkRateLimit(ip: string | null) {
   return (count ?? 0) >= 3;
 }
 
+async function accountExistsForEmail(email: string) {
+  const { data, error } = await supabase
+    .from("users_private")
+    .select("id,email")
+    .ilike("email", email)
+    .limit(5);
+
+  if (error) {
+    console.error("delete-request: account lookup failed", error);
+    throw new Error("account_lookup_failed");
+  }
+
+  return (data ?? []).some(
+    (row) => row.email?.trim().toLowerCase() === email,
+  );
+}
+
 function getClientIp(req: NextRequest) {
   return (
     req.headers.get("cf-connecting-ip") ||
@@ -189,6 +206,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "Verification failed. Please refresh and try again." },
         { status: 403 },
+      );
+    }
+
+    const accountExists = await accountExistsForEmail(normalizedEmail);
+    if (!accountExists) {
+      return NextResponse.json(
+        {
+          error:
+            "No Echoproof account is associated with this email. It may already have been deleted, or the account may use a different email.",
+        },
+        { status: 404 },
       );
     }
 
