@@ -510,7 +510,7 @@ class EchoFeedService extends ChangeNotifier {
           .from('signal_responses')
           .select('''
             id, echo_id, user_id, content, stance, like_count, media_urls, created_at,
-            users_public!inner(
+            users_public!signal_responses_user_id_fkey(
               id, username, display_name, avatar_url, is_pro
             )
           ''')

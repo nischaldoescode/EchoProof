@@ -204,8 +204,14 @@ class EchoEntity extends Equatable {
       confidenceScore: (json['confidence_score'] as num).toDouble(),
       trustScore: json['trust_score'] as int,
       controversyScore: (json['controversy_score'] as num).toDouble(),
-      supportCount: json['support_count'] as int,
-      challengeCount: json['challenge_count'] as int,
+      supportCount: ((json['context_support_count'] as num?) ??
+                  (json['support_count'] as num?))
+              ?.toInt() ??
+          0,
+      challengeCount: ((json['context_challenge_count'] as num?) ??
+                  (json['challenge_count'] as num?))
+              ?.toInt() ??
+          0,
       timeAgo: json['time_ago'] as String,
       proofCount: (json['proof_count'] as int?) ?? 0,
       requiresVerification: (json['requires_verification'] as bool?) ?? true,
