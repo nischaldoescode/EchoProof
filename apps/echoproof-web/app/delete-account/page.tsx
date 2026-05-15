@@ -208,23 +208,10 @@ export default function DeleteAccountPage() {
               Request deletion without guessing where your data goes.
             </h1>
             <p className="mt-4 max-w-md text-sm leading-7 text-neutral-500">
-              Use the email on your Echoproof account. We store the request,
-              show it in the admin deletion queue, and keep the final account
-              removal behind a server-side admin action.
+              Use the email on your Echoproof account. If no account is linked
+              to that email, we will tell you here so you can try the right
+              address or know the account may already be gone.
             </p>
-
-            <div className="mt-6 grid gap-3 text-sm text-neutral-600">
-              {[
-                "Email format is checked in the browser and again on the server.",
-                "Turnstile is verified server-side with the submitted IP.",
-                "Duplicate email requests are cooled down for 24 hours.",
-              ].map((item) => (
-                <div key={item} className="flex gap-3">
-                  <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-fern-green" />
-                  <span className="leading-6">{item}</span>
-                </div>
-              ))}
-            </div>
           </section>
 
           <section className="ep-card-in rounded-[22px] border border-border-subtle bg-white p-5 shadow-[0_18px_60px_rgba(26,26,26,0.08)] sm:p-7">
