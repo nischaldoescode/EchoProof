@@ -86,7 +86,10 @@ class EchoFeedService extends ChangeNotifier {
             id, title, content, category, category_detail, status, version,
             user_id, media_urls, reply_count, proof_count, bond_count,
             trust_score, confidence_score, controversy_score, report_score,
-            support_count, challenge_count, created_at,
+            support_count, challenge_count, context_support_count,
+            context_challenge_count, context_score, public_verdict,
+            public_verdict_at, public_context_closes_at,
+            public_context_min_count, public_context_decision_reason, created_at,
             created_record_tx, created_record_at, solana_status, solana_error,
             verified_record_tx, verified_record_at,
             verified_record_status, verified_record_error,
@@ -299,6 +302,7 @@ class EchoFeedService extends ChangeNotifier {
       decorated = await _injectFollowedLikedEchoes(decorated);
     }
     decorated = await _attachSocialContext(decorated);
+    decorated = await _attachContextPreviews(decorated);
     decorated = await _attachReplyPreviews(decorated);
     return decorated;
   }
@@ -380,7 +384,10 @@ class EchoFeedService extends ChangeNotifier {
             id, title, content, category, category_detail, status, version,
             user_id, media_urls, reply_count, proof_count, bond_count,
             trust_score, confidence_score, controversy_score, report_score,
-            support_count, challenge_count, created_at,
+            support_count, challenge_count, context_support_count,
+            context_challenge_count, context_score, public_verdict,
+            public_verdict_at, public_context_closes_at,
+            public_context_min_count, public_context_decision_reason, created_at,
             created_record_tx, created_record_at, solana_status, solana_error,
             verified_record_tx, verified_record_at,
             verified_record_status, verified_record_error,
@@ -488,6 +495,61 @@ class EchoFeedService extends ChangeNotifier {
       }).toList();
     } catch (e) {
       AppLogger.warn('feed: social context skipped $e');
+      return echoes;
+    }
+  }
+
+  Future<List<EchoEntity>> _attachContextPreviews(
+    List<EchoEntity> echoes,
+  ) async {
+    try {
+      if (echoes.isEmpty) return echoes;
+
+      final echoIds = echoes.map((echo) => echo.id).join(',');
+      final rows = await Supabase.instance.client
+          .from('signal_responses')
+          .select('''
+            id, echo_id, user_id, content, stance, like_count, media_urls, created_at,
+            users_public!signal_responses_user_id_fkey(
+              id, username, display_name, avatar_url, is_pro
+            )
+          ''')
+          .filter('echo_id', 'in', '($echoIds)')
+          .filter('stance', 'in', '("support","challenge")')
+          .eq('moderation_status', 'approved')
+          .order('like_count', ascending: false)
+          .order('created_at', ascending: false)
+          .limit(80);
+
+      final byEcho = <String, EchoContextPreview>{};
+      for (final raw in rows as List) {
+        final row = raw as Map<String, dynamic>;
+        final echoId = row['echo_id'] as String?;
+        if (echoId == null || byEcho.containsKey(echoId)) continue;
+        final user = row['users_public'] as Map<String, dynamic>? ?? {};
+        byEcho[echoId] = EchoContextPreview(
+          id: row['id'] as String? ?? '',
+          content: row['content'] as String? ?? '',
+          stance: row['stance'] as String? ?? 'support',
+          username: user['username'] as String? ?? 'unknown',
+          displayName:
+              (user['display_name'] as String?)?.trim().isNotEmpty == true
+                  ? user['display_name'] as String
+                  : user['username'] as String? ?? 'unknown',
+          userId: row['user_id'] as String? ?? '',
+          avatarUrl: user['avatar_url'] as String?,
+          userIsPro: user['is_pro'] as bool? ?? false,
+          likeCount: (row['like_count'] as num?)?.toInt() ?? 0,
+          mediaUrls: (row['media_urls'] as List?)?.cast<String>() ?? const [],
+          createdAt: _parseDate(row['created_at']),
+        );
+      }
+
+      return echoes
+          .map((echo) => echo.copyWith(topContext: byEcho[echo.id]))
+          .toList();
+    } catch (e) {
+      AppLogger.warn('feed: context previews skipped $e');
       return echoes;
     }
   }
@@ -604,8 +666,23 @@ class EchoFeedService extends ChangeNotifier {
       confidenceScore: (row['confidence_score'] as num?)?.toDouble() ?? 0.0,
       trustScore: (row['trust_score'] as num?)?.toInt() ?? 0,
       controversyScore: (row['controversy_score'] as num?)?.toDouble() ?? 0.0,
-      supportCount: (row['support_count'] as num?)?.toInt() ?? 0,
-      challengeCount: (row['challenge_count'] as num?)?.toInt() ?? 0,
+      supportCount: (row['context_support_count'] as num?)?.toInt() ??
+          (row['support_count'] as num?)?.toInt() ??
+          0,
+      challengeCount: (row['context_challenge_count'] as num?)?.toInt() ??
+          (row['challenge_count'] as num?)?.toInt() ??
+          0,
+      contextSupportCount: (row['context_support_count'] as num?)?.toInt() ?? 0,
+      contextChallengeCount:
+          (row['context_challenge_count'] as num?)?.toInt() ?? 0,
+      publicVerdict: row['public_verdict'] as String? ?? 'open',
+      publicVerdictAt: _parseDate(row['public_verdict_at']),
+      publicContextClosesAt: _parseDate(row['public_context_closes_at']),
+      publicContextMinCount:
+          (row['public_context_min_count'] as num?)?.toInt() ?? 7,
+      publicContextDecisionReason:
+          row['public_context_decision_reason'] as String?,
+      contextScore: (row['context_score'] as num?)?.toInt() ?? 0,
       timeAgo: Formatters.timeAgo(created),
       mediaUrls: (row['media_urls'] as List?)?.cast<String>() ?? const [],
       replyCount: (row['reply_count'] as num?)?.toInt() ?? 0,

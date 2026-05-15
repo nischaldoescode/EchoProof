@@ -158,8 +158,12 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   }
 
   void _startFeedAdRoutine() {
-    context.read<AdService>().prepareFeedRoutine();
-    _scheduleFeedAdCheck(const Duration(seconds: 45));
+    final adService = context.read<AdService>();
+    adService.prepareFeedRoutine();
+    final cooldown = adService.feedRoutineCooldownRemaining;
+    _scheduleFeedAdCheck(
+      cooldown > Duration.zero ? cooldown : const Duration(minutes: 30),
+    );
   }
 
   void _scheduleFeedAdCheck(Duration delay) {
@@ -326,7 +330,6 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
                 )
               : const SizedBox.shrink(),
         ),
-        _RefreshHint(onTap: _refreshFeed),
         Expanded(
           child: RefreshIndicator(
             color: AppColors.fernGreen,
@@ -365,48 +368,6 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _RefreshHint extends StatelessWidget {
-  const _RefreshHint({required this.onTap});
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.white,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.lg,
-            AppSpacing.xs,
-            AppSpacing.lg,
-            AppSpacing.sm,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.keyboard_double_arrow_down_rounded,
-                size: 15,
-                color: AppColors.textTertiary,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                context.l('Pull down or tap to refresh'),
-                style: GoogleFonts.josefinSans(
-                  fontSize: 11,
-                  color: AppColors.textTertiary,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

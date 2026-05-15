@@ -14,6 +14,7 @@ const _kStep = 'onboarding_step';
 const _kUsernameSet = 'onboarding_username_set';
 const _kDone = 'onboarding_done';
 const _kLanguage = 'app_language';
+
 class OnboardingService extends ChangeNotifier {
   final List<String> _selectedCategories = [];
   List<String> get selectedCategories => List.unmodifiable(_selectedCategories);
@@ -147,7 +148,9 @@ class OnboardingService extends ChangeNotifier {
         final patch = <String, dynamic>{
           'onboarding_complete': true,
         };
-        if (username.isNotEmpty) patch['username'] = Sanitizer.username(username);
+        if (username.isNotEmpty) {
+          patch['username'] = Sanitizer.username(username);
+        }
 
         // Try update first (existing row from trigger).
         // If no row exists yet (trigger delayed or failed), fall back to insert.
@@ -171,6 +174,7 @@ class OnboardingService extends ChangeNotifier {
               'username': tempUsername,
               'display_name':
                   displayName.isNotEmpty ? displayName : tempUsername,
+              'avatar_url': AvatarService.defaultAvatarUrlFor(userId),
               'onboarding_complete': true,
               'trust_tier': 'unverified',
               'trust_score': 0,

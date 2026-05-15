@@ -28,8 +28,23 @@ class EchoModel {
       confidenceScore: (row['confidence_score'] as num?)?.toDouble() ?? 0.0,
       trustScore: (row['trust_score'] as num?)?.toInt() ?? 0,
       controversyScore: (row['controversy_score'] as num?)?.toDouble() ?? 0.0,
-      supportCount: (row['support_count'] as num?)?.toInt() ?? 0,
-      challengeCount: (row['challenge_count'] as num?)?.toInt() ?? 0,
+      supportCount: (row['context_support_count'] as num?)?.toInt() ??
+          (row['support_count'] as num?)?.toInt() ??
+          0,
+      challengeCount: (row['context_challenge_count'] as num?)?.toInt() ??
+          (row['challenge_count'] as num?)?.toInt() ??
+          0,
+      contextSupportCount: (row['context_support_count'] as num?)?.toInt() ?? 0,
+      contextChallengeCount:
+          (row['context_challenge_count'] as num?)?.toInt() ?? 0,
+      publicVerdict: row['public_verdict'] as String? ?? 'open',
+      publicVerdictAt: _parseDate(row['public_verdict_at']),
+      publicContextClosesAt: _parseDate(row['public_context_closes_at']),
+      publicContextMinCount:
+          (row['public_context_min_count'] as num?)?.toInt() ?? 7,
+      publicContextDecisionReason:
+          row['public_context_decision_reason'] as String?,
+      contextScore: (row['context_score'] as num?)?.toInt() ?? 0,
       timeAgo: Formatters.timeAgo(created),
       proofCount: (row['proof_count'] as num?)?.toInt() ?? 0,
       userIsPro: user['is_pro'] as bool? ?? false,

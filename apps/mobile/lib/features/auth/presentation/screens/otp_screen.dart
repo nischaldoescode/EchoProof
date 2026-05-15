@@ -8,6 +8,7 @@ import 'dart:math' as math;
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../core/localization/app_copy.dart';
+import '../../../../core/utils/logger.dart';
 import '../services/auth_service.dart';
 import '../../../../core/utils/snack.dart';
 
@@ -83,20 +84,51 @@ class _OtpScreenState extends State<OtpScreen>
   bool get _canLeave => _canResend || _resendSecs <= 0;
   bool get _canVerify => !_isVerifying && _otp.length == 6;
 
-  void _handleBack() {
+  bool _dismissKeyboardIfOpen() {
+    final keyboardOpen =
+        (MediaQuery.maybeOf(context)?.viewInsets.bottom ?? 0) > 0;
+    if (!keyboardOpen) return false;
+    FocusManager.instance.primaryFocus?.unfocus();
+    AppLogger.info('otp: keyboard dismissed by android back');
+    return true;
+  }
+
+  void _showOtpWarningSnack(String message) {
+    AppLogger.info('otp: showing warning snack "$message"');
+    showWarningSnack(context, message);
+  }
+
+  void _showOtpErrorSnack(String message) {
+    AppLogger.info('otp: showing error snack "$message"');
+    showErrorSnack(context, message);
+  }
+
+  void _handleBack({required String source}) {
+    AppLogger.info(
+      'otp: back requested source=$source canLeave=$_canLeave resendSecs=$_resendSecs',
+    );
+    FocusManager.instance.primaryFocus?.unfocus();
+
     if (!_canLeave) {
-      showWarningSnack(
-        context,
+      _showOtpWarningSnack(
         context.tx('otp.backCooldown').replaceAll('{s}', '$_resendSecs'),
       );
       return;
     }
 
     if (context.canPop()) {
+      AppLogger.info('otp: popping back to previous route');
       context.pop();
     } else {
+      AppLogger.info('otp: no route to pop, going to /login');
       context.go('/login');
     }
+  }
+
+  void _handleSystemBack() {
+    AppLogger.info('otp: android back pressed');
+    if (_dismissKeyboardIfOpen()) return;
+    _handleBack(source: 'android-back');
   }
 
   Future<void> _verify() async {
@@ -126,6 +158,7 @@ class _OtpScreenState extends State<OtpScreen>
       }
     } else {
       _shakeCtrl.forward(from: 0);
+      _showOtpErrorSnack(auth.error ?? context.tx('otp.incorrect'));
       setState(() {
         _isVerifying = false;
         _hasError = true;
@@ -136,9 +169,9 @@ class _OtpScreenState extends State<OtpScreen>
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: _canLeave,
+      canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && !_canLeave) _handleBack();
+        if (!didPop) _handleSystemBack();
       },
       child: Scaffold(
         backgroundColor: const Color(0xFFF5FAF7),
@@ -160,7 +193,7 @@ class _OtpScreenState extends State<OtpScreen>
                       const SizedBox(height: AppSpacing.lg),
                       IconButton(
                         icon: const Icon(Icons.arrow_back_rounded),
-                        onPressed: _handleBack,
+                        onPressed: () => _handleBack(source: 'top-arrow'),
                         color: AppColors.charcoal,
                         padding: EdgeInsets.zero,
                       ),
@@ -313,29 +346,39 @@ class _OtpScreenState extends State<OtpScreen>
 
                       Center(
                         child: TextButton(
-                          onPressed: _canResend
-                              ? () async {
-                                  if (showOfflineSnackIfNeeded(context)) {
-                                    return;
-                                  }
-                                  setState(() => _canResend = false);
-                                  final auth = context.read<AuthService>();
-                                  final sent = await auth.resendOtp(
-                                    email: widget.email,
-                                  );
-                                  if (!context.mounted) return;
-                                  if (sent) {
-                                    _startTimer();
-                                  } else {
-                                    setState(() => _canResend = true);
-                                    showErrorSnack(
-                                      context,
-                                      auth.error ??
-                                          'Could not resend the code.',
-                                    );
-                                  }
-                                }
-                              : null,
+                          onPressed: () async {
+                            AppLogger.info(
+                              'otp: resend tapped canResend=$_canResend resendSecs=$_resendSecs',
+                            );
+                            if (!_canResend) {
+                              _showOtpWarningSnack(
+                                context
+                                    .tx('otp.resendIn')
+                                    .replaceAll('{s}', '$_resendSecs'),
+                              );
+                              return;
+                            }
+                            if (showOfflineSnackIfNeeded(context)) {
+                              return;
+                            }
+                            setState(() => _canResend = false);
+                            final auth = context.read<AuthService>();
+                            final sent = await auth.resendOtp(
+                              email: widget.email,
+                            );
+                            if (!context.mounted) return;
+                            if (sent) {
+                              AppLogger.info('otp: resend succeeded');
+                              _startTimer();
+                            } else {
+                              AppLogger.info(
+                                  'otp: resend failed ${auth.error}');
+                              setState(() => _canResend = true);
+                              _showOtpErrorSnack(
+                                auth.error ?? 'Could not resend the code.',
+                              );
+                            }
+                          },
                           child: Text(
                             _canResend
                                 ? context.tx('otp.resend')

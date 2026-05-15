@@ -49,6 +49,17 @@ MockEchoEntity makeMockEcho({
   when(() => mock.verifiedRecordStatus).thenReturn('pending');
   when(() => mock.verifiedRecordError).thenReturn(null);
   when(() => mock.bondCount).thenReturn(0);
+  when(() => mock.socialContext).thenReturn(null);
+  when(() => mock.publicVerdict).thenReturn('open');
+  when(() => mock.publicVerdictAt).thenReturn(null);
+  when(() => mock.publicContextClosesAt).thenReturn(null);
+  when(() => mock.publicContextMinCount).thenReturn(7);
+  when(() => mock.publicContextDecisionReason).thenReturn(null);
+  when(() => mock.contextScore).thenReturn(0);
+  when(() => mock.contextSupportCount).thenReturn(80);
+  when(() => mock.contextChallengeCount).thenReturn(20);
+  when(() => mock.topContext).thenReturn(null);
+  when(() => mock.previewReplies).thenReturn(const []);
 
   return mock;
 }

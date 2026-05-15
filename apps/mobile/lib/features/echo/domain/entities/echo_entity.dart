@@ -120,6 +120,15 @@ class EchoEntity extends Equatable {
     this.verifiedRecordError,
     this.bondCount = 0,
     this.socialContext,
+    this.publicVerdict = 'open',
+    this.publicVerdictAt,
+    this.publicContextClosesAt,
+    this.publicContextMinCount = 7,
+    this.publicContextDecisionReason,
+    this.contextScore = 0,
+    this.contextSupportCount = 0,
+    this.contextChallengeCount = 0,
+    this.topContext,
     this.previewReplies = const [],
   });
 
@@ -161,6 +170,15 @@ class EchoEntity extends Equatable {
   final String? verifiedRecordError;
   final int bondCount;
   final String? socialContext;
+  final String publicVerdict;
+  final DateTime? publicVerdictAt;
+  final DateTime? publicContextClosesAt;
+  final int publicContextMinCount;
+  final String? publicContextDecisionReason;
+  final int contextScore;
+  final int contextSupportCount;
+  final int contextChallengeCount;
+  final EchoContextPreview? topContext;
   final List<EchoReplyPreview> previewReplies;
 
   /// pre-formatted relative time string, e.g. "2h ago"
@@ -186,8 +204,14 @@ class EchoEntity extends Equatable {
       confidenceScore: (json['confidence_score'] as num).toDouble(),
       trustScore: json['trust_score'] as int,
       controversyScore: (json['controversy_score'] as num).toDouble(),
-      supportCount: json['support_count'] as int,
-      challengeCount: json['challenge_count'] as int,
+      supportCount: ((json['context_support_count'] as num?) ??
+                  (json['support_count'] as num?))
+              ?.toInt() ??
+          0,
+      challengeCount: ((json['context_challenge_count'] as num?) ??
+                  (json['challenge_count'] as num?))
+              ?.toInt() ??
+          0,
       timeAgo: json['time_ago'] as String,
       proofCount: (json['proof_count'] as int?) ?? 0,
       requiresVerification: (json['requires_verification'] as bool?) ?? true,
@@ -207,6 +231,23 @@ class EchoEntity extends Equatable {
       verifiedRecordError: json['verified_record_error'] as String?,
       bondCount: (json['bond_count'] as num?)?.toInt() ?? 0,
       socialContext: json['social_context'] as String?,
+      publicVerdict: json['public_verdict'] as String? ?? 'open',
+      publicVerdictAt: _dateFromJson(json['public_verdict_at']),
+      publicContextClosesAt: _dateFromJson(json['public_context_closes_at']),
+      publicContextMinCount:
+          (json['public_context_min_count'] as num?)?.toInt() ?? 7,
+      publicContextDecisionReason:
+          json['public_context_decision_reason'] as String?,
+      contextScore: (json['context_score'] as num?)?.toInt() ?? 0,
+      contextSupportCount:
+          (json['context_support_count'] as num?)?.toInt() ?? 0,
+      contextChallengeCount:
+          (json['context_challenge_count'] as num?)?.toInt() ?? 0,
+      topContext: json['top_context'] is Map<String, dynamic>
+          ? EchoContextPreview.fromJson(
+              json['top_context'] as Map<String, dynamic>,
+            )
+          : null,
       previewReplies: (json['preview_replies'] as List?)
               ?.whereType<Map<String, dynamic>>()
               .map(EchoReplyPreview.fromJson)
@@ -255,6 +296,15 @@ class EchoEntity extends Equatable {
     String? verifiedRecordError,
     int? bondCount,
     String? socialContext,
+    String? publicVerdict,
+    DateTime? publicVerdictAt,
+    DateTime? publicContextClosesAt,
+    int? publicContextMinCount,
+    String? publicContextDecisionReason,
+    int? contextScore,
+    int? contextSupportCount,
+    int? contextChallengeCount,
+    EchoContextPreview? topContext,
     List<EchoReplyPreview>? previewReplies,
   }) {
     return EchoEntity(
@@ -292,6 +342,19 @@ class EchoEntity extends Equatable {
       verifiedRecordError: verifiedRecordError ?? this.verifiedRecordError,
       bondCount: bondCount ?? this.bondCount,
       socialContext: socialContext ?? this.socialContext,
+      publicVerdict: publicVerdict ?? this.publicVerdict,
+      publicVerdictAt: publicVerdictAt ?? this.publicVerdictAt,
+      publicContextClosesAt:
+          publicContextClosesAt ?? this.publicContextClosesAt,
+      publicContextMinCount:
+          publicContextMinCount ?? this.publicContextMinCount,
+      publicContextDecisionReason:
+          publicContextDecisionReason ?? this.publicContextDecisionReason,
+      contextScore: contextScore ?? this.contextScore,
+      contextSupportCount: contextSupportCount ?? this.contextSupportCount,
+      contextChallengeCount:
+          contextChallengeCount ?? this.contextChallengeCount,
+      topContext: topContext ?? this.topContext,
       previewReplies: previewReplies ?? this.previewReplies,
     );
   }
@@ -332,7 +395,77 @@ class EchoEntity extends Equatable {
         verifiedRecordError,
         bondCount,
         socialContext,
+        publicVerdict,
+        publicVerdictAt,
+        publicContextClosesAt,
+        publicContextMinCount,
+        publicContextDecisionReason,
+        contextScore,
+        contextSupportCount,
+        contextChallengeCount,
+        topContext,
         previewReplies,
+      ];
+}
+
+class EchoContextPreview extends Equatable {
+  const EchoContextPreview({
+    required this.id,
+    required this.content,
+    required this.stance,
+    required this.username,
+    required this.displayName,
+    required this.userId,
+    this.avatarUrl,
+    this.userIsPro = false,
+    this.likeCount = 0,
+    this.mediaUrls = const [],
+    this.createdAt,
+  });
+
+  final String id;
+  final String content;
+  final String stance;
+  final String username;
+  final String displayName;
+  final String userId;
+  final String? avatarUrl;
+  final bool userIsPro;
+  final int likeCount;
+  final List<String> mediaUrls;
+  final DateTime? createdAt;
+
+  factory EchoContextPreview.fromJson(Map<String, dynamic> json) {
+    return EchoContextPreview(
+      id: json['id'] as String? ?? '',
+      content: json['content'] as String? ?? '',
+      stance: json['stance'] as String? ?? 'support',
+      username: json['username'] as String? ?? 'unknown',
+      displayName: json['display_name'] as String? ??
+          json['username'] as String? ??
+          'unknown',
+      userId: json['user_id'] as String? ?? '',
+      avatarUrl: json['avatar_url'] as String?,
+      userIsPro: json['user_is_pro'] as bool? ?? false,
+      likeCount: (json['like_count'] as num?)?.toInt() ?? 0,
+      mediaUrls: (json['media_urls'] as List?)?.cast<String>() ?? const [],
+      createdAt: EchoEntity._dateFromJson(json['created_at']),
+    );
+  }
+
+  @override
+  List<Object?> get props => [
+        id,
+        content,
+        stance,
+        username,
+        displayName,
+        userId,
+        avatarUrl,
+        userIsPro,
+        likeCount,
+        mediaUrls,
+        createdAt,
       ];
 }
 

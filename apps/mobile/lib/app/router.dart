@@ -240,6 +240,8 @@ GoRouter createRouter({
             pageBuilder: (_, s) => _slidePage(
               EchoDetailScreen(
                 echoId: s.pathParameters['id']!,
+                initialContextStance: s.uri.queryParameters['stance'],
+                highlightedContextId: s.uri.queryParameters['context'],
               ),
             ),
             routes: [
