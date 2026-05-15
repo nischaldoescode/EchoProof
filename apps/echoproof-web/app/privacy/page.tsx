@@ -50,7 +50,7 @@ export default function PrivacyPage() {
             Questions about this policy?{" "}
             <a
               href="mailto:support@echoproof.online"
-              className="text-[#4caf6e] hover:underline font-medium"
+              className="text-fern-green hover:underline font-medium"
             >
               support@echoproof.online
             </a>

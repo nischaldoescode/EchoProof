@@ -15,6 +15,13 @@ const STATUS_COLORS: Record<EchoStatus, string> = {
   rejected:             "bg-coral-light text-coral-dark",
 };
 
+const VERDICT_COLORS: Record<Echo["public_verdict"], string> = {
+  open: "bg-gray-100 text-gray-600",
+  supported: "bg-fern-light text-fern-dark",
+  not_supported: "bg-coral-light text-coral-dark",
+  contested: "bg-orange-50 text-orange-700",
+};
+
 interface EchoTableProps {
   echoes: Echo[];
 }
@@ -50,12 +57,13 @@ export function EchoTable({ echoes }: EchoTableProps) {
         {/* table */}
         <div className="admin-soft-card flex-1 overflow-hidden rounded-xl border border-border-subtle bg-white">
           <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-sm">
+          <table className="w-full min-w-[900px] text-sm">
             <thead>
               <tr className="border-b border-border-subtle">
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-400">User</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-400">Echo</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-400">Status</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-400">Public context</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-gray-400">Report score</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-gray-400">Confidence</th>
               </tr>
@@ -95,6 +103,27 @@ export function EchoTable({ echoes }: EchoTableProps) {
                       <span className="ml-1.5 text-xs text-fern-dark">● record</span>
                     )}
                   </td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${VERDICT_COLORS[echo.public_verdict ?? "open"]}`}>
+                      {(echo.public_verdict ?? "open").replace("_", " ")}
+                    </span>
+                    <div className="mt-2 h-1.5 w-36 overflow-hidden rounded-full bg-gray-100">
+                      <div className="flex h-full">
+                        <div
+                          className="bg-fern-green transition-all"
+                          style={{
+                            width: `${contextShare(echo.context_support_count, echo.context_challenge_count)}%`,
+                          }}
+                        />
+                        <div className="flex-1 bg-sunset-coral transition-all" />
+                      </div>
+                    </div>
+                    <p className="mt-1 text-[11px] text-gray-400">
+                      {echo.context_support_count ?? 0} support ·{" "}
+                      {echo.context_challenge_count ?? 0} challenge ·{" "}
+                      {evaluationLabel(echo)}
+                    </p>
+                  </td>
                   <td className="px-4 py-3 text-right">
                     <span className={`text-xs font-semibold ${
                       echo.report_score >= 40 ? "text-coral-dark" :
@@ -111,7 +140,7 @@ export function EchoTable({ echoes }: EchoTableProps) {
 
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-gray-400 text-sm">
+                  <td colSpan={6} className="px-4 py-8 text-center text-gray-400 text-sm">
                     No echoes match this filter
                   </td>
                 </tr>
@@ -143,4 +172,19 @@ export function EchoTable({ echoes }: EchoTableProps) {
       `}</style>
     </div>
   );
+}
+
+function contextShare(support = 0, challenge = 0) {
+  const total = support + challenge;
+  if (total <= 0) return 50;
+  return Math.max(4, Math.min(96, Math.round((support / total) * 100)));
+}
+
+function evaluationLabel(echo: Echo) {
+  if (echo.public_verdict && echo.public_verdict !== "open") return "locked";
+  if (!echo.public_context_closes_at) return "7d window";
+  const ms = new Date(echo.public_context_closes_at).getTime() - Date.now();
+  if (ms <= 0) return "window ended";
+  const hours = Math.ceil(ms / 36e5);
+  return hours >= 24 ? `${Math.ceil(hours / 24)}d left` : `${hours}h left`;
 }

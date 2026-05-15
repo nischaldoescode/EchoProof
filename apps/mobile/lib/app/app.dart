@@ -10,8 +10,9 @@ import 'theme/app_theme.dart';
 import '../shared/widgets/connectivity_wrapper.dart';
 import '../features/onboarding/presentation/services/onboarding_service.dart';
 import '../core/localization/app_copy.dart';
+import '../core/utils/logger.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import '../../../../core/utils/snack.dart';
+import '../core/utils/snack.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
 class EchoProofApp extends StatelessWidget {
@@ -80,30 +81,107 @@ class ExitConfirmWrapper extends StatefulWidget {
 
 class _ExitConfirmWrapperState extends State<ExitConfirmWrapper> {
   DateTime? _lastBackPress;
+  DateTime? _lastBackEvent;
+  bool _handlingBack = false;
+
+  Future<bool> _handleBackIntent() async {
+    if (!widget.enabled) {
+      AppLogger.debug('exit-back: ignored because wrapper disabled');
+      return false;
+    }
+    if (_handlingBack) {
+      AppLogger.debug('exit-back: ignored re-entrant back callback');
+      return true;
+    }
+
+    _handlingBack = true;
+    try {
+      return await _processBackIntent();
+    } finally {
+      _handlingBack = false;
+    }
+  }
+
+  Future<bool> _processBackIntent() async {
+    final now = DateTime.now();
+    final route = ModalRoute.of(context);
+    AppLogger.info(
+      'exit-back: received route=${route?.settings.name} '
+      'isCurrent=${route?.isCurrent} canPop=${route?.canPop}',
+    );
+
+    final lastBackEvent = _lastBackEvent;
+    _lastBackEvent = now;
+    if (lastBackEvent != null &&
+        now.difference(lastBackEvent) < const Duration(milliseconds: 300)) {
+      AppLogger.debug(
+        'exit-back: duplicate callback ignored '
+        'deltaMs=${now.difference(lastBackEvent).inMilliseconds}',
+      );
+      return true;
+    }
+
+    final keyboardOpen =
+        (MediaQuery.maybeOf(context)?.viewInsets.bottom ?? 0) > 0;
+    if (keyboardOpen) {
+      AppLogger.info('exit-back: closing keyboard instead of exiting');
+      FocusManager.instance.primaryFocus?.unfocus();
+      return true;
+    }
+
+    if (route != null && !route.isCurrent) {
+      AppLogger.info('exit-back: top route is not current, trying pop modal');
+      await Navigator.of(context).maybePop();
+      return true;
+    }
+
+    final isDoubleTap = _lastBackPress != null &&
+        now.difference(_lastBackPress!) < const Duration(seconds: 2);
+
+    if (isDoubleTap) {
+      AppLogger.info('exit-back: second back within window, exiting app');
+      await SystemNavigator.pop();
+      return true;
+    }
+
+    _lastBackPress = now;
+    if (mounted) {
+      final bottomMargin = _rootSnackBottomMargin(context);
+      AppLogger.info(
+        'exit-back: showing root exit HyperSnackbar '
+        'bottomMargin=$bottomMargin',
+      );
+      showInfoSnack(
+        context,
+        context.l('Press back again to exit'),
+        bottomMargin: bottomMargin,
+      );
+    }
+    return true;
+  }
+
+  double _rootSnackBottomMargin(BuildContext context) {
+    // Root screens include bottom nav, optional ad units, and the gesture bar.
+    // Keep the exit prompt visibly above that chrome.
+    final shortestSide = MediaQuery.sizeOf(context).shortestSide;
+    return shortestSide >= 600 ? 118 : 142;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final route = ModalRoute.of(context);
+    final shouldHandleExit = widget.enabled && !(route?.canPop ?? false);
+    AppLogger.debug(
+      'exit-back: build route=${route?.settings.name} '
+      'enabled=${widget.enabled} canPop=${route?.canPop} '
+      'shouldHandleExit=$shouldHandleExit',
+    );
+
     return PopScope(
-      canPop: !widget.enabled,
+      canPop: !shouldHandleExit,
       onPopInvokedWithResult: (didPop, _) async {
-        if (didPop || !widget.enabled) return;
-
-        final now = DateTime.now();
-        final isDoubleTap = _lastBackPress != null &&
-            now.difference(_lastBackPress!) < const Duration(seconds: 2);
-
-        if (isDoubleTap) {
-          // exit the app
-          await SystemNavigator.pop();
-        } else {
-          _lastBackPress = now;
-          if (mounted) {
-            showInfoSnack(
-              context,
-              context.l('Press back again to exit'),
-            );
-          }
-        }
+        if (didPop || !shouldHandleExit) return;
+        await _handleBackIntent();
       },
       child: widget.child,
     );

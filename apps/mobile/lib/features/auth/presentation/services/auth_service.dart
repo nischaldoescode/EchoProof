@@ -5,6 +5,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/utils/logger.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import '../../../../core/services/avatar_service.dart';
 
 class AuthService extends ChangeNotifier {
   static const _settingsBox = 'app_settings';
@@ -128,6 +129,7 @@ class AuthService extends ChangeNotifier {
             'display_name': _client.auth.currentUser?.userMetadata?['full_name']
                     as String? ??
                 '',
+            'avatar_url': AvatarService.defaultAvatarUrlFor(userId),
             'trust_tier': 'unverified',
             'trust_score': 0,
             'echo_count': 0,
@@ -476,6 +478,7 @@ class AuthService extends ChangeNotifier {
             'id': userId,
             'username': fallbackUsername,
             'display_name': _displayNameFromCurrentUser() ?? fallbackUsername,
+            'avatar_url': AvatarService.defaultAvatarUrlFor(userId),
             'onboarding_complete': false,
             'trust_tier': 'unverified',
             'trust_score': 0,

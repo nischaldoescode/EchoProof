@@ -9,6 +9,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../auth/presentation/services/auth_service.dart';
+import '../../../auth/presentation/services/verification_error_parser.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/utils/logger.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -30,18 +31,25 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen>
     with WidgetsBindingObserver {
+  static const _verificationBlockUserKey = 'verification_block_user_id';
+  static const _verificationBlockMessageKey = 'verification_block_message';
+  static const _verificationBlockExpiresKey = 'verification_block_expires_at';
+
   String _version = '';
   int _secretTapCount = 0;
   bool _secretUnlocked = false;
   DateTime? _lastSecretTap;
   bool _isVerified = false;
   bool _isVerificationPending = false;
+  bool _isCheckingVerification = false;
+  String? _verificationBlockedMessage;
 
   @override
   void initState() {
     super.initState();
     _loadVersion();
     _loadVerificationStatus();
+    _loadCachedVerificationBlock();
     _loadNotifPrefs();
     WidgetsBinding.instance.addObserver(this);
   }
@@ -72,6 +80,140 @@ class _SettingsScreenState extends State<SettingsScreen>
         }
       });
     } catch (_) {}
+  }
+
+  Future<void> _openIdentityVerification() async {
+    final blockedMessage = _verificationBlockedMessage;
+    if (blockedMessage != null && blockedMessage.isNotEmpty) {
+      showInfoSnack(context, blockedMessage);
+      return;
+    }
+
+    if (_isCheckingVerification) return;
+    setState(() => _isCheckingVerification = true);
+    final preflightMessage = await _preflightIdentityVerification();
+    if (!mounted) return;
+    setState(() => _isCheckingVerification = false);
+
+    if (preflightMessage != null && preflightMessage.trim().isNotEmpty) {
+      await _setVerificationBlockedMessage(preflightMessage);
+      if (!mounted) return;
+      showInfoSnack(context, preflightMessage.trim());
+      return;
+    }
+
+    await _clearCachedVerificationBlock();
+    if (!mounted) return;
+
+    final result = await context.push<String>('/verify-identity');
+    if (!mounted) return;
+
+    await _loadVerificationStatus();
+    if (!mounted) return;
+
+    if (result != null && result.trim().isNotEmpty) {
+      await _setVerificationBlockedMessage(result);
+      if (!mounted) return;
+      showInfoSnack(context, result.trim());
+    }
+  }
+
+  Future<String?> _preflightIdentityVerification() async {
+    try {
+      final client = Supabase.instance.client;
+      final userId = client.auth.currentUser?.id;
+      if (userId == null) return 'Sign in again to continue.';
+
+      final response = await client.functions.invoke(
+        'create-didit-session',
+        body: {
+          'user_id': userId,
+          'redirect_uri': 'echoproof://verify-complete',
+          'dry_run': true,
+        },
+      );
+
+      final message =
+          VerificationErrorParser.messageFromResponseData(response.data);
+      if (message != null) return message;
+
+      return null;
+    } catch (e) {
+      AppLogger.warn('settings: verification preflight failed $e');
+      return VerificationErrorParser.messageFrom(e);
+    }
+  }
+
+  Future<void> _loadCachedVerificationBlock() async {
+    try {
+      final client = Supabase.instance.client;
+      final userId = client.auth.currentUser?.id;
+      if (userId == null) return;
+
+      final box = Hive.isBoxOpen('app_settings')
+          ? Hive.box('app_settings')
+          : await Hive.openBox('app_settings');
+      final cachedUserId = box.get(_verificationBlockUserKey) as String?;
+      final message = box.get(_verificationBlockMessageKey) as String?;
+      final expiresRaw = box.get(_verificationBlockExpiresKey) as String?;
+      final expiresAt =
+          expiresRaw == null ? null : DateTime.tryParse(expiresRaw);
+
+      if (cachedUserId != userId ||
+          message == null ||
+          message.trim().isEmpty ||
+          expiresAt == null ||
+          !expiresAt.isAfter(DateTime.now())) {
+        await _clearCachedVerificationBlock();
+        return;
+      }
+
+      if (!mounted) return;
+      setState(() => _verificationBlockedMessage = message.trim());
+    } catch (_) {}
+  }
+
+  Future<void> _setVerificationBlockedMessage(String message) async {
+    final trimmed = message.trim();
+    if (trimmed.isEmpty) return;
+
+    if (mounted) {
+      setState(() => _verificationBlockedMessage = trimmed);
+    }
+
+    if (!_shouldCacheVerificationBlock(trimmed)) return;
+
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) return;
+      final box = Hive.isBoxOpen('app_settings')
+          ? Hive.box('app_settings')
+          : await Hive.openBox('app_settings');
+      await box.put(_verificationBlockUserKey, userId);
+      await box.put(_verificationBlockMessageKey, trimmed);
+      await box.put(
+        _verificationBlockExpiresKey,
+        DateTime.now().add(const Duration(days: 31)).toIso8601String(),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _clearCachedVerificationBlock() async {
+    try {
+      final box = Hive.isBoxOpen('app_settings')
+          ? Hive.box('app_settings')
+          : await Hive.openBox('app_settings');
+      await box.delete(_verificationBlockUserKey);
+      await box.delete(_verificationBlockMessageKey);
+      await box.delete(_verificationBlockExpiresKey);
+    } catch (_) {}
+  }
+
+  bool _shouldCacheVerificationBlock(String message) {
+    final normalized = message.toLowerCase();
+    return normalized.contains('maximum of 2 verification attempts') ||
+        normalized.contains('too many verification attempts') ||
+        normalized.contains('cooldown');
   }
 
   @override
@@ -318,7 +460,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   Text(
                     isAdFree
                         ? 'You earned $minsLeft more minutes of ad-free browsing by watching a video. Ads will resume after your session ends.'
-                        : 'Echoproof is free to use. Feed ads are limited to 2 per hour while you are actively on the feed. $feedStatus You can remove ads by going Pro, or earn 1 hour ad-free by watching a short video.',
+                        : 'Echoproof is free to use. Feed ads are limited to 2 per hour and spaced at least 30 minutes apart while you are actively on the feed. $feedStatus You can remove ads by going Pro, or earn 1 hour ad-free by watching a short video.',
                     style: GoogleFonts.josefinSans(
                       fontSize: 13,
                       color: AppColors.textSecondary,
@@ -484,24 +626,43 @@ class _SettingsScreenState extends State<SettingsScreen>
             _Tile(
               icon: _isVerified
                   ? Icons.verified_rounded
-                  : _isVerificationPending
-                      ? Icons.pending_outlined
-                      : Icons.verified_user_outlined,
+                  : _isCheckingVerification
+                      ? Icons.hourglass_top_rounded
+                      : _isVerificationPending
+                          ? Icons.pending_outlined
+                          : Icons.verified_user_outlined,
               label: _isVerified
                   ? context.l('Identity verified')
-                  : _isVerificationPending
-                      ? context.l('Verification in progress...')
-                      : context.l('Verify identity'),
+                  : _isCheckingVerification
+                      ? context.l('Checking verification...')
+                      : _isVerificationPending
+                          ? context.l('Verification in progress...')
+                          : context.l('Verify identity'),
               subtitle: _isVerified
                   ? context.l('Your identity has been confirmed')
-                  : _isVerificationPending
-                      ? context.l('Usually takes a few minutes')
-                      : null,
+                  : _isCheckingVerification
+                      ? context.l('Please wait')
+                      : _isVerificationPending
+                          ? context.l('Usually takes a few minutes')
+                          : _verificationBlockedMessage,
               color: _isVerified ? AppColors.fernGreen : null,
-              showChevron: !_isVerified && !_isVerificationPending,
-              onTap: _isVerified || _isVerificationPending
-                  ? () {} // Disabled — show nothing or a snack
-                  : () => context.push('/verify-identity'),
+              showChevron: !_isVerified &&
+                  !_isCheckingVerification &&
+                  !_isVerificationPending &&
+                  _verificationBlockedMessage == null,
+              onTap: _isVerified
+                  ? () => showInfoSnack(
+                        context,
+                        context.l('Your identity has been confirmed'),
+                      )
+                  : _isVerificationPending
+                      ? () => showInfoSnack(
+                            context,
+                            context.l('Verification in progress...'),
+                          )
+                      : _isCheckingVerification
+                          ? () {}
+                          : _openIdentityVerification,
             ),
             // _Tile(
             //   icon: Icons.receipt_long_outlined,
@@ -966,27 +1127,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     AppLogger.info('settings: deleting account for $userId');
 
     try {
-      // delete dependent rows in safe order before removing the user rows
-      await client.from('signal_responses').delete().eq('user_id', userId);
-      await client.from('echo_interactions').delete().eq('user_id', userId);
-      await client.from('echo_replies').delete().eq('user_id', userId);
-      final echoIds = await _getUserEchoIds(client, userId);
-
-      if (echoIds.isNotEmpty) {
-        await client
-            .from('echo_proofs')
-            .delete()
-            .filter('echo_id', 'in', echoIds);
-        await client
-            .from('echo_signals')
-            .delete()
-            .filter('echo_id', 'in', echoIds);
-      }
-      await client.from('truth_bonds').delete().eq('user_id', userId);
-      await client.from('notifications').delete().eq('user_id', userId);
-      await client.from('echoes').delete().eq('user_id', userId);
-      await client.from('users_public').delete().eq('id', userId);
-      await client.from('users_private').delete().eq('id', userId);
+      await client.rpc('delete_own_account_data');
 
       AppLogger.info('settings: user data deleted, signing out');
       await auth.signOut(enforceCooldown: false);
@@ -1002,17 +1143,6 @@ class _SettingsScreenState extends State<SettingsScreen>
           context.l('Failed to delete account. Please try again.'),
         );
       }
-    }
-  }
-
-  Future<List<String>> _getUserEchoIds(
-      SupabaseClient client, String userId) async {
-    try {
-      final rows =
-          await client.from('echoes').select('id').eq('user_id', userId);
-      return (rows as List).map((r) => r['id'] as String).toList();
-    } catch (_) {
-      return [];
     }
   }
 }

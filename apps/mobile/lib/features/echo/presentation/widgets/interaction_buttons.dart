@@ -10,12 +10,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
-import '../../../../core/services/echo_interaction_service.dart';
 import '../../../../core/localization/app_copy.dart';
-import '../../../../core/utils/logger.dart';
 import '../../../../shared/widgets/echo_action_sheet.dart';
 import '../../domain/entities/echo_entity.dart';
 import '../services/echo_feed_service.dart';
+import 'signal_response_sheet.dart';
 
 class InteractionButtons extends StatelessWidget {
   const InteractionButtons({
@@ -23,11 +22,13 @@ class InteractionButtons extends StatelessWidget {
     required this.echo,
     this.dense = false,
     this.onEchoHidden,
+    this.onContextPosted,
   });
 
   final EchoEntity echo;
   final bool dense;
   final VoidCallback? onEchoHidden;
+  final Future<void> Function()? onContextPosted;
 
   @override
   Widget build(BuildContext context) {
@@ -57,7 +58,7 @@ class InteractionButtons extends StatelessWidget {
               count: echo.supportCount,
               label: context.l('Support'),
               icon: Icons.thumb_up_alt_outlined,
-              onTap: () => _interact(context, 'support'),
+              onTap: () => _openContextSheet(context, 'support'),
               flashColor: AppColors.fernGreen,
             ),
           ),
@@ -67,7 +68,7 @@ class InteractionButtons extends StatelessWidget {
               count: echo.challengeCount,
               label: context.l('Challenge'),
               icon: Icons.arrow_downward_rounded,
-              onTap: () => _interact(context, 'challenge'),
+              onTap: () => _openContextSheet(context, 'challenge'),
               flashColor: AppColors.sunsetCoralDark,
             ),
           ),
@@ -125,10 +126,14 @@ class InteractionButtons extends StatelessWidget {
     );
   }
 
-  Future<bool> _interact(BuildContext context, String type) async {
+  Future<bool> _openContextSheet(BuildContext context, String type) async {
     if (showOfflineSnackIfNeeded(context)) return false;
 
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    if (currentUserId == null) {
+      showInfoSnack(context, context.l('Sign in again to continue.'));
+      return false;
+    }
     if (echo.userId.isNotEmpty && echo.userId == currentUserId) {
       showInfoSnack(
         context,
@@ -138,47 +143,27 @@ class InteractionButtons extends StatelessWidget {
     }
 
     HapticFeedback.selectionClick();
-
-    final feed = context.read<EchoFeedService>();
-    feed.applyOptimisticInteraction(echoId: echo.id, type: type);
-
-    final client = Supabase.instance.client;
-    final session = client.auth.currentSession;
-
-    if (session == null) {
-      feed.revertOptimisticInteraction(echoId: echo.id, type: type);
-      showInfoSnack(context, context.l('Sign in again to continue.'));
-      return false;
-    }
-
-    try {
-      const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
-      final service = EchoInteractionService(client, supabaseUrl);
-      final result = await service.interact(
-        echoId: echo.id,
-        type: type,
-        jwtToken: session.accessToken,
-      );
-
-      final updated = result.updatedEcho;
-      feed.updateEchoScores(
-        echoId: echo.id,
-        trustScore: updated.trustScore,
-        confidenceScore: updated.confidenceScore,
-        supportCount: updated.supportCount,
-        challengeCount: updated.challengeCount,
-        status: updated.status,
-      );
-      return true;
-    } catch (e) {
-      AppLogger.error('interaction failed', e);
-      feed.revertOptimisticInteraction(echoId: echo.id, type: type);
-
-      if (context.mounted) {
-        showErrorSnack(context, e.toString());
-      }
-      return false;
-    }
+    showSignalResponseSheet(
+      context: context,
+      echoId: echo.id,
+      initialStance: type,
+      onPosted: () async {
+        if (onContextPosted != null) {
+          await onContextPosted!();
+        } else {
+          await context.read<EchoFeedService>().refresh();
+        }
+        if (context.mounted) {
+          showSuccessSnack(
+            context,
+            type == 'support'
+                ? context.l('Support context added.')
+                : context.l('Challenge context added.'),
+          );
+        }
+      },
+    );
+    return false;
   }
 }
 

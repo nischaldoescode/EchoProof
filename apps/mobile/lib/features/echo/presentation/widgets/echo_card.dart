@@ -165,6 +165,12 @@ class _EchoCardState extends State<EchoCard> {
   Widget build(BuildContext context) {
     final previewUrl = extractFirstUrl('${echo.title}\n${echo.content}');
     final hideUrlText = previewUrl != null && !_previewUnavailable;
+    final isNotSupported = echo.publicVerdict == 'not_supported';
+    final cardColor =
+        isNotSupported ? const Color(0xFFFFF7F4) : AppColors.white;
+    final dividerColor = isNotSupported
+        ? AppColors.sunsetCoral.withValues(alpha: 0.35)
+        : AppColors.borderSubtle;
 
     return VisibilityDetector(
       key: Key('echo_card_${echo.id}'),
@@ -193,10 +199,10 @@ class _EchoCardState extends State<EchoCard> {
             AppSpacing.sm,
             AppSpacing.sm,
           ),
-          decoration: const BoxDecoration(
-            color: AppColors.white,
+          decoration: BoxDecoration(
+            color: cardColor,
             border: Border(
-              bottom: BorderSide(color: AppColors.borderSubtle),
+              bottom: BorderSide(color: dividerColor),
             ),
           ),
           child: Row(
@@ -221,6 +227,10 @@ class _EchoCardState extends State<EchoCard> {
                       const SizedBox(height: 5),
                     ],
                     _TweetHeader(echo: echo, onAuthorTap: _openAuthorProfile),
+                    const SizedBox(height: AppSpacing.xs),
+                    _PublicVerdictPill(echo: echo),
+                    const SizedBox(height: 6),
+                    _ContextMiniBar(echo: echo),
                     const SizedBox(height: AppSpacing.xs),
                     if (echo.title.isNotEmpty) ...[
                       RichTextDisplay(
@@ -284,6 +294,22 @@ class _EchoCardState extends State<EchoCard> {
                     ),
                     const SizedBox(height: AppSpacing.xs),
                     InteractionButtons(echo: echo, dense: true),
+                    if (echo.topContext != null) ...[
+                      const SizedBox(height: AppSpacing.sm),
+                      _ContextPreviewCard(
+                        contextPreview: echo.topContext!,
+                        onTap: () {
+                          final preview = echo.topContext!;
+                          context.push(
+                            '/feed/echo/${echo.id}'
+                            '?stance=${Uri.encodeComponent(preview.stance)}'
+                            '&context=${Uri.encodeComponent(preview.id)}',
+                          );
+                        },
+                        onAuthorTap: (username, userId) =>
+                            _openProfile(username, userId: userId),
+                      ),
+                    ],
                     if (echo.previewReplies.isNotEmpty) ...[
                       const SizedBox(height: AppSpacing.sm),
                       _ReplyPreviewCard(
@@ -336,6 +362,296 @@ class _SocialContextPill extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _PublicVerdictPill extends StatelessWidget {
+  const _PublicVerdictPill({required this.echo});
+  final EchoEntity echo;
+
+  @override
+  Widget build(BuildContext context) {
+    final verdict = echo.publicVerdict;
+    final color = switch (verdict) {
+      'supported' => AppColors.fernGreenDark,
+      'not_supported' => AppColors.sunsetCoralDark,
+      'contested' => AppColors.statusControversial,
+      _ => AppColors.textTertiary,
+    };
+    final label = switch (verdict) {
+      'supported' => 'Supported by public context',
+      'not_supported' => 'Not supported by public context',
+      'contested' => 'Public context is split',
+      _ => 'Open for public context',
+    };
+    final window = _contextWindowLabel(echo);
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            verdict == 'not_supported'
+                ? Icons.report_problem_outlined
+                : Icons.groups_2_outlined,
+            size: 13,
+            color: color,
+          ),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              '$label · ${echo.supportCount}/${echo.challengeCount} · $window',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.josefinSans(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: color,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ContextMiniBar extends StatelessWidget {
+  const _ContextMiniBar({required this.echo});
+  final EchoEntity echo;
+
+  @override
+  Widget build(BuildContext context) {
+    final support = echo.supportCount;
+    final challenge = echo.challengeCount;
+    final total = support + challenge;
+    final supportFlex = total == 0 ? 1 : support.clamp(0, 999).toInt();
+    final challengeFlex = total == 0 ? 1 : challenge.clamp(0, 999).toInt();
+    final threshold =
+        echo.publicContextMinCount <= 0 ? 7 : echo.publicContextMinCount;
+    final progress = (total / threshold).clamp(0.0, 1.0).toDouble();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+          child: SizedBox(
+            height: 7,
+            child: Row(
+              children: [
+                Expanded(
+                  flex: supportFlex == 0 ? 1 : supportFlex,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    color: total == 0
+                        ? AppColors.borderSubtle
+                        : AppColors.fernGreen,
+                  ),
+                ),
+                Expanded(
+                  flex: challengeFlex == 0 ? 1 : challengeFlex,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    color: total == 0
+                        ? AppColors.borderSubtle
+                        : AppColors.sunsetCoral,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Text(
+              '$support support',
+              style: GoogleFonts.josefinSans(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w800,
+                color: AppColors.fernGreenDark,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '${(progress * 100).round()}% eval',
+              style: GoogleFonts.josefinSans(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textTertiary,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '$challenge challenge',
+              style: GoogleFonts.josefinSans(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w800,
+                color: AppColors.sunsetCoralDark,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+String _contextWindowLabel(EchoEntity echo) {
+  if (echo.publicVerdict != 'open') {
+    final decided = echo.publicVerdictAt;
+    return decided == null
+        ? 'decided'
+        : 'decided ${Formatters.timeAgo(decided)}';
+  }
+  final closesAt = echo.publicContextClosesAt;
+  if (closesAt == null) return '7d window';
+  final diff = closesAt.difference(DateTime.now());
+  if (diff.isNegative) return 'window ended';
+  if (diff.inDays >= 1) return '${diff.inDays}d left';
+  if (diff.inHours >= 1) return '${diff.inHours}h left';
+  return '${diff.inMinutes.clamp(1, 59)}m left';
+}
+
+class _ContextPreviewCard extends StatelessWidget {
+  const _ContextPreviewCard({
+    required this.contextPreview,
+    required this.onTap,
+    required this.onAuthorTap,
+  });
+
+  final EchoContextPreview contextPreview;
+  final VoidCallback onTap;
+  final void Function(String username, String? userId) onAuthorTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isSupport = contextPreview.stance == 'support';
+    final color =
+        isSupport ? AppColors.fernGreenDark : AppColors.sunsetCoralDark;
+    final extraMedia = contextPreview.mediaUrls.isNotEmpty
+        ? ' · ${contextPreview.mediaUrls.length} media'
+        : '';
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.only(top: AppSpacing.sm),
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: AppColors.borderSubtle)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 28,
+              child: Column(
+                children: [
+                  Container(
+                    width: 2,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: AppColors.borderSubtle,
+                      borderRadius: BorderRadius.circular(1),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      GestureDetector(
+                        onTap: () => onAuthorTap(
+                          contextPreview.username,
+                          contextPreview.userId,
+                        ),
+                        child: AvatarWithBadge(
+                          avatarUrl: contextPreview.avatarUrl,
+                          radius: 14,
+                          badgeType: resolveBadgeType(
+                            isVerified: false,
+                            isPro: contextPreview.userIsPro,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Wrap(
+                              spacing: 5,
+                              runSpacing: 2,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                Text(
+                                  contextPreview.displayName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.josefinSans(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.charcoal,
+                                  ),
+                                ),
+                                Text(
+                                  isSupport
+                                      ? 'added support context'
+                                      : 'added challenge context',
+                                  style: GoogleFonts.josefinSans(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: color,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 3),
+                            RichTextDisplay(
+                              text: contextPreview.content,
+                              style: AppTypography.textTheme.bodySmall,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              hideUrls: false,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              contextPreview.likeCount > 0
+                                  ? '${contextPreview.likeCount} context likes$extraMedia'
+                                  : 'Likeable context$extraMedia',
+                              style: GoogleFonts.josefinSans(
+                                fontSize: 11,
+                                color: AppColors.textTertiary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

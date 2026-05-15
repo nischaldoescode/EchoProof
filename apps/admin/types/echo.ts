@@ -28,6 +28,15 @@ export interface EchoRecord {
   report_score: number;
   support_count: number;
   challenge_count: number;
+  context_support_count: number;
+  context_challenge_count: number;
+  context_score: number;
+  public_verdict: "open" | "supported" | "not_supported" | "contested";
+  public_verdict_at: string | null;
+  public_context_closes_at: string | null;
+  public_context_min_count: number;
+  public_context_decision_reason: string | null;
+  admin_override_used: boolean;
   bond_count: number;
   admin_verified: boolean | null;
   admin_note: string | null;

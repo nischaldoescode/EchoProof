@@ -52,7 +52,9 @@ class _AnalyticsTabState extends State<AnalyticsTab>
           .from('echoes')
           .select(
             'id, title, trust_score, confidence_score, support_count, '
-            'challenge_count, reply_count, bond_count, status, created_at, media_urls',
+            'challenge_count, context_support_count, context_challenge_count, '
+            'context_score, public_verdict, reply_count, bond_count, status, '
+            'created_at, media_urls',
           )
           .eq('user_id', widget.userId)
           .order('trust_score', ascending: false)
@@ -76,18 +78,39 @@ class _AnalyticsTabState extends State<AnalyticsTab>
       var verifiedEchoes = 0;
       var pendingEchoes = 0;
       var disputedEchoes = 0;
+      var supportedByContext = 0;
+      var notSupportedByContext = 0;
+      var contestedByContext = 0;
       for (final e in echoList) {
-        totalSupport += (e['support_count'] as num?)?.toInt() ?? 0;
-        totalChallenge += (e['challenge_count'] as num?)?.toInt() ?? 0;
+        final contextSupport = (e['context_support_count'] as num?)?.toInt() ??
+            (e['support_count'] as num?)?.toInt() ??
+            0;
+        final contextChallenge =
+            (e['context_challenge_count'] as num?)?.toInt() ??
+                (e['challenge_count'] as num?)?.toInt() ??
+                0;
+        totalSupport += contextSupport;
+        totalChallenge += contextChallenge;
         totalReplies += (e['reply_count'] as num?)?.toInt() ?? 0;
         totalBonds += (e['bond_count'] as num?)?.toInt() ?? 0;
         totalConfidence += (e['confidence_score'] as num?)?.toDouble() ?? 0;
         final media = e['media_urls'];
         if (media is List && media.isNotEmpty) mediaEchoes++;
+        final publicVerdict =
+            (e['public_verdict'] as String? ?? 'open').toLowerCase();
+        if (publicVerdict == 'supported') {
+          supportedByContext++;
+        } else if (publicVerdict == 'not_supported') {
+          notSupportedByContext++;
+        } else if (publicVerdict == 'contested') {
+          contestedByContext++;
+        }
         final status = (e['status'] as String? ?? '').toLowerCase();
         if (status.contains('verified')) {
           verifiedEchoes++;
-        } else if (status.contains('challenge') || status.contains('dispute')) {
+        } else if (status.contains('challenge') ||
+            status.contains('dispute') ||
+            publicVerdict == 'not_supported') {
           disputedEchoes++;
         } else {
           pendingEchoes++;
@@ -112,6 +135,9 @@ class _AnalyticsTabState extends State<AnalyticsTab>
           'verified_echoes': verifiedEchoes,
           'pending_echoes': pendingEchoes,
           'disputed_echoes': disputedEchoes,
+          'supported_by_context': supportedByContext,
+          'not_supported_by_context': notSupportedByContext,
+          'contested_by_context': contestedByContext,
         };
         _topEchoes = echoList.take(5).toList();
         _isLoading = false;
@@ -183,6 +209,8 @@ class _AnalyticsTabState extends State<AnalyticsTab>
             totalReplies: (stats['total_replies'] as num?)?.toInt() ?? 0,
             totalBonds: (stats['total_bonds'] as num?)?.toInt() ?? 0,
           ),
+          const SizedBox(height: AppSpacing.md),
+          _PublicContextMixCard(stats: stats),
           const SizedBox(height: AppSpacing.md),
           _StatusMixCard(stats: stats),
           const SizedBox(height: AppSpacing.xl),
@@ -720,6 +748,115 @@ class _StatusMixCard extends StatelessWidget {
   }
 }
 
+class _PublicContextMixCard extends StatelessWidget {
+  const _PublicContextMixCard({required this.stats});
+  final Map<String, dynamic> stats;
+
+  @override
+  Widget build(BuildContext context) {
+    final supported = (stats['supported_by_context'] as num?)?.toInt() ?? 0;
+    final notSupported =
+        (stats['not_supported_by_context'] as num?)?.toInt() ?? 0;
+    final contested = (stats['contested_by_context'] as num?)?.toInt() ?? 0;
+    final open = ((stats['echo_count'] as num?)?.toInt() ?? 0) -
+        supported -
+        notSupported -
+        contested;
+    final safeOpen = open < 0 ? 0 : open;
+    final total = supported + notSupported + contested + safeOpen;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                context.l('Public context verdicts'),
+                style: GoogleFonts.josefinSans(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.charcoal,
+                ),
+              ),
+              const Spacer(),
+              Icon(
+                Icons.groups_2_outlined,
+                size: 17,
+                color: AppColors.textSecondary,
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: Row(
+              children: [
+                _MixSegment(
+                  flex: supported,
+                  fallbackFlex: total == 0 ? 1 : 0,
+                  color: AppColors.fernGreen,
+                ),
+                _MixSegment(
+                  flex: notSupported,
+                  fallbackFlex: total == 0 ? 1 : 0,
+                  color: AppColors.sunsetCoral,
+                ),
+                _MixSegment(
+                  flex: contested,
+                  fallbackFlex: total == 0 ? 1 : 0,
+                  color: AppColors.statusControversial,
+                ),
+                _MixSegment(
+                  flex: safeOpen,
+                  fallbackFlex: total == 0 ? 1 : 0,
+                  color: AppColors.borderMedium,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            children: [
+              _Legend(
+                label: context.l('Supported'),
+                value: supported,
+                color: AppColors.fernGreen,
+              ),
+              _Legend(
+                label: context.l('Not supported'),
+                value: notSupported,
+                color: AppColors.sunsetCoral,
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Row(
+            children: [
+              _Legend(
+                label: context.l('Contested'),
+                value: contested,
+                color: AppColors.statusControversial,
+              ),
+              _Legend(
+                label: context.l('Open'),
+                value: safeOpen,
+                color: AppColors.textTertiary,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _MixSegment extends StatelessWidget {
   const _MixSegment({
     required this.flex,
@@ -789,8 +926,12 @@ class _TopEchoCard extends StatelessWidget {
     final title = echo['title'] as String? ?? context.l('Untitled');
     final trust = (echo['trust_score'] as num?)?.toInt() ?? 0;
     final confidence = (echo['confidence_score'] as num?)?.toDouble() ?? 0.0;
-    final support = (echo['support_count'] as num?)?.toInt() ?? 0;
-    final challenge = (echo['challenge_count'] as num?)?.toInt() ?? 0;
+    final support = (echo['context_support_count'] as num?)?.toInt() ??
+        (echo['support_count'] as num?)?.toInt() ??
+        0;
+    final challenge = (echo['context_challenge_count'] as num?)?.toInt() ??
+        (echo['challenge_count'] as num?)?.toInt() ??
+        0;
 
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),

@@ -14,8 +14,11 @@ export function ModerationActions({ echo, onClose }: ModerationActionsProps) {
   const router = useRouter();
   const [note, setNote]       = useState(echo.admin_note ?? "");
   const [loading, setLoading] = useState(false);
+  const publicLocked = echo.public_verdict && echo.public_verdict !== "open";
+  const adminLocked = publicLocked || echo.admin_override_used;
 
   async function applyAction(action: "verify" | "reject" | "hide" | "restore") {
+    if (adminLocked) return;
     setLoading(true);
 
     const updates: Record<string, unknown> = {};
@@ -95,6 +98,38 @@ export function ModerationActions({ echo, onClose }: ModerationActionsProps) {
         </div>
       </div>
 
+      <div className="rounded-lg border border-border-subtle bg-soft-sand/60 p-3 text-xs">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="font-semibold text-charcoal">Public context</p>
+          <span className="rounded-md bg-white px-2 py-0.5 font-medium text-gray-500">
+            {(echo.public_verdict ?? "open").replace("_", " ")}
+          </span>
+        </div>
+        <div className="h-1.5 overflow-hidden rounded-full bg-white">
+          <div className="flex h-full">
+            <div
+              className="bg-fern-green"
+              style={{
+                width: `${contextShare(echo.context_support_count, echo.context_challenge_count)}%`,
+              }}
+            />
+            <div className="flex-1 bg-sunset-coral" />
+          </div>
+        </div>
+        <p className="mt-2 text-gray-500">
+          {echo.context_support_count ?? 0} support ·{" "}
+          {echo.context_challenge_count ?? 0} challenge ·{" "}
+          {evaluationLabel(echo)}
+        </p>
+        {adminLocked && (
+          <p className="mt-2 font-medium text-coral-dark">
+            {publicLocked
+              ? "Public verdict is decided, so admin status changes are locked."
+              : "The one admin override has already been used."}
+          </p>
+        )}
+      </div>
+
       {echo.verified_record_tx && (
         <div className="bg-fern-light rounded-lg p-2">
           <p className="text-xs text-fern-dark font-medium">Permanent record exists</p>
@@ -115,28 +150,28 @@ export function ModerationActions({ echo, onClose }: ModerationActionsProps) {
       <div className="grid grid-cols-2 gap-2">
         <button
           onClick={() => applyAction("verify")}
-          disabled={loading}
+          disabled={loading || adminLocked}
           className="bg-fern-light text-fern-dark text-xs font-semibold py-2 rounded-lg hover:bg-fern-green hover:text-white transition-colors disabled:opacity-50"
         >
           Verify
         </button>
         <button
           onClick={() => applyAction("reject")}
-          disabled={loading}
+          disabled={loading || adminLocked}
           className="bg-coral-light text-coral-dark text-xs font-semibold py-2 rounded-lg hover:bg-sunset-coral hover:text-white transition-colors disabled:opacity-50"
         >
           Reject
         </button>
         <button
           onClick={() => applyAction("hide")}
-          disabled={loading}
+          disabled={loading || adminLocked}
           className="bg-soft-sand text-gray-600 text-xs font-semibold py-2 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
         >
           Hide
         </button>
         <button
           onClick={() => applyAction("restore")}
-          disabled={loading}
+          disabled={loading || adminLocked}
           className="bg-soft-sand text-gray-600 text-xs font-semibold py-2 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
         >
           Restore
@@ -144,4 +179,19 @@ export function ModerationActions({ echo, onClose }: ModerationActionsProps) {
       </div>
     </div>
   );
+}
+
+function contextShare(support = 0, challenge = 0) {
+  const total = support + challenge;
+  if (total <= 0) return 50;
+  return Math.max(4, Math.min(96, Math.round((support / total) * 100)));
+}
+
+function evaluationLabel(echo: Echo) {
+  if (echo.public_verdict && echo.public_verdict !== "open") return "locked";
+  if (!echo.public_context_closes_at) return "7d window";
+  const ms = new Date(echo.public_context_closes_at).getTime() - Date.now();
+  if (ms <= 0) return "window ended";
+  const hours = Math.ceil(ms / 36e5);
+  return hours >= 24 ? `${Math.ceil(hours / 24)}d left` : `${hours}h left`;
 }
