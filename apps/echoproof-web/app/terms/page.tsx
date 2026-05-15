@@ -50,7 +50,7 @@ export default function TermsPage() {
             Questions?{" "}
             <a
               href="mailto:support@echoproof.online"
-              className="text-[#4caf6e] hover:underline font-medium"
+              className="text-fern-green hover:underline font-medium"
             >
               support@echoproof.online
             </a>
@@ -117,6 +117,6 @@ const sections = [
   },
   {
     title: "Termination",
-    body: "You may delete your account at any time through the app settings or by submitting a deletion request at echoproof.online/delete-account. We may suspend or terminate your account at any time for violations of these terms. Upon termination, your right to use the platform ceases immediately.",
+    body: "You may delete your account at any time through the app settings or by submitting a deletion request at echoproof website. We may suspend or terminate your account at any time for violations of these terms. Upon termination, your right to use the platform ceases immediately.",
   },
 ];

@@ -298,7 +298,14 @@ class _EchoCardState extends State<EchoCard> {
                       const SizedBox(height: AppSpacing.sm),
                       _ContextPreviewCard(
                         contextPreview: echo.topContext!,
-                        onTap: () => context.push('/feed/echo/${echo.id}'),
+                        onTap: () {
+                          final preview = echo.topContext!;
+                          context.push(
+                            '/feed/echo/${echo.id}'
+                            '?stance=${Uri.encodeComponent(preview.stance)}'
+                            '&context=${Uri.encodeComponent(preview.id)}',
+                          );
+                        },
                         onAuthorTap: (username, userId) =>
                             _openProfile(username, userId: userId),
                       ),

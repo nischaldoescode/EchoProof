@@ -16,15 +16,14 @@ extension AppCopyX on BuildContext {
 
   String _appLanguage() {
     try {
-      return Provider.of<OnboardingService>(this).language;
+      // `context.l(...)` is used from builds, callbacks, async catches, and
+      // snack helpers. Always read without subscribing; EchoProofApp already
+      // watches the language and rebuilds MaterialApp when it changes.
+      return Provider.of<OnboardingService>(this, listen: false).language;
     } on ProviderNotFoundException {
       return 'en';
     } on FlutterError {
-      try {
-        return Provider.of<OnboardingService>(this, listen: false).language;
-      } catch (_) {
-        return 'en';
-      }
+      return 'en';
     }
   }
 }

@@ -12,8 +12,18 @@ class AvatarService {
 
   final SupabaseClient _client;
 
-  static const _style = 'shapes';
+  static const _style = 'lorelei';
   static const _size = 128;
+
+  static String defaultAvatarUrlFor(String userId) {
+    final seedSource = userId.replaceAll('-', '');
+    final seed = seedSource.length >= 8 ? seedSource.substring(0, 8) : userId;
+    return Uri.https(
+      'api.dicebear.com',
+      '/9.x/$_style/png',
+      {'seed': seed, 'size': '$_size'},
+    ).toString();
+  }
 
   // generates and stores avatar for a user.
   // safe to call multiple times — checks if avatar already exists first.
@@ -35,32 +45,58 @@ class AvatarService {
       return existingUrl;
     }
 
-    final seed = userId.replaceAll('-', '').substring(0, 8);
-    final dicebearUrl =
-        'https://api.dicebear.com/9.x/$_style/png?seed=$seed&size=128';
-    final response = await http.get(Uri.parse(dicebearUrl));
-    if (response.statusCode != 200) {
-      throw Exception('dicebear fetch failed: ${response.statusCode}');
+    final fallbackUrl = defaultAvatarUrlFor(userId);
+    await _writeAvatarUrl(
+      userId: userId,
+      username: username,
+      url: fallbackUrl,
+    );
+
+    http.Response response;
+    try {
+      response = await http.get(Uri.parse(fallbackUrl));
+      if (response.statusCode != 200) {
+        throw Exception('dicebear fetch failed: ${response.statusCode}');
+      }
+    } catch (e) {
+      AppLogger.warn('avatar: using deterministic remote avatar: $e');
+      return fallbackUrl;
     }
 
     final bytes = response.bodyBytes;
 
-    // Upload as SVG — correct content type.
+    // Store a local copy when storage is available; the remote URL is already
+    // saved as a fallback so onboarding never ends with a blank avatar.
     final storagePath = '$userId.png';
-    await _client.storage.from('avatars').uploadBinary(
-          storagePath,
-          bytes,
-          fileOptions: const FileOptions(
-            contentType: 'image/png',
-            upsert: true,
-          ),
-        );
+    try {
+      await _client.storage.from('avatars').uploadBinary(
+            storagePath,
+            bytes,
+            fileOptions: const FileOptions(
+              contentType: 'image/png',
+              upsert: true,
+            ),
+          );
 
-    final url = _client.storage.from('avatars').getPublicUrl(storagePath);
+      final url = _client.storage.from('avatars').getPublicUrl(storagePath);
 
-    // Try UPDATE first, then INSERT if no row exists yet.
-    // This mirrors the same pattern as completeOnboarding to handle
-    // new users where the DB trigger row may not exist.
+      await _writeAvatarUrl(userId: userId, username: username, url: url);
+
+      AppLogger.info(
+          'avatar: generated and stored for ${userId.substring(0, 8)}');
+      return url;
+    } catch (e) {
+      AppLogger.warn(
+          'avatar: storage upload failed, keeping remote avatar: $e');
+      return fallbackUrl;
+    }
+  }
+
+  Future<void> _writeAvatarUrl({
+    required String userId,
+    required String username,
+    required String url,
+  }) async {
     final updated = await _client
         .from('users_public')
         .update({'avatar_url': url})
@@ -73,7 +109,8 @@ class AvatarService {
       final tempUsername = 'user${userId.replaceAll('-', '').substring(0, 8)}';
       await _client.from('users_public').insert({
         'id': userId,
-        'username': tempUsername,
+        'username': username.isNotEmpty ? username : tempUsername,
+        'display_name': username.isNotEmpty ? username : tempUsername,
         'avatar_url': url,
         'trust_tier': 'unverified',
         'trust_score': 0,
@@ -83,9 +120,5 @@ class AvatarService {
         'created_at': DateTime.now().toUtc().toIso8601String(),
       });
     }
-
-    AppLogger.info(
-        'avatar: generated and stored for ${userId.substring(0, 8)}');
-    return url;
   }
 }

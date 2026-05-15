@@ -8,6 +8,7 @@ import '../../../../app/theme/spacing.dart';
 import '../../../../core/localization/app_copy.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../core/utils/snack.dart';
+import '../services/verification_error_parser.dart';
 
 class IdentityVerificationScreen extends StatefulWidget {
   const IdentityVerificationScreen({super.key});
@@ -133,16 +134,35 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
 
     try {
       // Get session token from your edge function
+      final requestBody = <String, dynamic>{
+        'user_id': userId,
+        'redirect_uri': 'echoproof://verify-complete',
+      };
+      if (_diditWorkflowId.isNotEmpty) {
+        requestBody['workflow_id'] = _diditWorkflowId;
+      }
+
       final response = await supabase.functions.invoke(
         'create-didit-session',
-        body: {
-          'user_id': userId,
-          'workflow_id': _diditWorkflowId,
-          'redirect_uri': 'echoproof://verify-complete',
-        },
+        body: requestBody,
       );
 
-      final sessionToken = response.data?['session_token'] as String?;
+      final responseMessage =
+          VerificationErrorParser.messageFromResponseData(response.data);
+      if (responseMessage != null) {
+        if (VerificationErrorParser.responseDataBlocks(response.data)) {
+          if (!mounted) return;
+          setState(() => _isLoading = false);
+          _returnToPreviousScreenWithMessage(responseMessage);
+          return;
+        }
+
+        throw Exception(responseMessage);
+      }
+
+      final data = VerificationErrorParser.mapFromResponseData(response.data) ??
+          <String, dynamic>{};
+      final sessionToken = data['session_token'] as String?;
 
       VerificationResult result;
 
@@ -153,6 +173,10 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
           config: const DiditConfig(loggingEnabled: true),
         );
       } else {
+        if (_diditWorkflowId.isEmpty) {
+          throw Exception('didit_workflow_missing');
+        }
+
         // Fallback to workflow ID
         result = await DiditSdk.startVerificationWithWorkflow(
           _diditWorkflowId,
@@ -173,21 +197,26 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
       if (!mounted) return;
       setState(() => _isLoading = false);
 
-      // Parse cooldown error from edge function
-      String errorMessage =
-          context.l('Could not start verification. Please try again.');
-      try {
-        if (e.toString().contains('verification_cooldown')) {
-          errorMessage =
-              context.l('You can re-apply after your 30-day cooldown period.');
-        } else if (e.toString().contains('rate_limited')) {
-          errorMessage =
-              context.l('Too many attempts today. Please try again tomorrow.');
-        }
-      } catch (_) {}
+      final message = VerificationErrorParser.messageFrom(e);
+      if (VerificationErrorParser.blocksNavigation(e)) {
+        _returnToPreviousScreenWithMessage(message);
+        return;
+      }
 
-      showInfoSnack(context, errorMessage);
+      showInfoSnack(context, message);
     }
+  }
+
+  void _returnToPreviousScreenWithMessage(String message) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final navigator = Navigator.of(context);
+      if (navigator.canPop()) {
+        navigator.pop(message);
+      } else {
+        showInfoSnack(context, message);
+      }
+    });
   }
 
   void _handleResult(VerificationResult result) {
