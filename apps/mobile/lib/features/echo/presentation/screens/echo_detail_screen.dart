@@ -525,6 +525,11 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
               shadowColor: AppColors.borderSubtle,
               title: _EchoDetailAppBarTitle(echo: displayed),
               actions: [
+                _ProofTrailAppBarAction(
+                  onPressed: () => context.push(
+                    '/feed/echo/${displayed.id}/proof-trail',
+                  ),
+                ),
                 IconButton(
                   tooltip: 'How context works',
                   icon: const Icon(Icons.help_outline_rounded),
@@ -789,6 +794,45 @@ class _EchoDetailAppBarTitle extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ProofTrailAppBarAction extends StatelessWidget {
+  const _ProofTrailAppBarAction({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final showLabel = MediaQuery.sizeOf(context).width >= 430;
+    if (!showLabel) {
+      return IconButton(
+        tooltip: context.l('Proof trail'),
+        icon: const Icon(Icons.timeline_rounded),
+        onPressed: onPressed,
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: TextButton.icon(
+        onPressed: onPressed,
+        icon: const Icon(Icons.timeline_rounded, size: 17),
+        label: Text(
+          context.l('Proof trail'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        style: TextButton.styleFrom(
+          foregroundColor: AppColors.fernGreenDark,
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+          visualDensity: VisualDensity.compact,
+          textStyle: AppTypography.textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
     );
   }
 }
