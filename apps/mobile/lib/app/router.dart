@@ -12,6 +12,7 @@ import '../features/onboarding/presentation/screens/onboarding_root.dart';
 import '../features/echo/presentation/screens/feed_screen.dart';
 import '../features/echo/presentation/screens/create_echo_screen.dart';
 import '../features/echo/presentation/screens/echo_detail_screen.dart';
+import '../features/echo/presentation/screens/proof_trail_screen.dart';
 import '../features/echo/presentation/screens/echo_video_screen.dart';
 import '../features/echo/presentation/screens/discover_screen.dart';
 import '../features/profile/presentation/screens/profile_screen.dart';
@@ -245,6 +246,14 @@ GoRouter createRouter({
               ),
             ),
             routes: [
+              GoRoute(
+                path: 'proof-trail',
+                pageBuilder: (_, s) => _slidePage(
+                  ProofTrailScreen(
+                    echoId: s.pathParameters['id']!,
+                  ),
+                ),
+              ),
               GoRoute(
                 path: 'video',
                 pageBuilder: (_, s) => _slidePage(
