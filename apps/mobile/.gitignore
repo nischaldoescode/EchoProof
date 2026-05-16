@@ -49,3 +49,4 @@ app_constants.dart
 firebase_options.dart
 firebase.json
 *.json
+*.yaml
