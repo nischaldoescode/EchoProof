@@ -3195,7 +3195,7 @@ class _VerifyPrompt extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: isPending ? null : () => context.push('/verify-identity'),
+      onTap: isPending ? null : () => context.push('/settings'),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(AppSpacing.md),
