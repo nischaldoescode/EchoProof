@@ -1,6 +1,8 @@
 // settings screen
 // account, notifications, subscription, privacy, about
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -15,6 +17,7 @@ import '../../../../core/utils/logger.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../onboarding/presentation/services/onboarding_service.dart';
 import '../../../../core/services/ad_service.dart';
+import '../../../../core/services/push_notification_service.dart';
 import '../../../subscription/presentation/services/subscription_service.dart';
 import '../../../../core/localization/app_copy.dart';
 import 'package:flutter/services.dart';
@@ -522,38 +525,96 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   bool _pushEnabled = true;
-  Map<String, bool> _notifPrefs = {
+  static const Map<String, bool> _defaultNotifPrefs = {
     'echo_verified': true,
     'new_follower_echo': true,
-    'someone_supported': false,
+    'echo_context': true,
+    'context_like': true,
+    'reply': true,
+    'reply_like': true,
+    'follow_request': true,
+    'follow_request_accepted': true,
+    'new_follower': true,
   };
+  Map<String, bool> _notifPrefs = Map.of(_defaultNotifPrefs);
 
   Future<void> _loadNotifPrefs() async {
     final box = Hive.box('app_settings');
-    setState(() {
-      _pushEnabled = box.get('push_enabled', defaultValue: true) as bool;
-      _notifPrefs = {
-        'echo_verified':
-            box.get('notif_echo_verified', defaultValue: true) as bool,
-        'new_follower_echo':
-            box.get('notif_new_follower_echo', defaultValue: true) as bool,
-        'someone_supported':
-            box.get('notif_someone_supported', defaultValue: false) as bool,
+    final localPrefs = {
+      for (final entry in _defaultNotifPrefs.entries)
+        entry.key:
+            box.get('notif_${entry.key}', defaultValue: entry.value) as bool,
+    };
+
+    // Migration bridge for early builds that had only this local key.
+    if (box.containsKey('notif_someone_supported') &&
+        !box.containsKey('notif_echo_context')) {
+      localPrefs['echo_context'] =
+          box.get('notif_someone_supported', defaultValue: true) as bool;
+    }
+
+    if (mounted) {
+      setState(() {
+        _pushEnabled = box.get('push_enabled', defaultValue: true) as bool;
+        _notifPrefs = localPrefs;
+      });
+    }
+
+    try {
+      final client = Supabase.instance.client;
+      final userId = client.auth.currentUser?.id;
+      if (userId == null) return;
+
+      final row = await client
+          .from('notification_preferences')
+          .select()
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      if (row == null) {
+        await _saveServerNotifPrefs({
+          'push_enabled': _pushEnabled,
+          ...localPrefs,
+        });
+        return;
+      }
+
+      final serverPush = row['push_enabled'] as bool? ?? _pushEnabled;
+      final serverPrefs = {
+        for (final entry in _defaultNotifPrefs.entries)
+          entry.key: row[entry.key] as bool? ?? localPrefs[entry.key]!,
       };
-    });
+
+      await box.put('push_enabled', serverPush);
+      for (final entry in serverPrefs.entries) {
+        await box.put('notif_${entry.key}', entry.value);
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _pushEnabled = serverPush;
+        _notifPrefs = serverPrefs;
+      });
+    } catch (e) {
+      AppLogger.warn('settings: notification preferences load failed $e');
+    }
   }
 
   Future<void> _setPushEnabled(bool v) async {
     final box = Hive.box('app_settings');
     await box.put('push_enabled', v);
     setState(() => _pushEnabled = v);
+    unawaited(_saveServerNotifPrefs({'push_enabled': v}));
     if (!v) {
+      unawaited(PushNotificationService.instance.removeToken());
       // Revoke notification permission is not possible programmatically on Android/iOS.
       // Show guidance instead.
       if (mounted) {
         showInfoSnack(context,
             'To fully disable notifications, go to System Settings > Apps > Echoproof > Notifications.');
       }
+    } else {
+      unawaited(PushNotificationService.instance.initialize());
     }
   }
 
@@ -561,6 +622,25 @@ class _SettingsScreenState extends State<SettingsScreen>
     final box = Hive.box('app_settings');
     await box.put('notif_$key', v);
     setState(() => _notifPrefs[key] = v);
+    unawaited(_saveServerNotifPrefs({key: v}));
+  }
+
+  Future<void> _saveServerNotifPrefs(Map<String, dynamic> values) async {
+    try {
+      final client = Supabase.instance.client;
+      final userId = client.auth.currentUser?.id;
+      if (userId == null) return;
+      await client.from('notification_preferences').upsert(
+        {
+          'user_id': userId,
+          ...values,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        onConflict: 'user_id',
+      );
+    } catch (e) {
+      AppLogger.warn('settings: notification preferences save failed $e');
+    }
   }
 
   @override
@@ -723,9 +803,45 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
               _SwitchTile(
                 icon: Icons.arrow_upward_rounded,
-                label: context.l('Someone supported my echo'),
-                value: _notifPrefs['someone_supported'] ?? false,
-                onChanged: (v) => _setNotifPref('someone_supported', v),
+                label: context.l('Support or challenge on my echo'),
+                value: _notifPrefs['echo_context'] ?? true,
+                onChanged: (v) => _setNotifPref('echo_context', v),
+              ),
+              _SwitchTile(
+                icon: Icons.favorite_border_rounded,
+                label: context.l('Likes on my context'),
+                value: _notifPrefs['context_like'] ?? true,
+                onChanged: (v) => _setNotifPref('context_like', v),
+              ),
+              _SwitchTile(
+                icon: Icons.reply_outlined,
+                label: context.l('Replies to my echoes or replies'),
+                value: _notifPrefs['reply'] ?? true,
+                onChanged: (v) => _setNotifPref('reply', v),
+              ),
+              _SwitchTile(
+                icon: Icons.favorite_outline_rounded,
+                label: context.l('Likes on my replies'),
+                value: _notifPrefs['reply_like'] ?? true,
+                onChanged: (v) => _setNotifPref('reply_like', v),
+              ),
+              _SwitchTile(
+                icon: Icons.person_add_alt_1_outlined,
+                label: context.l('Follow requests'),
+                value: _notifPrefs['follow_request'] ?? true,
+                onChanged: (v) => _setNotifPref('follow_request', v),
+              ),
+              _SwitchTile(
+                icon: Icons.how_to_reg_outlined,
+                label: context.l('Accepted follow requests'),
+                value: _notifPrefs['follow_request_accepted'] ?? true,
+                onChanged: (v) => _setNotifPref('follow_request_accepted', v),
+              ),
+              _SwitchTile(
+                icon: Icons.group_add_outlined,
+                label: context.l('New followers'),
+                value: _notifPrefs['new_follower'] ?? true,
+                onChanged: (v) => _setNotifPref('new_follower', v),
               ),
             ],
           ]),
@@ -1652,6 +1768,14 @@ class _SwitchTileState extends State<_SwitchTile> {
   void initState() {
     super.initState();
     _value = widget.value;
+  }
+
+  @override
+  void didUpdateWidget(covariant _SwitchTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value) {
+      _value = widget.value;
+    }
   }
 
   @override

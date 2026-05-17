@@ -2,6 +2,8 @@
 // full view of a single echo with proofs, realtime score updates, interaction bar
 // uses plain StatefulWidget with supabase realtime — no riverpod
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -1676,10 +1678,16 @@ class _ContextRowState extends State<_ContextRow> {
       ) as List;
       final row = rows.isEmpty ? null : rows.first as Map<String, dynamic>?;
       if (!mounted || row == null) return;
+      final liked = row['liked'] as bool? ?? _liked;
       setState(() {
-        _liked = row['liked'] as bool? ?? _liked;
+        _liked = liked;
         _likeCount = (row['like_count'] as num?)?.toInt() ?? _likeCount;
       });
+      if (liked) {
+        unawaited(_notifySocialEvent('context_like', {
+          'response_id': widget.row['id'],
+        }));
+      }
       await widget.onChanged();
     } catch (e) {
       if (!mounted) return;
@@ -1696,6 +1704,20 @@ class _ContextRowState extends State<_ContextRow> {
                 ? 'You cannot like your own context.'
                 : 'Could not update context like.',
       );
+    }
+  }
+
+  Future<void> _notifySocialEvent(
+    String event,
+    Map<String, dynamic> body,
+  ) async {
+    try {
+      await Supabase.instance.client.functions.invoke(
+        'notify-social-event',
+        body: {'event': event, ...body},
+      );
+    } catch (e) {
+      AppLogger.warn('echo detail: social event notify failed $e');
     }
   }
 
