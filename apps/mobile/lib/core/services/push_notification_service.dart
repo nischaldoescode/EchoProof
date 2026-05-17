@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart' show Color;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:go_router/go_router.dart';
+import 'package:hyper_snackbar/hyper_snackbar.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../utils/logger.dart';
 
@@ -16,6 +20,10 @@ class PushNotificationService {
 
   final _messaging = FirebaseMessaging.instance;
   final _localNotifs = FlutterLocalNotificationsPlugin();
+  StreamSubscription<RemoteMessage>? _foregroundSub;
+  StreamSubscription<RemoteMessage>? _openedSub;
+  StreamSubscription<String>? _tokenRefreshSub;
+  bool _initialized = false;
 
   static const _channelId = 'echoproof_default';
   static const _channelName = 'Echoproof';
@@ -23,6 +31,11 @@ class PushNotificationService {
       'Echo verification, trust updates, and community activity';
 
   Future<void> initialize() async {
+    if (_initialized) {
+      await _saveToken();
+      return;
+    }
+
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
     final settings = await _messaging.requestPermission(
@@ -70,14 +83,19 @@ class PushNotificationService {
       sound: true,
     );
 
-    FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
-    FirebaseMessaging.onMessageOpenedApp.listen(_handleMessageTap);
+    await _foregroundSub?.cancel();
+    await _openedSub?.cancel();
+    await _tokenRefreshSub?.cancel();
+    _foregroundSub =
+        FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
+    _openedSub = FirebaseMessaging.onMessageOpenedApp.listen(_handleMessageTap);
 
     final initial = await _messaging.getInitialMessage();
     if (initial != null) _handleMessageTap(initial);
 
     await _saveToken();
-    _messaging.onTokenRefresh.listen(_onTokenRefresh);
+    _tokenRefreshSub = _messaging.onTokenRefresh.listen(_onTokenRefresh);
+    _initialized = true;
   }
 
   Future<void> _saveToken() async {
@@ -151,23 +169,35 @@ class PushNotificationService {
 
   void _onNotificationTapped(NotificationResponse response) {
     AppLogger.info('fcm: local notif tapped ${response.payload}');
-    // navigation handled in main.dart — payload is the route string
+    final route = response.payload;
+    final context = HyperSnackbar.navigatorKey.currentContext;
+    if (context == null || route == null || route.isEmpty) return;
+    GoRouter.of(context).push(route);
   }
 
   Future<void> removeToken() async {
     final client = Supabase.instance.client;
     final userId = client.auth.currentUser?.id;
-    if (userId == null) return;
 
     try {
       final token = await _messaging.getToken();
-      if (token == null) return;
-      await client
-          .from('device_tokens')
-          .delete()
-          .eq('user_id', userId)
-          .eq('token', token);
-      await _messaging.deleteToken();
+      if (token != null && userId != null) {
+        await client
+            .from('device_tokens')
+            .delete()
+            .eq('user_id', userId)
+            .eq('token', token);
+      }
+      if (token != null) {
+        await _messaging.deleteToken();
+      }
+      await _foregroundSub?.cancel();
+      await _openedSub?.cancel();
+      await _tokenRefreshSub?.cancel();
+      _foregroundSub = null;
+      _openedSub = null;
+      _tokenRefreshSub = null;
+      _initialized = false;
     } catch (e) {
       AppLogger.error('fcm: remove token failed', e);
     }

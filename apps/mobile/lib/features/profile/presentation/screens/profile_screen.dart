@@ -1096,11 +1096,21 @@ class _ProfileScreenState extends State<ProfileScreen>
           }
         } else {
           setState(() => _followRequestStatus = 'pending');
-          await client.from('follow_requests').upsert({
-            'requester_id': myId,
-            'target_id': targetId,
-            'status': 'pending',
-          }, onConflict: 'requester_id,target_id');
+          final row = await client
+              .from('follow_requests')
+              .upsert({
+                'requester_id': myId,
+                'target_id': targetId,
+                'status': 'pending',
+              }, onConflict: 'requester_id,target_id')
+              .select('id')
+              .single();
+          final requestId = row['id'] as String?;
+          if (requestId != null) {
+            unawaited(_notifySocialEvent('follow_request', {
+              'request_id': requestId,
+            }));
+          }
           if (mounted) {
             showSuccessSnack(context, context.l('Follow request sent'));
           }
@@ -1114,6 +1124,9 @@ class _ProfileScreenState extends State<ProfileScreen>
           'follower_id': myId,
           'following_id': targetId,
         }, onConflict: 'follower_id,following_id');
+        unawaited(_notifySocialEvent('new_follower', {
+          'target_id': targetId,
+        }));
       }
       // Refresh follower count on profile.
       await _loadProfile();
@@ -1125,6 +1138,20 @@ class _ProfileScreenState extends State<ProfileScreen>
       if (mounted) {
         showErrorSnack(context, context.l('Could not update follow status.'));
       }
+    }
+  }
+
+  Future<void> _notifySocialEvent(
+    String event,
+    Map<String, dynamic> body,
+  ) async {
+    try {
+      await Supabase.instance.client.functions.invoke(
+        'notify-social-event',
+        body: {'event': event, ...body},
+      );
+    } catch (e) {
+      AppLogger.warn('profile: social event notify failed $e');
     }
   }
 
