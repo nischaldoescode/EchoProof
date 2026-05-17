@@ -17,6 +17,7 @@ import 'core/security/device_security.dart';
 import 'core/security/device_security_gate.dart';
 import 'core/security/secure_screen.dart';
 import 'core/services/ad_service.dart';
+import 'core/services/push_notification_service.dart';
 import 'core/utils/logger.dart';
 import 'features/auth/presentation/services/auth_service.dart';
 import 'features/onboarding/presentation/services/onboarding_service.dart';
@@ -96,6 +97,7 @@ Future<void> main() async {
   if (authService.isLoggedIn) {
     notificationService.loadNotifications();
     notificationService.startRealtime();
+    unawaited(_startPushIfEnabled());
   }
 
   final router = createRouter(
@@ -116,6 +118,7 @@ Future<void> main() async {
       adService.onUserLoggedIn();
       notificationService.loadNotifications();
       notificationService.startRealtime();
+      unawaited(_startPushIfEnabled());
       final pending = _pendingDeepLinkLocation;
       if (pending != null && authService.hasUsername) {
         _pendingDeepLinkLocation = null;
@@ -126,6 +129,7 @@ Future<void> main() async {
     } else if (!isLoggedIn && wasLoggedIn) {
       adService.onUserLoggedOut();
       notificationService.stopRealtime();
+      unawaited(PushNotificationService.instance.removeToken());
     }
     wasLoggedIn = isLoggedIn;
   });
@@ -233,6 +237,17 @@ Future<void> main() async {
 String? _lastHandledLink;
 DateTime? _lastHandledLinkAt;
 String? _pendingDeepLinkLocation;
+
+Future<void> _startPushIfEnabled() async {
+  try {
+    final box = Hive.box('app_settings');
+    final enabled = box.get('push_enabled', defaultValue: true) as bool;
+    if (!enabled) return;
+    await PushNotificationService.instance.initialize();
+  } catch (e) {
+    AppLogger.warn('fcm: startup initialization skipped $e');
+  }
+}
 
 // maps supported app links to internal routes
 void _handleDeepLink(Uri uri, GoRouter router, [AuthService? auth]) {

@@ -268,6 +268,17 @@ class _NotificationIcon extends StatelessWidget {
           Icons.how_to_reg_rounded,
           AppColors.fernGreen
         ),
+      'new_follower' => (Icons.group_add_rounded, AppColors.fernGreen),
+      'new_follower_echo' => (Icons.dynamic_feed_outlined, AppColors.fernGreen),
+      'echo_supported' => (Icons.thumb_up_alt_outlined, AppColors.fernGreen),
+      'echo_challenged' => (
+          Icons.report_problem_outlined,
+          AppColors.sunsetCoral
+        ),
+      'context_like' => (Icons.favorite_border_rounded, AppColors.fernGreen),
+      'echo_reply' => (Icons.reply_outlined, AppColors.fernGreen),
+      'reply_reply' => (Icons.forum_outlined, AppColors.fernGreen),
+      'reply_like' => (Icons.favorite_outline_rounded, AppColors.fernGreen),
       _ => (Icons.notifications_outlined, AppColors.textTertiary),
     };
 

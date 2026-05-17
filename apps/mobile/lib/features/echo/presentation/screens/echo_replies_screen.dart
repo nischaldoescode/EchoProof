@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:echoproof/core/utils/snack.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -155,12 +157,20 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
       final userId = client.auth.currentUser?.id;
       if (userId == null) throw Exception('not authenticated');
 
-      await client.from('echo_replies').insert({
-        'echo_id': widget.echoId,
-        'user_id': userId,
-        'content': content,
-        'parent_reply_id': _replyingToId,
-      });
+      final inserted = await client
+          .from('echo_replies')
+          .insert({
+            'echo_id': widget.echoId,
+            'user_id': userId,
+            'content': content,
+            'parent_reply_id': _replyingToId,
+          })
+          .select('id')
+          .single();
+      final replyId = inserted['id'] as String?;
+      if (replyId != null) {
+        unawaited(_notifySocialEvent('echo_reply', {'reply_id': replyId}));
+      }
 
       await client.rpc(
         'increment_reply_count',
@@ -230,8 +240,25 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
           };
         }).toList();
       });
+      if (liked) {
+        unawaited(_notifySocialEvent('reply_like', {'reply_id': replyId}));
+      }
     } catch (e) {
       if (mounted) showErrorSnack(context, 'Could not update reply like.');
+    }
+  }
+
+  Future<void> _notifySocialEvent(
+    String event,
+    Map<String, dynamic> body,
+  ) async {
+    try {
+      await Supabase.instance.client.functions.invoke(
+        'notify-social-event',
+        body: {'event': event, ...body},
+      );
+    } catch (e) {
+      AppLogger.warn('replies: social event notify failed $e');
     }
   }
 

@@ -714,10 +714,16 @@ class _ReplyPreviewCardState extends State<_ReplyPreviewCard> {
       ) as List;
       final row = rows.isEmpty ? null : rows.first as Map<String, dynamic>?;
       if (!mounted || row == null) return;
+      final liked = row['liked'] as bool? ?? nextLiked;
       setState(() {
-        _liked = row['liked'] as bool? ?? nextLiked;
+        _liked = liked;
         _likeCount = (row['like_count'] as num?)?.toInt() ?? _likeCount;
       });
+      if (liked) {
+        unawaited(_notifySocialEvent('reply_like', {
+          'reply_id': widget.reply.id,
+        }));
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -726,6 +732,18 @@ class _ReplyPreviewCardState extends State<_ReplyPreviewCard> {
       });
       showErrorSnack(context, 'Could not update reply like.');
     }
+  }
+
+  Future<void> _notifySocialEvent(
+    String event,
+    Map<String, dynamic> body,
+  ) async {
+    try {
+      await Supabase.instance.client.functions.invoke(
+        'notify-social-event',
+        body: {'event': event, ...body},
+      );
+    } catch (_) {}
   }
 
   @override
