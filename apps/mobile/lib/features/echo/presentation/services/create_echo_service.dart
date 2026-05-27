@@ -11,6 +11,7 @@ import '../../domain/entities/echo_entity.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../core/utils/media_file_safety.dart';
 import '../../../../core/utils/sanitizer.dart';
+import '../../../../core/services/onnx_spam_checker.dart';
 
 const _kDraftKey = 'echo_draft';
 
@@ -212,6 +213,13 @@ class CreateEchoService extends ChangeNotifier {
         );
       }
 
+      final localModeration = await _safeLocalModerationCheck();
+      if (localModeration.isSpam) {
+        throw _LocalModerationException(
+          'This echo looks too spam-like to publish (${localModeration.score}%). Add clearer evidence, remove promotional language, and try again.',
+        );
+      }
+
       _mediaUrls.clear();
       for (final path in List<String>.from(_localPaths)) {
         await addMedia(path);
@@ -252,6 +260,9 @@ class CreateEchoService extends ChangeNotifier {
     } on _CooldownException catch (e) {
       _error = e.message;
       AppLogger.warn('echo: create cooldown ${e.message}');
+    } on _LocalModerationException catch (e) {
+      _error = e.message;
+      AppLogger.warn('echo: local moderation blocked post ${e.message}');
     } on PostgrestException catch (e) {
       _error = _friendlyCreateError(e);
       AppLogger.error('echo: create failed', e);
@@ -262,6 +273,29 @@ class CreateEchoService extends ChangeNotifier {
 
     _isSubmitting = false;
     notifyListeners();
+  }
+
+  Future<SpamCheckResult> _safeLocalModerationCheck() async {
+    try {
+      return await OnnxSpamChecker.checkText(_title, _content);
+    } catch (e) {
+      AppLogger.error('echo: local moderation crashed to fallback', e);
+      final score = OnnxSpamChecker.quickScore(_title, _content);
+      return SpamCheckResult(
+        label: score >= OnnxSpamChecker.blockThreshold
+            ? SpamLabel.spam
+            : score >= OnnxSpamChecker.suspiciousThreshold
+                ? SpamLabel.suspicious
+                : SpamLabel.ham,
+        score: score,
+        spamProbability: score / 100,
+        hamProbability: 1 - (score / 100),
+        source: 'heuristic_after_error',
+        tokenCount: 0,
+        windowCount: 0,
+        reason: 'local_moderation_exception',
+      );
+    }
   }
 
   Future<void> _anchorEchoOnChain(SupabaseClient client, String echoId) async {
@@ -353,5 +387,10 @@ class _CooldownStatus {
 
 class _CooldownException implements Exception {
   const _CooldownException(this.message);
+  final String message;
+}
+
+class _LocalModerationException implements Exception {
+  const _LocalModerationException(this.message);
   final String message;
 }

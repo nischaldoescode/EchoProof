@@ -17,6 +17,7 @@ import '../../../settings/presentation/widgets/solana_info_card.dart';
 import 'package:flutter/foundation.dart';
 import '../../../../core/security/secure_screen.dart';
 import '../../../../shared/widgets/app_bottom_nav.dart';
+import '../../../../shared/widgets/avatar_image_provider.dart';
 import '../../../../shared/widgets/rich_text_display.dart';
 import '../../../../app/app.dart';
 import 'package:flutter/services.dart';
@@ -871,6 +872,13 @@ class _ProfileScreenState extends State<ProfileScreen>
       }
 
       final targetId = profile['id'] as String;
+      final resolvedOwnProfile = myId != null && targetId == myId;
+      if (resolvedOwnProfile && widget.username != null && mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) context.go('/profile');
+        });
+      }
+      _isOwnProfile = resolvedOwnProfile;
       _isPublic = profile['is_public'] as bool? ?? true;
       userIsPro = profile['is_pro'] as bool? ?? false;
 
@@ -1474,6 +1482,8 @@ class _ProfileScreenState extends State<ProfileScreen>
             Tab(text: context.l('Echoes')),
             Tab(text: context.l('Replies')),
             Tab(text: context.l('Media')),
+            Tab(text: context.l('Followers')),
+            Tab(text: context.l('Following')),
             if (_isOwnProfile && userIsPro) Tab(text: context.l('Analytics')),
           ];
 
@@ -1485,6 +1495,22 @@ class _ProfileScreenState extends State<ProfileScreen>
             _EchoesTab(echoes: _echoes),
             _RepliesTab(userId: _profile!['id']),
             _MediaTab(userId: _profile!['id']),
+            _FollowUsersTab(
+              mode: 'followers',
+              loadUsers: () => _loadFollowUsers(
+                client: Supabase.instance.client,
+                targetId: _profile!['id'] as String,
+                mode: 'followers',
+              ),
+            ),
+            _FollowUsersTab(
+              mode: 'following',
+              loadUsers: () => _loadFollowUsers(
+                client: Supabase.instance.client,
+                targetId: _profile!['id'] as String,
+                mode: 'following',
+              ),
+            ),
             if (_isOwnProfile && userIsPro)
               AnalyticsTab(userId: _profile!['id']),
           ];
@@ -1596,7 +1622,14 @@ class _ProfileScreenState extends State<ProfileScreen>
                         ),
                         SliverPersistentHeader(
                           pinned: true,
-                          delegate: _TabBarDelegate(TabBar(tabs: tabs)),
+                          delegate: _TabBarDelegate(
+                            TabBar(
+                              tabs: tabs,
+                              isScrollable: tabs.length > 4,
+                              tabAlignment:
+                                  tabs.length > 4 ? TabAlignment.start : null,
+                            ),
+                          ),
                         ),
                       ],
                   body: TabBarView(children: tabViews)),
@@ -1699,12 +1732,10 @@ class _ProfileScreenState extends State<ProfileScreen>
                                 return ListTile(
                                   leading: CircleAvatar(
                                     backgroundColor: AppColors.softSand,
-                                    backgroundImage: avatarUrl != null &&
-                                            avatarUrl.isNotEmpty
-                                        ? NetworkImage(avatarUrl)
-                                        : null,
+                                    backgroundImage:
+                                        avatarImageProvider(avatarUrl),
                                     child:
-                                        avatarUrl == null || avatarUrl.isEmpty
+                                        avatarImageProvider(avatarUrl) == null
                                             ? const Icon(Icons.person_outline,
                                                 color: AppColors.textTertiary)
                                             : null,
@@ -2397,11 +2428,8 @@ class _BlockedUsersSheetState extends State<_BlockedUsersSheet> {
                         child: ListTile(
                           leading: CircleAvatar(
                             backgroundColor: AppColors.softSand,
-                            backgroundImage:
-                                avatarUrl != null && avatarUrl.isNotEmpty
-                                    ? NetworkImage(avatarUrl)
-                                    : null,
-                            child: avatarUrl == null || avatarUrl.isEmpty
+                            backgroundImage: avatarImageProvider(avatarUrl),
+                            child: avatarImageProvider(avatarUrl) == null
                                 ? const Icon(
                                     Icons.person_outline,
                                     color: AppColors.textTertiary,
@@ -3672,6 +3700,133 @@ class _MediaTabState extends State<_MediaTab>
                   child: const Icon(Icons.image_outlined,
                       color: AppColors.textTertiary),
                 ),
+        );
+      },
+    );
+  }
+}
+
+class _FollowUsersTab extends StatefulWidget {
+  const _FollowUsersTab({
+    required this.mode,
+    required this.loadUsers,
+  });
+
+  final String mode;
+  final Future<List<Map<String, dynamic>>> Function() loadUsers;
+
+  @override
+  State<_FollowUsersTab> createState() => _FollowUsersTabState();
+}
+
+class _FollowUsersTabState extends State<_FollowUsersTab>
+    with AutomaticKeepAliveClientMixin {
+  late Future<List<Map<String, dynamic>>> _future;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = widget.loadUsers();
+  }
+
+  Future<void> _refresh() async {
+    setState(() => _future = widget.loadUsers());
+    await _future;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final title = widget.mode == 'followers'
+        ? context.l('No followers yet.')
+        : context.l('Not following anyone yet.');
+    final message = widget.mode == 'followers'
+        ? context.l('Accepted followers will appear here.')
+        : context.l('Accounts this profile follows will appear here.');
+
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _future,
+      builder: (context, snapshot) {
+        final users = snapshot.data ?? const <Map<String, dynamic>>[];
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: AppColors.fernGreen,
+            ),
+          );
+        }
+        if (users.isEmpty) {
+          return RefreshIndicator(
+            color: AppColors.fernGreen,
+            onRefresh: _refresh,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                SizedBox(
+                  height: MediaQuery.sizeOf(context).height * 0.45,
+                  child: _ProfileEmptyTab(
+                    icon: Icons.people_alt_outlined,
+                    title: title,
+                    message: message,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        return RefreshIndicator(
+          color: AppColors.fernGreen,
+          onRefresh: _refresh,
+          child: ListView.separated(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              AppSpacing.md,
+              AppSpacing.lg,
+              96,
+            ),
+            itemCount: users.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final user = users[index];
+              final username = user['username'] as String? ?? '';
+              final displayName =
+                  (user['display_name'] as String?)?.trim().isNotEmpty == true
+                      ? user['display_name'] as String
+                      : username;
+              final avatarUrl = user['avatar_url'] as String?;
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: CircleAvatar(
+                  backgroundColor: AppColors.softSand,
+                  backgroundImage: avatarImageProvider(avatarUrl),
+                  child: avatarImageProvider(avatarUrl) == null
+                      ? const Icon(
+                          Icons.person_outline,
+                          color: AppColors.textTertiary,
+                        )
+                      : null,
+                ),
+                title: Text(
+                  displayName,
+                  style: AppTypography.textTheme.titleSmall,
+                ),
+                subtitle: Text('@$username'),
+                trailing: const Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.textTertiary,
+                ),
+                onTap: username.isEmpty
+                    ? null
+                    : () => context.push(
+                          '/profile/${Uri.encodeComponent(username)}',
+                        ),
+              );
+            },
+          ),
         );
       },
     );

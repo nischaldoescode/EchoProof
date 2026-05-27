@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../../core/services/device_service.dart';
 import '../../../../core/utils/logger.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../../../core/services/avatar_service.dart';
@@ -502,6 +504,7 @@ class AuthService extends ChangeNotifier {
 
   Future<void> deleteIncompleteAccount() async {
     try {
+      await _markCurrentDeviceSignedOut();
       await _google.signOut();
       await _client.auth.signOut();
       _hasUsername = false;
@@ -551,6 +554,7 @@ class AuthService extends ChangeNotifier {
         }
       }
 
+      await _markCurrentDeviceSignedOut();
       await _google.signOut();
       await _client.auth.signOut();
       _hasUsername = false;
@@ -567,6 +571,28 @@ class AuthService extends ChangeNotifier {
       _error = 'Could not sign out. Please try again.';
       notifyListeners();
       return false;
+    }
+  }
+
+  Future<void> _markCurrentDeviceSignedOut() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return;
+    try {
+      final deviceId =
+          await DeviceService(const FlutterSecureStorage()).getDeviceId();
+      final now = DateTime.now().toUtc().toIso8601String();
+      await _client
+          .from('account_devices')
+          .update({
+            'active': false,
+            'replaced_at': now,
+            'updated_at': now,
+            'last_seen_at': now,
+          })
+          .eq('user_id', userId)
+          .eq('device_id', deviceId);
+    } catch (e) {
+      AppLogger.warn('auth: could not mark account device signed out $e');
     }
   }
 

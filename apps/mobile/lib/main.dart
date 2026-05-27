@@ -17,8 +17,10 @@ import 'core/security/device_security.dart';
 import 'core/security/device_security_gate.dart';
 import 'core/security/secure_screen.dart';
 import 'core/services/ad_service.dart';
+import 'core/services/account_device_service.dart';
 import 'core/services/push_notification_service.dart';
 import 'core/utils/logger.dart';
+import 'core/utils/snack.dart';
 import 'features/auth/presentation/services/auth_service.dart';
 import 'features/onboarding/presentation/services/onboarding_service.dart';
 import 'features/echo/presentation/services/echo_feed_service.dart';
@@ -91,6 +93,7 @@ Future<void> main() async {
   final notificationService = NotificationService();
   final subscriptionService = SubscriptionService();
   final adService = AdService();
+  final accountDeviceService = AccountDeviceService();
 
   await authService.checkUsername();
   // pre-load notification count for badge
@@ -109,6 +112,11 @@ Future<void> main() async {
   var wasLoggedIn = authService.isLoggedIn;
   if (wasLoggedIn) {
     adService.onUserLoggedIn();
+    unawaited(_registerAccountDevice(
+      accountDeviceService,
+      authService,
+      router,
+    ));
   }
 
   // notify ad service when user logs in or out
@@ -119,6 +127,11 @@ Future<void> main() async {
       notificationService.loadNotifications();
       notificationService.startRealtime();
       unawaited(_startPushIfEnabled());
+      unawaited(_registerAccountDevice(
+        accountDeviceService,
+        authService,
+        router,
+      ));
       final pending = _pendingDeepLinkLocation;
       if (pending != null && authService.hasUsername) {
         _pendingDeepLinkLocation = null;
@@ -129,6 +142,7 @@ Future<void> main() async {
     } else if (!isLoggedIn && wasLoggedIn) {
       adService.onUserLoggedOut();
       notificationService.stopRealtime();
+      accountDeviceService.stopRealtime();
       unawaited(PushNotificationService.instance.removeToken());
     }
     wasLoggedIn = isLoggedIn;
@@ -217,6 +231,9 @@ Future<void> main() async {
           ChangeNotifierProvider<SubscriptionService>.value(
               value: subscriptionService),
           ChangeNotifierProvider<AdService>.value(value: adService),
+          ChangeNotifierProvider<AccountDeviceService>.value(
+            value: accountDeviceService,
+          ),
         ],
         child: DeviceSecurityGate(
           child: EchoProofApp(router: router),
@@ -249,6 +266,56 @@ Future<void> _startPushIfEnabled() async {
   }
 }
 
+Future<void> _registerAccountDevice(
+  AccountDeviceService deviceService,
+  AuthService authService,
+  GoRouter router,
+) async {
+  try {
+    await deviceService.register();
+    await deviceService.startRealtime(authService, router);
+  } on AccountDeviceConflict catch (conflict) {
+    final context = HyperSnackbar.navigatorKey.currentContext;
+    if (context == null || !context.mounted) {
+      AppLogger.warn('device-session: conflict but no context available');
+      return;
+    }
+    final proceed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Account active elsewhere'),
+        content: Text(
+          '${conflict.message}\n\nCurrent device: ${conflict.currentDevice.deviceName}\n\nContinuing here will log out that device.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Continue here'),
+          ),
+        ],
+      ),
+    );
+
+    if (!context.mounted) return;
+    if (proceed == true) {
+      await deviceService.register(force: true);
+      await deviceService.startRealtime(authService, router);
+      if (!context.mounted) return;
+      showInfoSnack(context, 'This device is now the active session.');
+    } else {
+      await authService.signOut(enforceCooldown: false);
+      router.go('/login');
+    }
+  } catch (e) {
+    AppLogger.warn('device-session: registration skipped $e');
+  }
+}
+
 // maps supported app links to internal routes
 void _handleDeepLink(Uri uri, GoRouter router, [AuthService? auth]) {
   final link = uri.toString();
@@ -273,6 +340,11 @@ void _handleDeepLink(Uri uri, GoRouter router, [AuthService? auth]) {
   final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
 
   if (uri.scheme == 'echoproof') {
+    if (uri.host == 'room' && (segments.isEmpty || segments.first == 'join')) {
+      _safeGo(router, _roomInviteLocation(uri), auth: auth);
+      return;
+    }
+
     if (uri.host == 'echo' && segments.isNotEmpty) {
       _safeGo(
         router,
@@ -294,7 +366,19 @@ void _handleDeepLink(Uri uri, GoRouter router, [AuthService? auth]) {
 
   // https app links
   if (uri.scheme == 'https' &&
+      (uri.host == 'join.echoproof.online' ||
+          uri.host == 'www.join.echoproof.online') &&
+      (segments.isEmpty || segments.first == 'room')) {
+    _safeGo(router, _roomInviteLocation(uri), auth: auth);
+    return;
+  }
+
+  if (uri.scheme == 'https' &&
       (uri.host == 'echoproof.online' || uri.host == 'www.echoproof.online')) {
+    if (segments.isNotEmpty && segments.first == 'room') {
+      _safeGo(router, _roomInviteLocation(uri), auth: auth);
+      return;
+    }
     if (segments.length >= 2 && (segments[0] == 'echo' || segments[0] == 'e')) {
       _safeGo(
         router,
@@ -312,6 +396,20 @@ void _handleDeepLink(Uri uri, GoRouter router, [AuthService? auth]) {
       return;
     }
   }
+}
+
+String _roomInviteLocation(Uri uri) {
+  final fragmentParams = uri.fragment.isEmpty
+      ? const <String, String>{}
+      : Uri.splitQueryString(uri.fragment);
+  final code = uri.queryParameters['code'] ?? fragmentParams['code'] ?? '';
+  final key = uri.queryParameters['key'] ?? fragmentParams['key'] ?? '';
+  final query = {
+    if (code.isNotEmpty) 'code': code,
+    if (key.isNotEmpty) 'key': key,
+  };
+  return Uri(path: '/rooms', queryParameters: query.isEmpty ? null : query)
+      .toString();
 }
 
 void _safeGo(GoRouter router, String location, {AuthService? auth}) {

@@ -18,6 +18,8 @@ import '../features/echo/presentation/screens/discover_screen.dart';
 import '../features/profile/presentation/screens/profile_screen.dart';
 import '../features/notifications/presentation/screens/notifications_screen.dart';
 import '../features/settings/presentation/screens/settings_screen.dart';
+import '../features/rooms/presentation/screens/rooms_screen.dart';
+import '../features/rooms/presentation/screens/secure_room_chat_screen.dart';
 import '../features/subscription/presentation/screens/subscribe_screen.dart';
 import '../features/auth/presentation/services/auth_service.dart';
 import '../features/onboarding/presentation/services/onboarding_service.dart';
@@ -52,6 +54,22 @@ CustomTransitionPage<void> _slidePage(Widget child) {
     },
     transitionDuration: const Duration(milliseconds: 280),
   );
+}
+
+String? _secureRoomKeyFromUri(Uri uri) {
+  final queryKey = uri.queryParameters['key'];
+  if (queryKey != null && queryKey.trim().isNotEmpty) {
+    return queryKey;
+  }
+  final fragment = uri.fragment.trim();
+  if (fragment.isEmpty) return null;
+  try {
+    final normalized =
+        fragment.startsWith('?') ? fragment.substring(1) : fragment;
+    return Uri.splitQueryString(normalized)['key'];
+  } catch (_) {
+    return null;
+  }
 }
 
 CustomTransitionPage<void> _profilePage(Widget child) {
@@ -308,6 +326,21 @@ GoRouter createRouter({
       GoRoute(
         path: '/notifications',
         pageBuilder: (_, __) => _slidePage(const NotificationsScreen()),
+      ),
+      GoRoute(
+        path: '/rooms',
+        pageBuilder: (_, s) => _slidePage(
+          RoomsScreen(
+            initialInviteCode: s.uri.queryParameters['code'],
+            initialRoomKey: _secureRoomKeyFromUri(s.uri),
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/rooms/:id',
+        pageBuilder: (_, s) => _slidePage(
+          SecureRoomChatScreen(roomId: s.pathParameters['id']!),
+        ),
       ),
       GoRoute(
         path: '/settings',

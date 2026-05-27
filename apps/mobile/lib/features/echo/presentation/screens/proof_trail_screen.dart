@@ -11,6 +11,7 @@ import '../../../../app/theme/typography.dart';
 import '../../../../core/localization/app_copy.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/logger.dart';
+import '../../../../shared/widgets/avatar_image_provider.dart';
 import '../../../../shared/widgets/rich_text_display.dart';
 import '../../../../shared/widgets/shimmer_loader.dart';
 import '../../domain/entities/echo_entity.dart';
@@ -785,11 +786,8 @@ class _TrailAvatar extends StatelessWidget {
       ),
       child: CircleAvatar(
         backgroundColor: AppColors.softSand,
-        backgroundImage:
-            echo.userAvatarUrl == null || echo.userAvatarUrl!.isEmpty
-                ? null
-                : CachedNetworkImageProvider(echo.userAvatarUrl!),
-        child: echo.userAvatarUrl == null || echo.userAvatarUrl!.isEmpty
+        backgroundImage: avatarImageProvider(echo.userAvatarUrl),
+        child: avatarImageProvider(echo.userAvatarUrl) == null
             ? const Icon(
                 Icons.person_outline_rounded,
                 color: AppColors.textTertiary,

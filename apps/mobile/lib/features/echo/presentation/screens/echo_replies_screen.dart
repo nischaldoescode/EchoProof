@@ -12,6 +12,7 @@ import '../../../../app/theme/typography.dart';
 import '../../../../core/localization/app_copy.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/logger.dart';
+import '../../../../shared/widgets/avatar_image_provider.dart';
 import '../../../../shared/widgets/rich_text_display.dart';
 import 'package:go_router/go_router.dart';
 import '../widgets/link_preview_card.dart';
@@ -1269,10 +1270,8 @@ class _MentionSuggestionTile extends StatelessWidget {
           CircleAvatar(
             radius: 16,
             backgroundColor: AppColors.softSand,
-            backgroundImage: (avatarUrl != null && avatarUrl.isNotEmpty)
-                ? NetworkImage(avatarUrl)
-                : null,
-            child: (avatarUrl == null || avatarUrl.isEmpty)
+            backgroundImage: avatarImageProvider(avatarUrl),
+            child: avatarImageProvider(avatarUrl) == null
                 ? const Icon(Icons.person_outline,
                     size: 16, color: AppColors.textTertiary)
                 : null,
@@ -1316,10 +1315,8 @@ class _VerifiedAvatar extends StatelessWidget {
         child: CircleAvatar(
           radius: size / 2,
           backgroundColor: AppColors.softSand,
-          backgroundImage: (avatarUrl != null && avatarUrl!.isNotEmpty)
-              ? NetworkImage(avatarUrl!)
-              : null,
-          child: (avatarUrl == null || avatarUrl!.isEmpty)
+          backgroundImage: avatarImageProvider(avatarUrl),
+          child: avatarImageProvider(avatarUrl) == null
               ? Icon(Icons.person_outline,
                   size: size * 0.5, color: AppColors.textTertiary)
               : null,
