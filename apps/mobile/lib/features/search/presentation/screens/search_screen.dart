@@ -9,6 +9,7 @@ import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../../../core/localization/app_copy.dart';
 import '../../../../core/utils/logger.dart';
+import '../../../../shared/widgets/avatar_image_provider.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key, this.initialQuery});
@@ -461,10 +462,8 @@ class _UserResultTile extends StatelessWidget {
               CircleAvatar(
                 radius: 23,
                 backgroundColor: AppColors.softSand,
-                backgroundImage: (avatarUrl != null && avatarUrl.isNotEmpty)
-                    ? NetworkImage(avatarUrl)
-                    : null,
-                child: (avatarUrl == null || avatarUrl.isEmpty)
+                backgroundImage: avatarImageProvider(avatarUrl),
+                child: avatarImageProvider(avatarUrl) == null
                     ? const Icon(
                         Icons.person_outline,
                         size: 20,
@@ -815,10 +814,8 @@ class _SmallAvatar extends StatelessWidget {
         padding: const EdgeInsets.all(2),
         child: CircleAvatar(
           backgroundColor: AppColors.softSand,
-          backgroundImage: (avatarUrl != null && avatarUrl!.isNotEmpty)
-              ? NetworkImage(avatarUrl!)
-              : null,
-          child: (avatarUrl == null || avatarUrl!.isEmpty)
+          backgroundImage: avatarImageProvider(avatarUrl),
+          child: avatarImageProvider(avatarUrl) == null
               ? const Icon(
                   Icons.person_outline,
                   size: 16,

@@ -128,3 +128,5 @@ Echoproof/supabase
 supabse/functions
 **/supabase/
 docs/
+modeltrain/
+modeltrain/**
