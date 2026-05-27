@@ -53,3 +53,11 @@ firebase.json
 .yaml
 .metadata
 *.metadata
+*.lock
+*.onnx
+*.onnx.quant
+*.onnx.quant.zip
+*.onnx.zip
+.onnx.data
+*.onnx.quant.data
+*.onnx.quant.zip.data
