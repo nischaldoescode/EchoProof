@@ -20,11 +20,12 @@ import '../../../../core/utils/logger.dart';
 import 'package:flutter_mentions/flutter_mentions.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/utils/snack.dart';
-import '../../../../core/services/tflite_spam_checker.dart';
+import '../../../../core/services/onnx_spam_checker.dart';
 import '../../../../core/utils/media_file_safety.dart';
 import '../../../../core/utils/sanitizer.dart';
 import '../../../../core/localization/app_copy.dart';
 import '../widgets/link_preview_card.dart';
+import '../../../../shared/widgets/avatar_image_provider.dart';
 import '../../../../shared/widgets/rich_text_display.dart';
 
 enum _DraftAction { save, discard }
@@ -43,6 +44,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
   final _formKey = GlobalKey<FormState>();
   String? _detectedUrl;
   bool _showLinkPreview = false;
+  bool _checkingLocalModeration = false;
   List<Map<String, dynamic>> _mentionableUsers = [];
 
   late final AnimationController _entranceController;
@@ -198,44 +200,84 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
 
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
-    // Client-side pre-check — fast, no network.
-    if (TfliteSpamChecker.shouldWarn(service.title, cleanContent)) {
-      final proceed = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text(
-            context.l('Content warning'),
-            style: GoogleFonts.josefinSans(fontWeight: FontWeight.w700),
-          ),
-          content: Text(
-            context.l(
-              'Your echo looks like it might be flagged by our community filters. Review your content and make sure it follows our guidelines before posting.',
-            ),
-            style: GoogleFonts.josefinSans(fontSize: 13, height: 1.5),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(context.l('Edit'), style: GoogleFonts.josefinSans()),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(
-                context.l('Post anyway'),
-                style: GoogleFonts.josefinSans(color: AppColors.sunsetCoral),
-              ),
-            ),
-          ],
+    if (_checkingLocalModeration || service.isSubmitting) return;
+
+    setState(() => _checkingLocalModeration = true);
+    late final SpamCheckResult localModeration;
+    try {
+      localModeration =
+          await OnnxSpamChecker.checkText(service.title, cleanContent);
+    } catch (e) {
+      AppLogger.error('create echo: local text safety crashed to fallback', e);
+      final score = OnnxSpamChecker.quickScore(service.title, cleanContent);
+      localModeration = SpamCheckResult(
+        label: score >= OnnxSpamChecker.blockThreshold
+            ? SpamLabel.spam
+            : score >= OnnxSpamChecker.suspiciousThreshold
+                ? SpamLabel.suspicious
+                : SpamLabel.ham,
+        score: score,
+        spamProbability: score / 100,
+        hamProbability: 1 - (score / 100),
+        source: 'heuristic_after_error',
+        tokenCount: 0,
+        windowCount: 0,
+        reason: 'local_safety_exception',
+      );
+    }
+    if (!mounted) return;
+    setState(() => _checkingLocalModeration = false);
+
+    if (localModeration.isSpam) {
+      showErrorSnack(
+        context,
+        context.l(
+          'This echo looks too spam-like to publish. Edit the promotional or repeated text and try again.',
         ),
       );
+      return;
+    }
+
+    if (localModeration.isSuspicious) {
+      final proceed = await _showLocalModerationDialog(localModeration);
       if (proceed != true) return;
     }
 
     if (!mounted) return;
     if (showOfflineSnackIfNeeded(context)) return;
     await service.submit();
+  }
+
+  Future<bool?> _showLocalModerationDialog(SpamCheckResult result) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          context.l('Content warning'),
+          style: GoogleFonts.josefinSans(fontWeight: FontWeight.w700),
+        ),
+        content: Text(
+          context.l(
+            'This text looks suspicious (${result.score}%). Review it for repeated words, promotional language, scam-like links, or hidden spam before posting.',
+          ),
+          style: GoogleFonts.josefinSans(fontSize: 13, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(context.l('Edit'), style: GoogleFonts.josefinSans()),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              context.l('Post anyway'),
+              style: GoogleFonts.josefinSans(color: AppColors.sunsetCoral),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<_DraftAction?> _showDiscardSheet(BuildContext context) {
@@ -439,7 +481,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                 padding: const EdgeInsets.only(right: AppSpacing.md),
                 child: _SubmitButton(
                   canSubmit: service.canSubmit,
-                  isLoading: service.isSubmitting,
+                  isLoading: service.isSubmitting || _checkingLocalModeration,
                   onTap: _submit,
                 ),
               ),
@@ -593,6 +635,18 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                         onToggle: context
                             .read<CreateEchoService>()
                             .toggleVerification,
+                      ),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 220),
+                        child: _checkingLocalModeration
+                            ? const Padding(
+                                key: ValueKey('local-moderation-loader'),
+                                padding: EdgeInsets.only(top: AppSpacing.md),
+                                child: _LocalModerationLoader(),
+                              )
+                            : const SizedBox.shrink(
+                                key: ValueKey('local-moderation-idle'),
+                              ),
                       ),
                       const SizedBox(height: AppSpacing.xl),
                       if (service.error != null)
@@ -920,16 +974,13 @@ class _ContentMentionField extends StatelessWidget {
                                 CircleAvatar(
                                   radius: 16,
                                   backgroundColor: AppColors.softSand,
-                                  backgroundImage: (avatarUrl != null &&
-                                          avatarUrl.isNotEmpty)
-                                      ? NetworkImage(avatarUrl)
+                                  backgroundImage:
+                                      avatarImageProvider(avatarUrl),
+                                  child: avatarImageProvider(avatarUrl) == null
+                                      ? const Icon(Icons.person_outline,
+                                          size: 16,
+                                          color: AppColors.textTertiary)
                                       : null,
-                                  child:
-                                      (avatarUrl == null || avatarUrl.isEmpty)
-                                          ? const Icon(Icons.person_outline,
-                                              size: 16,
-                                              color: AppColors.textTertiary)
-                                          : null,
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
@@ -1295,10 +1346,10 @@ class _SubmitButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnimatedOpacity(
-      opacity: canSubmit ? 1.0 : 0.4,
+      opacity: canSubmit && !isLoading ? 1.0 : 0.4,
       duration: const Duration(milliseconds: 200),
       child: GestureDetector(
-        onTap: canSubmit ? onTap : null,
+        onTap: canSubmit && !isLoading ? onTap : null,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(
@@ -1327,6 +1378,46 @@ class _SubmitButton extends StatelessWidget {
                     fontFamily: AppTypography.fontFamily,
                   ),
                 ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LocalModerationLoader extends StatelessWidget {
+  const _LocalModerationLoader();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.fernGreenLight,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Row(
+          children: [
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppColors.fernGreen,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: Text(
+                context.l('Checking text safety on this device...'),
+                style: AppTypography.textTheme.bodySmall?.copyWith(
+                  color: AppColors.fernGreenDark,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -27,6 +27,7 @@ abstract final class MediaFileSafety {
     'jpg',
     'jpeg',
     'png',
+    'gif',
     'webp',
     'heic',
     'heif',
@@ -80,6 +81,7 @@ abstract final class MediaFileSafety {
     return switch (ext) {
       'jpg' || 'jpeg' => 'image/jpeg',
       'png' => 'image/png',
+      'gif' => 'image/gif',
       'webp' => 'image/webp',
       'heic' => 'image/heic',
       'heif' => 'image/heif',
@@ -163,6 +165,7 @@ abstract final class MediaFileSafety {
     return switch (ext) {
       'jpg' || 'jpeg' => _isJpeg(bytes),
       'png' => _isPng(bytes),
+      'gif' => _isGif(bytes),
       'webp' => _isWebp(bytes),
       'heic' ||
       'heif' =>
@@ -226,6 +229,11 @@ abstract final class MediaFileSafety {
     return true;
   }
 
+  static bool _isGif(List<int> bytes) {
+    return bytes.length >= 6 &&
+        (_ascii(bytes, 0, 6) == 'GIF87a' || _ascii(bytes, 0, 6) == 'GIF89a');
+  }
+
   static bool _isWebp(List<int> bytes) {
     return bytes.length >= 12 &&
         _ascii(bytes, 0, 4) == 'RIFF' &&
@@ -257,7 +265,7 @@ abstract final class MediaFileSafety {
   static String _typeMessage(MediaFileKind kind) {
     return switch (kind) {
       MediaFileKind.image =>
-        'Use a JPG, PNG, WEBP, HEIC, or HEIF image. SVG and executable files are blocked.',
+        'Use a JPG, PNG, GIF, WEBP, HEIC, or HEIF image. SVG and executable files are blocked.',
       MediaFileKind.video =>
         'Use an MP4, MOV, M4V, WEBM, or 3GP video under 50 MB.',
     };

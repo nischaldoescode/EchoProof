@@ -17,6 +17,7 @@ import '../../../../core/utils/logger.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../onboarding/presentation/services/onboarding_service.dart';
 import '../../../../core/services/ad_service.dart';
+import '../../../../core/services/account_device_service.dart';
 import '../../../../core/services/push_notification_service.dart';
 import '../../../subscription/presentation/services/subscription_service.dart';
 import '../../../../core/localization/app_copy.dart';
@@ -744,6 +745,30 @@ class _SettingsScreenState extends State<SettingsScreen>
                           ? () {}
                           : _openIdentityVerification,
             ),
+            Consumer<AccountDeviceService>(
+              builder: (context, devices, _) {
+                final current = devices.currentDevice;
+                final conflict = devices.pendingConflict;
+                final activeCount =
+                    devices.devices.where((device) => device.active).length;
+                return _Tile(
+                  icon: Icons.phone_android_rounded,
+                  label: conflict == null
+                      ? context.l('Active device')
+                      : context.l('Device action needed'),
+                  subtitle: conflict != null
+                      ? '${conflict.currentDevice.deviceName} · ${context.l('active elsewhere')}'
+                      : current == null
+                          ? context.l('Registering this device...')
+                          : '${current.deviceName} · ${context.l('This device')}',
+                  trailing: _DeviceCountBadge(
+                    count: activeCount,
+                    alert: conflict != null,
+                  ),
+                  onTap: () => _showAccountDevicesSheet(context),
+                );
+              },
+            ),
             // _Tile(
             //   icon: Icons.receipt_long_outlined,
             //   label: 'Purchase history',
@@ -1234,6 +1259,250 @@ class _SettingsScreenState extends State<SettingsScreen>
     );
   }
 
+  Future<void> _showAccountDevicesSheet(BuildContext context) async {
+    final service = context.read<AccountDeviceService>();
+    await service.loadDevices().catchError((_) {});
+    if (!context.mounted) return;
+
+    showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: AppColors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (sheetContext) => Consumer<AccountDeviceService>(
+        builder: (context, devices, _) {
+          final currentId = devices.currentDevice?.deviceId;
+          final conflict = devices.pendingConflict;
+          final bottom = MediaQuery.paddingOf(sheetContext).bottom;
+          final activeDevices =
+              devices.devices.where((device) => device.active).toList();
+          return SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              AppSpacing.sm,
+              AppSpacing.lg,
+              AppSpacing.xl + bottom,
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: AppColors.fernGreenLight,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(
+                          Icons.devices_rounded,
+                          color: AppColors.fernGreenDark,
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              context.l('Account devices'),
+                              style: GoogleFonts.josefinSans(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.charcoal,
+                              ),
+                            ),
+                            Text(
+                              '${activeDevices.length} active',
+                              style: GoogleFonts.josefinSans(
+                                fontSize: 12,
+                                color: AppColors.textSecondary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  Text(
+                    context.l(
+                      'Only one device can stay active at a time. Signed-out devices are hidden from this list.',
+                    ),
+                    style: GoogleFonts.josefinSans(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  if (conflict != null) ...[
+                    _DeviceConflictBanner(
+                      device: conflict.currentDevice,
+                      registering: devices.registering,
+                      onContinue: () =>
+                          _continueAccountOnThisDevice(sheetContext),
+                      onSignOut: () => _signOutFromDeviceConflict(sheetContext),
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                  ],
+                  if (activeDevices.isEmpty)
+                    Padding(
+                      padding:
+                          const EdgeInsets.symmetric(vertical: AppSpacing.xl),
+                      child: Center(
+                        child: Text(
+                          context.l('No active devices yet.'),
+                          style: GoogleFonts.josefinSans(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    ...activeDevices.map(
+                      (device) => _AccountDeviceCard(
+                        device: device,
+                        isThisDevice: device.deviceId == currentId,
+                        lastSeenLabel: _formatDeviceSeen(device.lastSeenAt),
+                        platformLabel: _devicePlatformLabel(device.platform),
+                        platformIcon: _devicePlatformIcon(device.platform),
+                        onTap: () => _showAccountDeviceInfoDialog(
+                          context,
+                          device,
+                          isThisDevice: device.deviceId == currentId,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _continueAccountOnThisDevice(BuildContext context) async {
+    final devices = context.read<AccountDeviceService>();
+    try {
+      await devices.continueOnThisDevice();
+      if (!context.mounted) return;
+      showSuccessSnack(context, context.l('This device is now active.'));
+    } catch (e) {
+      if (!context.mounted) return;
+      showErrorSnack(context, _friendlyError(e));
+    }
+  }
+
+  Future<void> _signOutFromDeviceConflict(BuildContext context) async {
+    final auth = context.read<AuthService>();
+    final devices = context.read<AccountDeviceService>();
+    devices.clearPendingConflict();
+    await auth.signOut(enforceCooldown: false);
+    if (!context.mounted) return;
+    context.go('/login');
+  }
+
+  Future<void> _showAccountDeviceInfoDialog(
+    BuildContext context,
+    AccountDeviceRecord device, {
+    required bool isThisDevice,
+  }) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text(
+          isThisDevice ? context.l('This device') : device.deviceName,
+          style: GoogleFonts.josefinSans(fontWeight: FontWeight.w700),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _DeviceInfoRow(
+              label: context.l('Name'),
+              value: device.deviceName,
+            ),
+            _DeviceInfoRow(
+              label: context.l('Platform'),
+              value: _devicePlatformLabel(device.platform),
+            ),
+            _DeviceInfoRow(
+              label: context.l('Status'),
+              value: device.active
+                  ? isThisDevice
+                      ? context.l('Active on this device')
+                      : context.l('Active elsewhere')
+                  : context.l('Logged out'),
+            ),
+            _DeviceInfoRow(
+              label: context.l('Last seen'),
+              value: _formatDeviceSeen(device.lastSeenAt),
+            ),
+            _DeviceInfoRow(
+              label: context.l('Device id'),
+              value: _shortDeviceId(device.deviceId),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(context.l('Close')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _devicePlatformIcon(String platform) {
+    return switch (platform) {
+      'ios' => Icons.phone_iphone_rounded,
+      'android' => Icons.phone_android_rounded,
+      _ => Icons.devices_other_rounded,
+    };
+  }
+
+  String _devicePlatformLabel(String platform) {
+    return switch (platform) {
+      'ios' => 'iPhone or iPad',
+      'android' => 'Android',
+      _ => platform.isEmpty ? 'Unknown platform' : platform,
+    };
+  }
+
+  String _formatDeviceSeen(DateTime? value) {
+    if (value == null) return 'Never';
+    final diff = DateTime.now().difference(value.toLocal());
+    if (diff.inSeconds < 30) return 'Just now';
+    if (diff.inMinutes < 1) return '${diff.inSeconds}s ago';
+    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+    if (diff.inDays < 1) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${value.toLocal().year}-${value.toLocal().month.toString().padLeft(2, '0')}-${value.toLocal().day.toString().padLeft(2, '0')}';
+  }
+
+  String _shortDeviceId(String deviceId) {
+    if (deviceId.length <= 12) return deviceId;
+    return '${deviceId.substring(0, 6)}...${deviceId.substring(deviceId.length - 4)}';
+  }
+
+  String _friendlyError(Object error) {
+    final text = error.toString().replaceFirst('Exception: ', '').trim();
+    if (text.isEmpty) return context.l('Could not complete this action.');
+    return text;
+  }
+
   Future<void> _deleteAccount(BuildContext context) async {
     final auth = context.read<AuthService>();
     final client = Supabase.instance.client;
@@ -1651,6 +1920,266 @@ class _OpenLinkAction extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _DeviceCountBadge extends StatelessWidget {
+  const _DeviceCountBadge({required this.count, this.alert = false});
+
+  final int count;
+  final bool alert;
+
+  @override
+  Widget build(BuildContext context) {
+    final value = count <= 0 ? 1 : count;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: alert ? AppColors.sunsetCoralLight : AppColors.fernGreenLight,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: (alert ? AppColors.sunsetCoral : AppColors.fernGreen)
+              .withValues(alpha: 0.45),
+        ),
+      ),
+      child: Text(
+        alert ? '!' : '($value)',
+        style: GoogleFonts.josefinSans(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: alert ? AppColors.sunsetCoralDark : AppColors.fernGreenDark,
+        ),
+      ),
+    );
+  }
+}
+
+class _DeviceConflictBanner extends StatelessWidget {
+  const _DeviceConflictBanner({
+    required this.device,
+    required this.registering,
+    required this.onContinue,
+    required this.onSignOut,
+  });
+
+  final AccountDeviceRecord device;
+  final bool registering;
+  final VoidCallback onContinue;
+  final VoidCallback onSignOut;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.sunsetCoralLight,
+        borderRadius: BorderRadius.circular(16),
+        border:
+            Border.all(color: AppColors.sunsetCoral.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.phonelink_lock_rounded,
+                color: AppColors.sunsetCoralDark,
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  context.l('Account active on another device'),
+                  style: GoogleFonts.josefinSans(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.sunsetCoralDark,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            '${device.deviceName} · ${device.platform}. Continue here only if this is you. The other device will be logged out.',
+            style: GoogleFonts.josefinSans(
+              fontSize: 13,
+              height: 1.35,
+              color: AppColors.sunsetCoralDark,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: registering ? null : onSignOut,
+                  child: Text(context.l('Not me')),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: FilledButton(
+                  onPressed: registering ? null : onContinue,
+                  child: registering
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(context.l('Continue here')),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AccountDeviceCard extends StatelessWidget {
+  const _AccountDeviceCard({
+    required this.device,
+    required this.isThisDevice,
+    required this.lastSeenLabel,
+    required this.platformLabel,
+    required this.platformIcon,
+    required this.onTap,
+  });
+
+  final AccountDeviceRecord device;
+  final bool isThisDevice;
+  final String lastSeenLabel;
+  final String platformLabel;
+  final IconData platformIcon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = device.active;
+    final status = active
+        ? isThisDevice
+            ? context.l('This device')
+            : context.l('Active elsewhere')
+        : context.l('Logged out');
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: Material(
+        color: active ? AppColors.fernGreenLight : AppColors.surfaceSecondary,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: active
+                    ? AppColors.fernGreen.withValues(alpha: 0.5)
+                    : AppColors.borderSubtle,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppColors.white.withValues(alpha: active ? 0.84 : 1),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    platformIcon,
+                    color:
+                        active ? AppColors.fernGreenDark : AppColors.charcoal,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        device.deviceName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.josefinSans(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.charcoal,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '$status · $platformLabel · $lastSeenLabel',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.josefinSans(
+                          fontSize: 12,
+                          color: active
+                              ? AppColors.fernGreenDark
+                              : AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Icon(
+                  active
+                      ? Icons.check_circle_rounded
+                      : Icons.info_outline_rounded,
+                  color: active ? AppColors.fernGreen : AppColors.textTertiary,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DeviceInfoRow extends StatelessWidget {
+  const _DeviceInfoRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 88,
+            child: Text(
+              label,
+              style: GoogleFonts.josefinSans(
+                fontSize: 12,
+                color: AppColors.textTertiary,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: GoogleFonts.josefinSans(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.charcoal,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

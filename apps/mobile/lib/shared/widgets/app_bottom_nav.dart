@@ -27,6 +27,12 @@ class AppBottomNav extends StatelessWidget {
       path: '/discover',
     ),
     _NavItem(
+      icon: Icons.lock_outline_rounded,
+      activeIcon: Icons.lock_rounded,
+      labelKey: 'nav.rooms',
+      path: '/rooms',
+    ),
+    _NavItem(
       icon: Icons.notifications_outlined,
       activeIcon: Icons.notifications_rounded,
       labelKey: 'nav.alerts',
@@ -44,6 +50,7 @@ class AppBottomNav extends StatelessWidget {
     if (location.startsWith('/feed')) return '/feed';
     if (location.startsWith('/discover')) return '/discover';
     if (location.startsWith('/search')) return '/discover';
+    if (location.startsWith('/rooms')) return '/rooms';
     if (location.startsWith('/notifications')) return '/notifications';
     if (location == '/profile') return '/profile';
     if (location.startsWith('/profile/')) return '/feed';
@@ -185,7 +192,13 @@ class SwipeNavigationWrapper extends StatefulWidget {
 
 class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
     with SingleTickerProviderStateMixin {
-  static const _routes = ['/feed', '/discover', '/notifications', '/profile'];
+  static const _routes = [
+    '/feed',
+    '/discover',
+    '/rooms',
+    '/notifications',
+    '/profile',
+  ];
 
   // Live drag progress: -1.0 (going right→left) to +1.0 (going left→right)
   double _drag = 0.0;

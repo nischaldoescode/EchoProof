@@ -56,6 +56,7 @@ abstract final class AppCopy {
       'echoDetail.communitySignals': 'Community signals',
       'nav.feed': 'Feed',
       'nav.discover': 'Discover',
+      'nav.rooms': 'Rooms',
       'nav.alerts': 'Alerts',
       'nav.profile': 'Profile',
       'onboarding.languageTitle': 'Choose your language',

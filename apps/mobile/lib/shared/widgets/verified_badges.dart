@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../app/theme/colors.dart';
+import 'safe_circle_avatar.dart';
 
 enum BadgeType { none, verified, pro, verifiedPro }
 
@@ -54,16 +55,10 @@ class AvatarWithBadge extends StatelessWidget {
           Positioned(
             left: badgeType != BadgeType.none ? 2 : 0,
             top: badgeType != BadgeType.none ? 2 : 0,
-            child: CircleAvatar(
+            child: SafeCircleAvatar(
               radius: radius,
               backgroundColor: AppColors.softSand,
-              backgroundImage: (avatarUrl != null && avatarUrl!.isNotEmpty)
-                  ? NetworkImage(avatarUrl!)
-                  : null,
-              child: (avatarUrl == null || avatarUrl!.isEmpty)
-                  ? Icon(Icons.person_outline,
-                      size: radius * 0.7, color: AppColors.textTertiary)
-                  : null,
+              avatarUrl: avatarUrl,
             ),
           ),
           // Badge dot
