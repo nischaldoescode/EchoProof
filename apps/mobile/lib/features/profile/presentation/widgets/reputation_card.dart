@@ -7,6 +7,7 @@ import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../../../core/localization/app_copy.dart';
+import '../../../../shared/widgets/avatar_image_provider.dart';
 import '../../../../shared/widgets/trust_tier_label.dart';
 import '../../../../shared/widgets/verified_badge.dart';
 
@@ -56,9 +57,8 @@ class ReputationCard extends StatelessWidget {
               CircleAvatar(
                 radius: AppSpacing.avatarSizeMd / 2,
                 backgroundColor: AppColors.softSand,
-                backgroundImage:
-                    avatarUrl != null ? NetworkImage(avatarUrl!) : null,
-                child: avatarUrl == null
+                backgroundImage: avatarImageProvider(avatarUrl),
+                child: avatarImageProvider(avatarUrl) == null
                     ? const Icon(
                         Icons.person_outline,
                         size: 22,

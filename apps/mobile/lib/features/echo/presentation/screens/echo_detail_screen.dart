@@ -22,6 +22,7 @@ import '../widgets/verified_echo_record.dart';
 import '../widgets/solana_status_chip.dart';
 import '../../../../shared/widgets/shimmer_loader.dart';
 import '../../../../shared/widgets/image_viewer.dart';
+import '../../../../shared/widgets/avatar_image_provider.dart';
 import '../../../../shared/widgets/rich_text_display.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/logger.dart';
@@ -1761,10 +1762,8 @@ class _ContextRowState extends State<_ContextRow> {
                 CircleAvatar(
                   radius: 14,
                   backgroundColor: AppColors.softSand,
-                  backgroundImage: avatarUrl == null || avatarUrl.isEmpty
-                      ? null
-                      : CachedNetworkImageProvider(avatarUrl),
-                  child: avatarUrl == null || avatarUrl.isEmpty
+                  backgroundImage: avatarImageProvider(avatarUrl),
+                  child: avatarImageProvider(avatarUrl) == null
                       ? const Icon(
                           Icons.person_outline_rounded,
                           size: 15,
@@ -2286,8 +2285,8 @@ class _VerifiedAvatar extends StatelessWidget {
         child: CircleAvatar(
           radius: AppSpacing.avatarSizeMd / 2,
           backgroundColor: AppColors.softSand,
-          backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl!) : null,
-          child: avatarUrl == null
+          backgroundImage: avatarImageProvider(avatarUrl),
+          child: avatarImageProvider(avatarUrl) == null
               ? const Icon(
                   Icons.person_outline,
                   size: 22,

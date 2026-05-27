@@ -25,6 +25,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../shared/widgets/image_viewer.dart';
+import '../../../../shared/widgets/avatar_image_provider.dart';
 import '../../../../core/services/video_playback_coordinator.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/snack.dart';
@@ -1326,8 +1327,8 @@ class _AvatarWithRing extends StatelessWidget {
       return CircleAvatar(
         radius: radius,
         backgroundColor: AppColors.softSand,
-        backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl!) : null,
-        child: avatarUrl == null
+        backgroundImage: avatarImageProvider(avatarUrl),
+        child: avatarImageProvider(avatarUrl) == null
             ? const Icon(Icons.person_outline,
                 size: 16, color: AppColors.textTertiary)
             : null,
@@ -1367,9 +1368,8 @@ class _AvatarWithRing extends StatelessWidget {
             child: CircleAvatar(
               radius: radius,
               backgroundColor: AppColors.softSand,
-              backgroundImage:
-                  avatarUrl != null ? NetworkImage(avatarUrl!) : null,
-              child: avatarUrl == null
+              backgroundImage: avatarImageProvider(avatarUrl),
+              child: avatarImageProvider(avatarUrl) == null
                   ? const Icon(Icons.person_outline,
                       size: 16, color: AppColors.textTertiary)
                   : null,

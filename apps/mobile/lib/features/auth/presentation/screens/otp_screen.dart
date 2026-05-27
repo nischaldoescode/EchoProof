@@ -166,6 +166,28 @@ class _OtpScreenState extends State<OtpScreen>
     }
   }
 
+  Future<void> _useAnotherEmail() async {
+    AppLogger.info(
+      'otp: not-you requested canLeave=$_canLeave resendSecs=$_resendSecs',
+    );
+    FocusManager.instance.primaryFocus?.unfocus();
+
+    if (!_canLeave) {
+      _showOtpWarningSnack(
+        context.tx('otp.backCooldown').replaceAll('{s}', '$_resendSecs'),
+      );
+      return;
+    }
+
+    _cooldownTimer?.cancel();
+    final auth = context.read<AuthService>();
+    if (auth.currentUser != null) {
+      await auth.signOut(enforceCooldown: false);
+    }
+    if (!mounted) return;
+    context.go('/login');
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -231,6 +253,29 @@ class _OtpScreenState extends State<OtpScreen>
                           fontSize: 14,
                           color: AppColors.textSecondary,
                           height: 1.5,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      TextButton.icon(
+                        onPressed: _isVerifying ? null : _useAnotherEmail,
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        icon: const Icon(Icons.logout_rounded, size: 16),
+                        label: Text(
+                          _canLeave
+                              ? context.l('Not you? Use another email')
+                              : context
+                                  .tx('otp.backCooldown')
+                                  .replaceAll('{s}', '$_resendSecs'),
+                          style: GoogleFonts.josefinSans(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: _canLeave
+                                ? AppColors.fernGreen
+                                : AppColors.textTertiary,
+                          ),
                         ),
                       ),
 
