@@ -32,6 +32,7 @@ class InteractionButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final contextClosed = _isPublicContextClosed(echo);
     return Padding(
       padding: EdgeInsets.symmetric(
         horizontal: dense ? 0 : AppSpacing.md,
@@ -60,6 +61,7 @@ class InteractionButtons extends StatelessWidget {
               icon: Icons.thumb_up_alt_outlined,
               onTap: () => _openContextSheet(context, 'support'),
               flashColor: AppColors.fernGreen,
+              muted: contextClosed,
             ),
           ),
           Expanded(
@@ -70,6 +72,7 @@ class InteractionButtons extends StatelessWidget {
               icon: Icons.arrow_downward_rounded,
               onTap: () => _openContextSheet(context, 'challenge'),
               flashColor: AppColors.sunsetCoralDark,
+              muted: contextClosed,
             ),
           ),
           Expanded(
@@ -141,6 +144,18 @@ class InteractionButtons extends StatelessWidget {
       );
       return false;
     }
+    if (_isPublicContextClosed(echo)) {
+      showInfoSnack(
+        context,
+        context.l('Public context is closed. You can still view it.'),
+      );
+      final currentPath = GoRouterState.of(context).uri.path;
+      final detailPath = '/feed/echo/${echo.id}';
+      if (currentPath != detailPath) {
+        context.push('$detailPath?stance=$type');
+      }
+      return false;
+    }
 
     HapticFeedback.selectionClick();
     showSignalResponseSheet(
@@ -175,6 +190,7 @@ class _InteractionButton extends StatefulWidget {
     required this.icon,
     required this.onTap,
     required this.flashColor,
+    this.muted = false,
   });
 
   final int count;
@@ -182,6 +198,7 @@ class _InteractionButton extends StatefulWidget {
   final IconData icon;
   final Future<bool> Function() onTap;
   final Color flashColor;
+  final bool muted;
 
   @override
   State<_InteractionButton> createState() => _InteractionButtonState();
@@ -228,7 +245,11 @@ class _InteractionButtonState extends State<_InteractionButton>
   Widget build(BuildContext context) {
     final label =
         widget.count > 0 ? '${widget.count} ${widget.label}' : widget.label;
-    final color = _isFlashing ? widget.flashColor : AppColors.textSecondary;
+    final color = widget.muted
+        ? AppColors.textTertiary
+        : _isFlashing
+            ? widget.flashColor
+            : AppColors.textSecondary;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -283,4 +304,10 @@ class _InteractionButtonState extends State<_InteractionButton>
       ),
     );
   }
+}
+
+bool _isPublicContextClosed(EchoEntity echo) {
+  final closesAt = echo.publicContextClosesAt;
+  return echo.publicVerdict != 'open' ||
+      (closesAt != null && !closesAt.isAfter(DateTime.now()));
 }

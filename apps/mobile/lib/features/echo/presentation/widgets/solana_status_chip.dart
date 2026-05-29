@@ -12,19 +12,25 @@ class SolanaStatusChip extends StatelessWidget {
     this.signature,
     this.label = 'Solana',
     this.compact = true,
+    this.onRetry,
+    this.isRetrying = false,
   });
 
   final String status;
   final String? signature;
   final String label;
   final bool compact;
+  final Future<void> Function()? onRetry;
+  final bool isRetrying;
 
   bool get _isAnchored =>
       (signature != null && signature!.isNotEmpty) || status == 'anchored';
 
   @override
   Widget build(BuildContext context) {
-    final normalized = _isAnchored ? 'anchored' : status;
+    final canRetry = !_isAnchored && onRetry != null;
+    final normalized =
+        isRetrying ? 'recording' : (_isAnchored ? 'anchored' : status);
     final (text, icon, color, bg) = switch (normalized) {
       'anchored' => (
           '$label anchored',
@@ -39,14 +45,14 @@ class SolanaStatusChip extends StatelessWidget {
           const Color(0xFFF3EEF9),
         ),
       'failed' => (
-          '$label pending retry',
-          Icons.warning_amber_rounded,
+          canRetry ? '$label retry' : '$label delayed',
+          canRetry ? Icons.refresh_rounded : Icons.warning_amber_rounded,
           AppColors.sunsetCoralDark,
           AppColors.sunsetCoralLight,
         ),
       _ => (
-          '$label pending',
-          Icons.schedule_rounded,
+          canRetry ? '$label queued' : '$label pending',
+          canRetry ? Icons.refresh_rounded : Icons.schedule_rounded,
           AppColors.textTertiary,
           AppColors.softSand,
         ),
@@ -84,12 +90,26 @@ class SolanaStatusChip extends StatelessWidget {
               size: compact ? 11 : 13,
               color: color,
             ),
+          ] else if (canRetry) ...[
+            const SizedBox(width: 5),
+            Icon(
+              Icons.touch_app_outlined,
+              size: compact ? 11 : 13,
+              color: color,
+            ),
           ],
         ],
       ),
     );
 
-    if (signature == null || signature!.isEmpty) return child;
+    if (signature == null || signature!.isEmpty) {
+      if (!canRetry || isRetrying) return child;
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onRetry,
+        child: child,
+      );
+    }
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
