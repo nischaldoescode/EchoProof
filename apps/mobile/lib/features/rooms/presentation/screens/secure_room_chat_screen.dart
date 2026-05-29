@@ -2,13 +2,12 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:record/record.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:video_player/video_player.dart';
@@ -20,30 +19,6 @@ import '../../../../core/utils/media_file_safety.dart';
 import '../../../../core/utils/snack.dart';
 import '../../../../shared/widgets/safe_circle_avatar.dart';
 import '../../data/secure_room_service.dart';
-
-List<double> _quietWaveSeed(String seed, {int count = 28}) {
-  var hash = 0;
-  for (final unit in seed.codeUnits) {
-    hash = (hash * 31 + unit) & 0x7fffffff;
-  }
-  final random = math.Random(hash);
-  return List<double>.generate(
-    count,
-    (_) => 0.04 + random.nextDouble() * 0.05,
-  );
-}
-
-List<double> _flatWave({int count = 34}) {
-  return List<double>.filled(count, 0.03, growable: false);
-}
-
-double _normalizeAmplitude(double db, double noiseFloor) {
-  if (!db.isFinite) return 0.03;
-  final gate = noiseFloor + 9;
-  if (db <= gate) return 0.03;
-  final normalized = ((db - gate) / 28).clamp(0.0, 1.0).toDouble();
-  return 0.03 + math.pow(normalized, 2.25).toDouble() * 0.97;
-}
 
 double _mediaPreviewWidth(BuildContext context) {
   final screenWidth = MediaQuery.sizeOf(context).width;
@@ -61,6 +36,31 @@ const _chatSurface = Color(0xFFFFFEFB);
 const _mineBubble = Color(0xFFEAF6EC);
 const _otherBubble = Color(0xFFFFFEFC);
 const _softInk = Color(0xFF24312C);
+const _maxVoiceDuration = Duration(seconds: 60);
+const _voiceRecorderSettings = RecorderSettings(
+  bitRate: 64000,
+  sampleRate: 44100,
+);
+const _voiceWaveStyle = WaveStyle(
+  waveColor: AppColors.fernGreenDark,
+  showMiddleLine: false,
+  waveThickness: 3,
+  spacing: 5,
+  scaleFactor: 72,
+  showTop: true,
+  showBottom: true,
+  extendWaveform: true,
+  backgroundColor: Colors.transparent,
+);
+const _voicePlayerWaveStyle = PlayerWaveStyle(
+  fixedWaveColor: Color(0xFFCFE5D5),
+  liveWaveColor: AppColors.fernGreenDark,
+  showSeekLine: false,
+  waveThickness: 3,
+  spacing: 5,
+  scaleFactor: 72,
+  backgroundColor: Colors.transparent,
+);
 
 class SecureRoomChatScreen extends StatefulWidget {
   const SecureRoomChatScreen({super.key, required this.roomId});
@@ -78,7 +78,7 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
   final _textCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
   final _picker = ImagePicker();
-  final _audioRecorder = AudioRecorder();
+  final _recorderController = RecorderController();
   final _profiles = <String, Map<String, dynamic>>{};
 
   SecureRoomSummary? _room;
@@ -88,7 +88,7 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
   RealtimeChannel? _channel;
   StreamSubscription<List<Map<String, dynamic>>>? _typingSub;
   StreamSubscription<List<SecureRoomPresence>>? _presenceSub;
-  StreamSubscription<Amplitude>? _amplitudeSub;
+  StreamSubscription<Duration>? _recordingDurationSub;
   Timer? _typingTimer;
   Timer? _expiryTimer;
   Timer? _roomStateTimer;
@@ -106,12 +106,13 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
   String _closingRoomReason = 'This secure room was destroyed.';
   String? _typingLabel;
   String? _recordingPath;
+  String? _voicePreviewPath;
+  Duration _voicePreviewDuration = Duration.zero;
+  List<double> _voicePreviewLevels = const [];
   int _recordingSeconds = 0;
-  int _recordingAmplitudeSamples = 0;
   int _ttlSeconds = 120;
-  double _recordingNoiseFloorDb = -44;
-  double _lastRecordingLevel = 0.03;
-  List<double> _recordingLevels = _flatWave();
+  bool _voiceLimitStopTriggered = false;
+  bool _sendingVoiceNote = false;
   final List<_DeletedMessageGhost> _deletedGhosts = [];
   final List<_PendingRoomMessage> _pendingMessages = [];
 
@@ -162,7 +163,7 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
     _messagePollTimer?.cancel();
     _messageRefreshDebounce?.cancel();
     _securityBannerTimer?.cancel();
-    _amplitudeSub?.cancel();
+    _recordingDurationSub?.cancel();
     _typingSub?.cancel();
     _presenceSub?.cancel();
     if (_channel != null) {
@@ -170,7 +171,15 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
     }
     _service.setTyping(widget.roomId, false);
     _service.setPresence(widget.roomId, SecureRoomPresenceState.offline);
-    unawaited(_audioRecorder.dispose());
+    final recordingPath = _recordingPath;
+    _recorderController.dispose();
+    if (recordingPath != null) {
+      unawaited(_deleteRecordingFile(recordingPath));
+    }
+    final previewPath = _voicePreviewPath;
+    if (previewPath != null) {
+      unawaited(_deleteRecordingFile(previewPath));
+    }
     super.dispose();
   }
 
@@ -930,9 +939,9 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
   }
 
   Future<void> _startRecording() async {
-    if (!_canSend || _recording) return;
+    if (!_canSend || _recording || _voicePreviewPath != null) return;
     try {
-      final allowed = await _audioRecorder.hasPermission();
+      final allowed = await _recorderController.checkPermission();
       if (!allowed) {
         if (mounted) {
           showErrorSnack(context, 'Microphone permission is needed.');
@@ -942,60 +951,36 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
       final dir = await getTemporaryDirectory();
       final path =
           '${dir.path}/secure_room_voice_${DateTime.now().microsecondsSinceEpoch}.m4a';
-      await _audioRecorder.start(
-        const RecordConfig(
-          encoder: AudioEncoder.aacLc,
-          bitRate: 64000,
-          sampleRate: 44100,
-          numChannels: 1,
-          noiseSuppress: true,
-          echoCancel: true,
-        ),
+      _recorderController.reset();
+      await _recorderController.record(
         path: path,
+        recorderSettings: _voiceRecorderSettings,
       );
       if (!mounted) return;
       setState(() {
         _recording = true;
         _recordingPath = path;
         _recordingSeconds = 0;
-        _recordingAmplitudeSamples = 0;
-        _recordingNoiseFloorDb = -44;
-        _lastRecordingLevel = 0.03;
-        _recordingLevels = _flatWave();
+        _voiceLimitStopTriggered = false;
       });
-      _amplitudeSub?.cancel();
-      _amplitudeSub = _audioRecorder
-          .onAmplitudeChanged(const Duration(milliseconds: 90))
-          .listen((amplitude) {
+      await _recordingDurationSub?.cancel();
+      _recordingDurationSub =
+          _recorderController.onCurrentDuration.listen((duration) {
         if (!mounted || !_recording) return;
-        _recordingAmplitudeSamples++;
-        final db = amplitude.current;
-        if (_recordingAmplitudeSamples <= 10 && db.isFinite) {
-          _recordingNoiseFloorDb = (_recordingNoiseFloorDb * 0.82 + db * 0.18)
-              .clamp(-60.0, -28.0)
-              .toDouble();
+        final seconds = duration.inSeconds.clamp(0, 60).toInt();
+        if (seconds != _recordingSeconds) {
+          setState(() => _recordingSeconds = seconds);
         }
-        final target = _recordingAmplitudeSamples < 6
-            ? 0.03
-            : _normalizeAmplitude(db, _recordingNoiseFloorDb);
-        final normalized = target <= 0.04
-            ? 0.03
-            : (_lastRecordingLevel * 0.58 + target * 0.42)
-                .clamp(0.03, 1.0)
-                .toDouble();
-        _lastRecordingLevel = normalized;
-        setState(() {
-          final next = [..._recordingLevels, normalized];
-          _recordingLevels =
-              next.length > 34 ? next.sublist(next.length - 34) : next;
-        });
+        if (duration >= _maxVoiceDuration && !_voiceLimitStopTriggered) {
+          _voiceLimitStopTriggered = true;
+          unawaited(_finishRecording(autoStopped: true));
+        }
       });
       _recordingTimer?.cancel();
-      _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (!mounted) return;
-        setState(() => _recordingSeconds++);
-        if (_recordingSeconds >= 60) {
-          unawaited(_finishRecording());
+      _recordingTimer = Timer(_maxVoiceDuration, () {
+        if (mounted && _recording && !_voiceLimitStopTriggered) {
+          _voiceLimitStopTriggered = true;
+          unawaited(_finishRecording(autoStopped: true));
         }
       });
     } catch (e) {
@@ -1003,57 +988,93 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
     }
   }
 
-  Future<void> _finishRecording() async {
+  Future<void> _finishRecording({bool autoStopped = false}) async {
     if (!_recording) return;
     _recordingTimer?.cancel();
-    await _amplitudeSub?.cancel();
-    _amplitudeSub = null;
-    final seconds = _recordingSeconds;
-    final levels = List<double>.from(_recordingLevels);
+    await _recordingDurationSub?.cancel();
+    _recordingDurationSub = null;
+    final elapsedBeforeStop = _recorderController.elapsedDuration;
+    final levels = List<double>.from(_recorderController.waveData);
     String? path;
     try {
-      path = await _audioRecorder.stop();
+      path = await _recorderController.stop(false);
     } catch (_) {
       path = _recordingPath;
     }
     if (!mounted) return;
-    final clientMessageId = _newPendingClientMessageId();
+    final recordedDuration =
+        _recorderController.recordedDuration > Duration.zero
+            ? _recorderController.recordedDuration
+            : elapsedBeforeStop > Duration.zero
+                ? elapsedBeforeStop
+                : Duration(seconds: _recordingSeconds);
+    final duration = recordedDuration > _maxVoiceDuration
+        ? _maxVoiceDuration
+        : recordedDuration;
     setState(() {
       _recording = false;
       _recordingPath = null;
       _recordingSeconds = 0;
-      _recordingAmplitudeSamples = 0;
-      _recordingNoiseFloorDb = -44;
-      _lastRecordingLevel = 0.03;
-      _recordingLevels = _flatWave();
+      _voiceLimitStopTriggered = false;
     });
+    _recorderController.reset();
 
-    try {
-      if (path == null || seconds < 1) {
-        if (path != null) {
-          unawaited(_deleteRecordingFile(path));
-        }
-        showInfoSnack(context, 'Voice note was too short.');
-        return;
+    if (path == null || duration.inMilliseconds < 700) {
+      if (path != null) {
+        unawaited(_deleteRecordingFile(path));
       }
-      _addPendingMessage(
-        _PendingRoomMessage(
-          localMediaPath: path,
-          label: 'sending voice...',
-          message: _buildPendingMessage(
-            clientMessageId: clientMessageId,
-            kind: 'audio',
-            text: 'voice:${seconds * 1000}',
-            ttlSeconds: _ttlSeconds,
-            audioDurationMs: seconds * 1000,
-            audioWaveformLevels: levels,
-          ),
+      showInfoSnack(context, 'Voice note was too short.');
+      return;
+    }
+
+    setState(() {
+      _voicePreviewPath = path;
+      _voicePreviewDuration = duration;
+      _voicePreviewLevels = levels
+          .where((level) => level.isFinite)
+          .take(42)
+          .map((level) => level.clamp(0.03, 1.0).toDouble())
+          .toList(growable: false);
+    });
+    if (autoStopped) {
+      showInfoSnack(context, 'Voice note reached 1:00. Send or delete it.');
+    }
+  }
+
+  Future<void> _sendVoicePreview() async {
+    final path = _voicePreviewPath;
+    if (path == null || _sendingVoiceNote || !_canSend) return;
+    final duration = _voicePreviewDuration > _maxVoiceDuration
+        ? _maxVoiceDuration
+        : _voicePreviewDuration;
+    final durationMs = duration.inMilliseconds.clamp(1, 60000).toInt();
+    final levels = List<double>.from(_voicePreviewLevels);
+    final clientMessageId = _newPendingClientMessageId();
+    setState(() {
+      _voicePreviewPath = null;
+      _voicePreviewDuration = Duration.zero;
+      _voicePreviewLevels = const [];
+      _sendingVoiceNote = true;
+    });
+    _addPendingMessage(
+      _PendingRoomMessage(
+        localMediaPath: path,
+        label: 'sending voice...',
+        message: _buildPendingMessage(
+          clientMessageId: clientMessageId,
+          kind: 'audio',
+          text: 'voice:$durationMs',
+          ttlSeconds: _ttlSeconds,
+          audioDurationMs: durationMs,
+          audioWaveformLevels: levels,
         ),
-      );
+      ),
+    );
+    try {
       final sent = await _service.sendAudio(
         roomId: widget.roomId,
         localPath: path,
-        durationMs: seconds * 1000,
+        durationMs: durationMs,
         ttlSeconds: _ttlSeconds,
         waveformLevels: levels,
         clientMessageId: clientMessageId,
@@ -1063,36 +1084,54 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
     } catch (e) {
       if (mounted) {
         _removePendingMessage(clientMessageId);
+        setState(() {
+          _voicePreviewPath = path;
+          _voicePreviewDuration = duration;
+          _voicePreviewLevels = levels;
+        });
         showErrorSnack(context, _friendlyError(e));
       }
-      if (path != null) {
-        unawaited(_deleteRecordingFile(path));
-      }
+    } finally {
+      if (mounted) setState(() => _sendingVoiceNote = false);
     }
   }
 
   Future<void> _cancelRecording({bool showSnack = true}) async {
     if (!_recording) return;
     _recordingTimer?.cancel();
-    await _amplitudeSub?.cancel();
-    _amplitudeSub = null;
+    await _recordingDurationSub?.cancel();
+    _recordingDurationSub = null;
     final path = _recordingPath;
+    String? stoppedPath;
     try {
-      await _audioRecorder.cancel();
+      stoppedPath = await _recorderController.stop();
     } catch (_) {}
     if (path != null) {
       unawaited(_deleteRecordingFile(path));
+    }
+    if (stoppedPath != null && stoppedPath != path) {
+      unawaited(_deleteRecordingFile(stoppedPath));
     }
     if (!mounted) return;
     setState(() {
       _recording = false;
       _recordingPath = null;
       _recordingSeconds = 0;
-      _recordingAmplitudeSamples = 0;
-      _recordingNoiseFloorDb = -44;
-      _lastRecordingLevel = 0.03;
-      _recordingLevels = _flatWave();
+      _voiceLimitStopTriggered = false;
     });
+    _recorderController.reset();
+    if (showSnack) showInfoSnack(context, 'Voice note discarded.');
+  }
+
+  Future<void> _discardVoicePreview({bool showSnack = true}) async {
+    final path = _voicePreviewPath;
+    if (path == null) return;
+    setState(() {
+      _voicePreviewPath = null;
+      _voicePreviewDuration = Duration.zero;
+      _voicePreviewLevels = const [];
+    });
+    unawaited(_deleteRecordingFile(path));
     if (showSnack) showInfoSnack(context, 'Voice note discarded.');
   }
 
@@ -1840,11 +1879,16 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
                                   onSend: _sendText,
                                   onOpenMediaMenu: _showMediaMenu,
                                   onStartRecording: _startRecording,
-                                  onStopRecording: _finishRecording,
+                                  onStopRecording: () => _finishRecording(),
                                   onCancelRecording: _cancelRecording,
+                                  onSendVoicePreview: _sendVoicePreview,
+                                  onDiscardVoicePreview: _discardVoicePreview,
                                   recording: _recording,
                                   recordingSeconds: _recordingSeconds,
-                                  recordingLevels: _recordingLevels,
+                                  recorderController: _recorderController,
+                                  voicePreviewPath: _voicePreviewPath,
+                                  voicePreviewDuration: _voicePreviewDuration,
+                                  sendingVoiceNote: _sendingVoiceNote,
                                 ),
                             ],
                           ),
@@ -2611,7 +2655,6 @@ class _MessageBubble extends StatelessWidget {
                       _PendingLocalMediaPreview(
                         kind: message.kind,
                         localPath: localMediaPath!,
-                        levels: message.audioWaveformLevels,
                         durationMs: message.audioDurationMs,
                       )
                     else if (pending)
@@ -2809,61 +2852,22 @@ class _PendingLocalMediaPreview extends StatelessWidget {
   const _PendingLocalMediaPreview({
     required this.kind,
     required this.localPath,
-    required this.levels,
     required this.durationMs,
   });
 
   final String kind;
   final String localPath;
-  final List<double> levels;
   final int? durationMs;
 
   @override
   Widget build(BuildContext context) {
     final width = _mediaPreviewWidth(context);
     if (kind == 'audio') {
-      return Container(
-        constraints: BoxConstraints(
-          minWidth: math.min(230.0, MediaQuery.sizeOf(context).width * 0.58),
-          maxWidth: math.min(330.0, MediaQuery.sizeOf(context).width * 0.72),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: _chatSurface,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: AppColors.fernGreen.withValues(alpha: 0.18),
-          ),
-        ),
-        child: Row(
-          children: [
-            const Icon(
-              Icons.mic_rounded,
-              color: AppColors.fernGreenDark,
-              size: 20,
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Expanded(
-              child: SizedBox(
-                height: 32,
-                child: _VoiceWaveform(
-                  levels: levels.isEmpty ? _quietWaveSeed(localPath) : levels,
-                  progress: 1,
-                  activeColor: AppColors.fernGreenDark,
-                  inactiveColor: AppColors.fernGreen.withValues(alpha: 0.16),
-                ),
-              ),
-            ),
-            const SizedBox(width: AppSpacing.sm),
-            Text(
-              _formatPendingDuration(durationMs),
-              style: AppTypography.textTheme.labelSmall?.copyWith(
-                color: AppColors.fernGreenDark,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
-        ),
+      return _VoiceMessagePlayer(
+        localPath: localPath,
+        durationMs: durationMs,
+        compact: true,
+        busy: true,
       );
     }
 
@@ -2906,11 +2910,6 @@ class _PendingLocalMediaPreview extends StatelessWidget {
       width: width,
       durationMs: durationMs,
     );
-  }
-
-  String _formatPendingDuration(int? durationMs) {
-    final seconds = ((durationMs ?? 0) ~/ 1000).clamp(0, 599).toInt();
-    return '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
   }
 }
 
@@ -3457,7 +3456,6 @@ class _EncryptedAudio extends StatefulWidget {
 }
 
 class _EncryptedAudioState extends State<_EncryptedAudio> {
-  final _player = AudioPlayer();
   File? _file;
   bool _loading = true;
   bool _failed = false;
@@ -3470,7 +3468,6 @@ class _EncryptedAudioState extends State<_EncryptedAudio> {
 
   @override
   void dispose() {
-    _player.dispose();
     final file = _file;
     if (file != null) {
       unawaited(_deleteTempFile(file));
@@ -3492,11 +3489,7 @@ class _EncryptedAudioState extends State<_EncryptedAudio> {
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/secure_room_${widget.message.id}.m4a');
       await file.writeAsBytes(bytes, flush: true);
-      await _player.setFilePath(file.path);
-      if (!mounted) {
-        await _player.dispose();
-        return;
-      }
+      if (!mounted) return;
       setState(() {
         _file = file;
         _loading = false;
@@ -3514,28 +3507,190 @@ class _EncryptedAudioState extends State<_EncryptedAudio> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return const _MediaLoadingBox(icon: Icons.mic_none_rounded);
-    if (_failed) return const _MediaErrorBox(text: 'Voice note unavailable');
+    if (_failed || _file == null) {
+      return const _MediaErrorBox(text: 'Voice note unavailable');
+    }
+    return _VoiceMessagePlayer(
+      localPath: _file!.path,
+      durationMs: widget.message.audioDurationMs,
+    );
+  }
+}
 
-    final duration =
-        Duration(milliseconds: widget.message.audioDurationMs ?? 0);
-    return StreamBuilder<PlayerState>(
-      stream: _player.playerStateStream,
-      builder: (context, snapshot) {
-        final playing = snapshot.data?.playing ?? false;
-        final levels = widget.message.audioWaveformLevels.isNotEmpty
-            ? widget.message.audioWaveformLevels
-            : _quietWaveSeed(widget.message.clientMessageId, count: 36);
+class _VoiceMessagePlayer extends StatefulWidget {
+  const _VoiceMessagePlayer({
+    required this.localPath,
+    this.durationMs,
+    this.compact = false,
+    this.busy = false,
+  });
+
+  final String localPath;
+  final int? durationMs;
+  final bool compact;
+  final bool busy;
+
+  @override
+  State<_VoiceMessagePlayer> createState() => _VoiceMessagePlayerState();
+}
+
+class _VoiceMessagePlayerState extends State<_VoiceMessagePlayer> {
+  late PlayerController _playerController;
+  StreamSubscription<PlayerState>? _stateSub;
+  StreamSubscription<int>? _durationSub;
+  StreamSubscription<void>? _completionSub;
+  bool _preparing = true;
+  bool _failed = false;
+  bool _playing = false;
+  int _positionMs = 0;
+  int _durationMs = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _durationMs = widget.durationMs ?? 0;
+    _createController();
+    unawaited(_prepare());
+  }
+
+  @override
+  void didUpdateWidget(covariant _VoiceMessagePlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.localPath != widget.localPath) {
+      unawaited(_reloadForNewFile());
+      return;
+    }
+    final durationMs = widget.durationMs;
+    if (durationMs != null && durationMs > 0 && durationMs != _durationMs) {
+      _durationMs = durationMs;
+    }
+  }
+
+  @override
+  void dispose() {
+    _stateSub?.cancel();
+    _durationSub?.cancel();
+    _completionSub?.cancel();
+    _playerController.dispose();
+    super.dispose();
+  }
+
+  void _createController() {
+    _playerController = PlayerController()
+      ..updateFrequency =
+          widget.compact ? UpdateFrequency.medium : UpdateFrequency.high;
+    _stateSub = _playerController.onPlayerStateChanged.listen((state) {
+      if (!mounted) return;
+      setState(() => _playing = state.isPlaying);
+    });
+    _durationSub = _playerController.onCurrentDurationChanged.listen((ms) {
+      if (!mounted) return;
+      setState(() {
+        _positionMs = ms.clamp(0, math.max(_durationMs, ms)).toInt();
+      });
+    });
+    _completionSub = _playerController.onCompletion.listen((_) {
+      if (!mounted) return;
+      setState(() {
+        _playing = false;
+        if (_durationMs > 0) _positionMs = _durationMs;
+      });
+    });
+  }
+
+  Future<void> _reloadForNewFile() async {
+    await _stateSub?.cancel();
+    await _durationSub?.cancel();
+    await _completionSub?.cancel();
+    _playerController.dispose();
+    if (!mounted) return;
+    setState(() {
+      _preparing = true;
+      _failed = false;
+      _playing = false;
+      _positionMs = 0;
+      _durationMs = widget.durationMs ?? 0;
+    });
+    _createController();
+    await _prepare();
+  }
+
+  Future<void> _prepare() async {
+    try {
+      final file = File(widget.localPath);
+      if (!await file.exists() || await file.length() <= 0) {
+        throw Exception('Voice file is missing.');
+      }
+      await _playerController.preparePlayer(
+        path: widget.localPath,
+        shouldExtractWaveform: true,
+        noOfSamples: widget.compact ? 40 : 54,
+        volume: 1,
+      );
+      await _playerController.setFinishMode(finishMode: FinishMode.pause);
+      final detectedDuration = _playerController.maxDuration > 0
+          ? _playerController.maxDuration
+          : await _playerController.getDuration();
+      if (!mounted) return;
+      setState(() {
+        _durationMs = widget.durationMs != null && widget.durationMs! > 0
+            ? widget.durationMs!
+            : math.max(0, detectedDuration);
+        _preparing = false;
+        _failed = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _preparing = false;
+        _failed = true;
+      });
+    }
+  }
+
+  Future<void> _togglePlayback() async {
+    if (_preparing || _failed) return;
+    try {
+      if (_playing) {
+        await _playerController.pausePlayer();
+        return;
+      }
+      if (_durationMs > 0 && _positionMs >= _durationMs - 180) {
+        await _playerController.seekTo(0);
+        if (mounted) setState(() => _positionMs = 0);
+      }
+      await _playerController.startPlayer(forceRefresh: false);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _failed = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_failed) {
+      return const _MediaErrorBox(text: 'Voice note unavailable');
+    }
+    final current = Duration(milliseconds: math.max(0, _positionMs));
+    final total = Duration(milliseconds: math.max(0, _durationMs));
+    final playerHeight = widget.compact ? 32.0 : 38.0;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final fallbackWidth =
+            widget.compact ? 184.0 : _mediaPreviewWidth(context);
+        final availableWidth =
+            constraints.hasBoundedWidth ? constraints.maxWidth : fallbackWidth;
+        final width = math.max(156.0, math.min(fallbackWidth, availableWidth));
+        final waveformWidth = math.max(78.0, width - 106);
+
         return Container(
-          constraints: BoxConstraints(
-            minWidth: math.min(230.0, MediaQuery.sizeOf(context).width * 0.58),
-            maxWidth: math.min(330.0, MediaQuery.sizeOf(context).width * 0.72),
-          ),
-          padding: const EdgeInsets.symmetric(
-            horizontal: 6,
-            vertical: 5,
+          width: width,
+          padding: EdgeInsets.symmetric(
+            horizontal: widget.compact ? 7 : 9,
+            vertical: widget.compact ? 5 : 7,
           ),
           decoration: BoxDecoration(
-            color: _chatSurface,
+            color: AppColors.fernGreenLight.withValues(alpha: 0.74),
             borderRadius: BorderRadius.circular(999),
             border: Border.all(
               color: AppColors.fernGreen.withValues(alpha: 0.18),
@@ -3545,69 +3700,76 @@ class _EncryptedAudioState extends State<_EncryptedAudio> {
             mainAxisSize: MainAxisSize.min,
             children: [
               SizedBox(
-                width: 38,
-                height: 38,
-                child: IconButton.filled(
-                  visualDensity: VisualDensity.compact,
+                width: widget.compact ? 34 : 38,
+                height: widget.compact ? 34 : 38,
+                child: IconButton(
+                  tooltip: _playing ? 'Pause voice note' : 'Play voice note',
+                  onPressed: _preparing ? null : _togglePlayback,
+                  padding: EdgeInsets.zero,
                   style: IconButton.styleFrom(
-                    backgroundColor: AppColors.fernGreen,
-                    foregroundColor: AppColors.white,
+                    backgroundColor: AppColors.white,
+                    foregroundColor: AppColors.fernGreenDark,
+                    disabledForegroundColor: AppColors.textTertiary,
                   ),
-                  onPressed: () async {
-                    if (playing) {
-                      await _player.pause();
-                    } else {
-                      if (_player.position >=
-                          (_player.duration ?? Duration.zero)) {
-                        await _player.seek(Duration.zero);
-                      }
-                      await _player.play();
-                    }
-                  },
                   icon: Icon(
-                    playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                    size: 20,
+                    _playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                    size: widget.compact ? 20 : 23,
                   ),
                 ),
               ),
-              const SizedBox(width: AppSpacing.xs),
-              Expanded(
-                child: StreamBuilder<Duration>(
-                  stream: _player.positionStream,
-                  builder: (context, positionSnapshot) {
-                    final position = positionSnapshot.data ?? Duration.zero;
-                    final total = _player.duration ?? duration;
-                    final progress = total.inMilliseconds <= 0
-                        ? 0.0
-                        : (position.inMilliseconds / total.inMilliseconds)
-                            .clamp(0.0, 1.0)
-                            .toDouble();
-                    return Row(
-                      children: [
-                        Expanded(
-                          child: SizedBox(
-                            height: 32,
-                            child: _VoiceWaveform(
-                              levels: levels,
-                              progress: progress,
-                              activeColor: AppColors.fernGreenDark,
-                              inactiveColor:
-                                  AppColors.fernGreen.withValues(alpha: 0.16),
+              const SizedBox(width: 7),
+              SizedBox(
+                width: waveformWidth,
+                height: playerHeight,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    AudioFileWaveforms(
+                      size: Size(waveformWidth, playerHeight),
+                      playerController: _playerController,
+                      waveformType: WaveformType.fitWidth,
+                      enableSeekGesture: !_preparing,
+                      continuousWaveform: true,
+                      playerWaveStyle: _voicePlayerWaveStyle,
+                    ),
+                    if (_preparing || widget.busy)
+                      Positioned.fill(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: AppColors.fernGreenLight.withValues(
+                              alpha: 0.58,
+                            ),
+                          ),
+                          child: Center(
+                            child: SizedBox(
+                              width: widget.compact ? 14 : 16,
+                              height: widget.compact ? 14 : 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: widget.busy
+                                    ? AppColors.charcoal
+                                    : AppColors.fernGreenDark,
+                              ),
                             ),
                           ),
                         ),
-                        const SizedBox(width: AppSpacing.sm),
-                        Text(
-                          _formatAudioDuration(
-                            position > Duration.zero ? position : total,
-                          ),
-                          style: AppTypography.textTheme.labelSmall?.copyWith(
-                            color: AppColors.fernGreenDark,
-                          ),
-                        ),
-                      ],
-                    );
-                  },
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 7),
+              SizedBox(
+                width: widget.compact ? 35 : 39,
+                child: Text(
+                  total > Duration.zero
+                      ? _formatShortDuration(_playing ? current : total)
+                      : '0:00',
+                  textAlign: TextAlign.right,
+                  maxLines: 1,
+                  style: AppTypography.textTheme.labelSmall?.copyWith(
+                    color: AppColors.fernGreenDark,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
             ],
@@ -3615,11 +3777,6 @@ class _EncryptedAudioState extends State<_EncryptedAudio> {
         );
       },
     );
-  }
-
-  String _formatAudioDuration(Duration duration) {
-    final seconds = duration.inSeconds.clamp(0, 599).toInt();
-    return '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
   }
 }
 
@@ -3771,9 +3928,14 @@ class _Composer extends StatelessWidget {
     required this.onStartRecording,
     required this.onStopRecording,
     required this.onCancelRecording,
+    required this.onSendVoicePreview,
+    required this.onDiscardVoicePreview,
     required this.recording,
     required this.recordingSeconds,
-    required this.recordingLevels,
+    required this.recorderController,
+    required this.voicePreviewPath,
+    required this.voicePreviewDuration,
+    required this.sendingVoiceNote,
   });
 
   final TextEditingController controller;
@@ -3785,9 +3947,14 @@ class _Composer extends StatelessWidget {
   final VoidCallback onStartRecording;
   final VoidCallback onStopRecording;
   final Future<void> Function() onCancelRecording;
+  final Future<void> Function() onSendVoicePreview;
+  final Future<void> Function() onDiscardVoicePreview;
   final bool recording;
   final int recordingSeconds;
-  final List<double> recordingLevels;
+  final RecorderController recorderController;
+  final String? voicePreviewPath;
+  final Duration voicePreviewDuration;
+  final bool sendingVoiceNote;
 
   @override
   Widget build(BuildContext context) {
@@ -3820,139 +3987,151 @@ class _Composer extends StatelessWidget {
           duration: const Duration(milliseconds: 220),
           switchInCurve: Curves.easeOutCubic,
           switchOutCurve: Curves.easeInCubic,
-          child: recording
-              ? _RecordingComposer(
-                  seconds: recordingSeconds,
-                  sending: sending,
-                  onCancel: onCancelRecording,
-                  onStop: onStopRecording,
-                  levels: recordingLevels,
+          child: voicePreviewPath != null
+              ? _VoiceReviewComposer(
+                  localPath: voicePreviewPath!,
+                  duration: voicePreviewDuration,
+                  sending: sendingVoiceNote,
+                  onDelete: onDiscardVoicePreview,
+                  onSend: onSendVoicePreview,
                 )
-              : ValueListenableBuilder<TextEditingValue>(
-                  valueListenable: controller,
-                  builder: (context, value, _) {
-                    final hasText = value.text.trim().isNotEmpty;
-                    final actionColor =
-                        hasText ? AppColors.charcoal : AppColors.fernGreen;
-                    return DecoratedBox(
-                      key: const ValueKey('text-composer'),
-                      decoration: BoxDecoration(
-                        color: AppColors.white,
-                        borderRadius: BorderRadius.circular(30),
-                        border: Border.all(
-                          color: AppColors.borderSubtle.withValues(alpha: 0.85),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.045),
-                            blurRadius: 24,
-                            offset: const Offset(0, 10),
-                          ),
-                        ],
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(5),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            SizedBox(
-                              width: 42,
-                              height: 42,
-                              child: IconButton(
-                                tooltip: 'Attach media',
-                                onPressed: enabled && !sending
-                                    ? onOpenMediaMenu
-                                    : null,
-                                style: IconButton.styleFrom(
-                                  backgroundColor: AppColors.fernGreenLight
-                                      .withValues(alpha: 0.72),
-                                  foregroundColor: AppColors.fernGreenDark,
-                                  disabledForegroundColor:
-                                      AppColors.textTertiary,
-                                ),
-                                icon: const Icon(Icons.add_rounded, size: 25),
-                              ),
+              : recording
+                  ? _RecordingComposer(
+                      seconds: recordingSeconds,
+                      sending: sending,
+                      onCancel: onCancelRecording,
+                      onStop: onStopRecording,
+                      recorderController: recorderController,
+                    )
+                  : ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: controller,
+                      builder: (context, value, _) {
+                        final hasText = value.text.trim().isNotEmpty;
+                        final actionColor =
+                            hasText ? AppColors.charcoal : AppColors.fernGreen;
+                        return DecoratedBox(
+                          key: const ValueKey('text-composer'),
+                          decoration: BoxDecoration(
+                            color: AppColors.white,
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(
+                              color: AppColors.borderSubtle
+                                  .withValues(alpha: 0.85),
                             ),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: TextField(
-                                controller: controller,
-                                minLines: 1,
-                                maxLines: 5,
-                                enabled: enabled && !sending,
-                                textInputAction: TextInputAction.newline,
-                                cursorColor: AppColors.fernGreen,
-                                maxLength:
-                                    SecureRoomService.maxRoomTextCharacters,
-                                maxLengthEnforcement:
-                                    MaxLengthEnforcement.enforced,
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.deny(
-                                    RegExp(
-                                      r'[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u202A-\u202E\u2066-\u2069]',
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.045),
+                                blurRadius: 24,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(5),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                SizedBox(
+                                  width: 42,
+                                  height: 42,
+                                  child: IconButton(
+                                    tooltip: 'Attach media',
+                                    onPressed: enabled && !sending
+                                        ? onOpenMediaMenu
+                                        : null,
+                                    style: IconButton.styleFrom(
+                                      backgroundColor: AppColors.fernGreenLight
+                                          .withValues(alpha: 0.72),
+                                      foregroundColor: AppColors.fernGreenDark,
+                                      disabledForegroundColor:
+                                          AppColors.textTertiary,
+                                    ),
+                                    icon:
+                                        const Icon(Icons.add_rounded, size: 25),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: TextField(
+                                    controller: controller,
+                                    minLines: 1,
+                                    maxLines: 5,
+                                    enabled: enabled && !sending,
+                                    textInputAction: TextInputAction.newline,
+                                    cursorColor: AppColors.fernGreen,
+                                    maxLength:
+                                        SecureRoomService.maxRoomTextCharacters,
+                                    maxLengthEnforcement:
+                                        MaxLengthEnforcement.enforced,
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.deny(
+                                        RegExp(
+                                          r'[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u202A-\u202E\u2066-\u2069]',
+                                        ),
+                                      ),
+                                    ],
+                                    style: AppTypography.textTheme.bodyMedium
+                                        ?.copyWith(
+                                      color: _softInk,
+                                    ),
+                                    decoration: InputDecoration(
+                                      counterText: '',
+                                      hintText: enabled
+                                          ? 'Message expires in ${ttlSeconds ~/ 60} min'
+                                          : 'Room is destroyed',
+                                      hintStyle: AppTypography
+                                          .textTheme.bodyMedium
+                                          ?.copyWith(
+                                        color: AppColors.textTertiary,
+                                      ),
+                                      border: InputBorder.none,
+                                      isDense: true,
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                        horizontal: AppSpacing.xs,
+                                        vertical: 12,
+                                      ),
                                     ),
                                   ),
-                                ],
-                                style: AppTypography.textTheme.bodyMedium
-                                    ?.copyWith(
-                                  color: _softInk,
                                 ),
-                                decoration: InputDecoration(
-                                  counterText: '',
-                                  hintText: enabled
-                                      ? 'Message expires in ${ttlSeconds ~/ 60} min'
-                                      : 'Room is destroyed',
-                                  hintStyle: AppTypography.textTheme.bodyMedium
-                                      ?.copyWith(
-                                    color: AppColors.textTertiary,
+                                const SizedBox(width: 4),
+                                SizedBox(
+                                  width: 44,
+                                  height: 44,
+                                  child: FilledButton(
+                                    onPressed: enabled && !sending
+                                        ? (hasText ? onSend : onStartRecording)
+                                        : null,
+                                    style: FilledButton.styleFrom(
+                                      shape: const CircleBorder(),
+                                      padding: EdgeInsets.zero,
+                                      backgroundColor: actionColor,
+                                      foregroundColor: AppColors.white,
+                                      disabledBackgroundColor:
+                                          AppColors.borderSubtle,
+                                    ),
+                                    child: sending
+                                        ? const SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: AppColors.white,
+                                            ),
+                                          )
+                                        : Icon(
+                                            hasText
+                                                ? Icons.send_rounded
+                                                : Icons.mic_rounded,
+                                          ),
                                   ),
-                                  border: InputBorder.none,
-                                  isDense: true,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: AppSpacing.xs,
-                                    vertical: 12,
-                                  ),
                                 ),
-                              ),
+                              ],
                             ),
-                            const SizedBox(width: 4),
-                            SizedBox(
-                              width: 44,
-                              height: 44,
-                              child: FilledButton(
-                                onPressed: enabled && !sending
-                                    ? (hasText ? onSend : onStartRecording)
-                                    : null,
-                                style: FilledButton.styleFrom(
-                                  shape: const CircleBorder(),
-                                  padding: EdgeInsets.zero,
-                                  backgroundColor: actionColor,
-                                  foregroundColor: AppColors.white,
-                                  disabledBackgroundColor:
-                                      AppColors.borderSubtle,
-                                ),
-                                child: sending
-                                    ? const SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: AppColors.white,
-                                        ),
-                                      )
-                                    : Icon(
-                                        hasText
-                                            ? Icons.send_rounded
-                                            : Icons.mic_rounded,
-                                      ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
+                          ),
+                        );
+                      },
+                    ),
         ),
       ),
     );
@@ -3965,14 +4144,14 @@ class _RecordingComposer extends StatelessWidget {
     required this.sending,
     required this.onCancel,
     required this.onStop,
-    required this.levels,
+    required this.recorderController,
   });
 
   final int seconds;
   final bool sending;
   final Future<void> Function() onCancel;
   final VoidCallback onStop;
-  final List<double> levels;
+  final RecorderController recorderController;
 
   @override
   Widget build(BuildContext context) {
@@ -4016,11 +4195,15 @@ class _RecordingComposer extends StatelessWidget {
             Expanded(
               child: SizedBox(
                 height: 38,
-                child: _VoiceWaveform(
-                  levels: levels,
-                  progress: 1,
-                  activeColor: AppColors.fernGreenDark,
-                  inactiveColor: AppColors.fernGreen.withValues(alpha: 0.16),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final width = math.max(80.0, constraints.maxWidth);
+                    return AudioWaveforms(
+                      size: Size(width, 38),
+                      recorderController: recorderController,
+                      waveStyle: _voiceWaveStyle,
+                    );
+                  },
                 ),
               ),
             ),
@@ -4038,6 +4221,95 @@ class _RecordingComposer extends StatelessWidget {
               height: 44,
               child: FilledButton(
                 onPressed: sending ? null : onStop,
+                style: FilledButton.styleFrom(
+                  shape: const CircleBorder(),
+                  padding: EdgeInsets.zero,
+                  backgroundColor: AppColors.charcoal,
+                  foregroundColor: AppColors.white,
+                ),
+                child: sending
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.white,
+                        ),
+                      )
+                    : const Icon(Icons.check_rounded),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VoiceReviewComposer extends StatelessWidget {
+  const _VoiceReviewComposer({
+    required this.localPath,
+    required this.duration,
+    required this.sending,
+    required this.onDelete,
+    required this.onSend,
+  });
+
+  final String localPath;
+  final Duration duration;
+  final bool sending;
+  final Future<void> Function() onDelete;
+  final Future<void> Function() onSend;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      key: const ValueKey('voice-review-composer'),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(
+          color: AppColors.fernGreen.withValues(alpha: 0.22),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.045),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(5),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 42,
+              height: 42,
+              child: IconButton(
+                tooltip: 'Delete voice note',
+                onPressed: sending ? null : onDelete,
+                style: IconButton.styleFrom(
+                  backgroundColor: AppColors.sunsetCoralLight,
+                  foregroundColor: AppColors.sunsetCoralDark,
+                ),
+                icon: const Icon(Icons.delete_outline_rounded),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
+              child: _VoiceMessagePlayer(
+                localPath: localPath,
+                durationMs: duration.inMilliseconds,
+                compact: true,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.sm),
+            SizedBox(
+              width: 44,
+              height: 44,
+              child: FilledButton(
+                onPressed: sending ? null : onSend,
                 style: FilledButton.styleFrom(
                   shape: const CircleBorder(),
                   padding: EdgeInsets.zero,
@@ -4143,80 +4415,6 @@ class _MediaMenuIcon extends StatelessWidget {
       ),
       child: Icon(icon, color: AppColors.fernGreenDark),
     );
-  }
-}
-
-class _VoiceWaveform extends StatelessWidget {
-  const _VoiceWaveform({
-    required this.levels,
-    required this.progress,
-    required this.activeColor,
-    required this.inactiveColor,
-  });
-
-  final List<double> levels;
-  final double progress;
-  final Color activeColor;
-  final Color inactiveColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _VoiceWaveformPainter(
-        levels: levels.isEmpty ? _quietWaveSeed('empty') : levels,
-        progress: progress.clamp(0.0, 1.0).toDouble(),
-        activeColor: activeColor,
-        inactiveColor: inactiveColor,
-      ),
-    );
-  }
-}
-
-class _VoiceWaveformPainter extends CustomPainter {
-  const _VoiceWaveformPainter({
-    required this.levels,
-    required this.progress,
-    required this.activeColor,
-    required this.inactiveColor,
-  });
-
-  final List<double> levels;
-  final double progress;
-  final Color activeColor;
-  final Color inactiveColor;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (levels.isEmpty || size.isEmpty) return;
-    final barWidth = math.max(2.0, size.width / (levels.length * 2.4));
-    final gap = barWidth * 1.35;
-    final totalWidth = levels.length * barWidth + (levels.length - 1) * gap;
-    var x = math.max(0.0, (size.width - totalWidth) / 2);
-    final centerY = size.height / 2;
-    final activeUntil = (levels.length * progress).ceil();
-
-    for (var i = 0; i < levels.length; i++) {
-      final level = levels[i].clamp(0.08, 1.0).toDouble();
-      final height = math.max(5.0, level * size.height);
-      final paint = Paint()
-        ..color = i < activeUntil ? activeColor : inactiveColor
-        ..strokeCap = StrokeCap.round
-        ..strokeWidth = barWidth;
-      canvas.drawLine(
-        Offset(x, centerY - height / 2),
-        Offset(x, centerY + height / 2),
-        paint,
-      );
-      x += barWidth + gap;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _VoiceWaveformPainter oldDelegate) {
-    return oldDelegate.levels != levels ||
-        oldDelegate.progress != progress ||
-        oldDelegate.activeColor != activeColor ||
-        oldDelegate.inactiveColor != inactiveColor;
   }
 }
 

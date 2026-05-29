@@ -238,18 +238,128 @@ class _BrandHeader extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 6),
-            Text(
-              context.tx('login.subtitle'),
-              style: GoogleFonts.josefinSans(
-                fontSize: 14,
-                color: AppColors.textSecondary,
-                height: 1.35,
-              ),
+            Wrap(
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 5,
+              runSpacing: 2,
+              children: [
+                _VerifiedClaimsStroke(
+                  label: context.tx('login.subtitleLead'),
+                ),
+                Text(
+                  context.tx('login.subtitleTail'),
+                  style: GoogleFonts.josefinSans(
+                    fontSize: 14,
+                    color: AppColors.textSecondary,
+                    height: 1.35,
+                  ),
+                ),
+              ],
             ),
           ],
         );
       },
     );
+  }
+}
+
+class _VerifiedClaimsStroke extends StatefulWidget {
+  const _VerifiedClaimsStroke({required this.label});
+  final String label;
+
+  @override
+  State<_VerifiedClaimsStroke> createState() => _VerifiedClaimsStrokeState();
+}
+
+class _VerifiedClaimsStrokeState extends State<_VerifiedClaimsStroke>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _stroke;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 780),
+    );
+    _stroke = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    );
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _stroke,
+      builder: (context, child) {
+        return CustomPaint(
+          painter: _VerifiedClaimsStrokePainter(progress: _stroke.value),
+          child: child,
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+        child: Text(
+          widget.label,
+          style: GoogleFonts.josefinSans(
+            fontSize: 14,
+            color: AppColors.charcoal,
+            height: 1.35,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _VerifiedClaimsStrokePainter extends CustomPainter {
+  const _VerifiedClaimsStrokePainter({required this.progress});
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (progress <= 0) return;
+
+    final paint = Paint()
+      ..color = AppColors.fernGreenLight.withValues(alpha: 0.86)
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..strokeWidth = size.height * 0.48;
+
+    final maxWidth = size.width * progress;
+    final y = size.height * 0.62;
+    final path = Path()
+      ..moveTo(3, y)
+      ..cubicTo(
+        size.width * 0.28,
+        y - 1.8,
+        size.width * 0.62,
+        y + 2.2,
+        size.width - 3,
+        y - 0.6,
+      );
+
+    canvas.save();
+    canvas.clipRect(Rect.fromLTWH(0, 0, maxWidth, size.height));
+    canvas.drawPath(path, paint);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _VerifiedClaimsStrokePainter oldDelegate) {
+    return oldDelegate.progress != progress;
   }
 }
 

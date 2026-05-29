@@ -93,6 +93,8 @@ class _ProfileScreenState extends State<ProfileScreen>
 // opens the edit profile bottom sheet
 // covers display name, username (requires otp), gender, and dob (requires otp)
   Future<void> _showEditProfileSheet() async {
+    if (_isLoading || _profile == null || _isSavingProfile) return;
+
     final client = Supabase.instance.client;
     final currentUsername = _profile?['username'] as String? ?? '';
     final currentDisplay = _profile?['display_name'] as String? ?? '';
@@ -1818,6 +1820,8 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   void _showOwnProfileMenu() {
+    if (_isLoading || _profile == null) return;
+
     showModalBottomSheet<void>(
       context: context,
       useSafeArea: true,
@@ -1955,6 +1959,7 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   @override
   Widget build(BuildContext context) {
+    final profileReady = !_isLoading && _profile != null;
     final swipeLocation = _isOwnProfile ? '/profile' : '/feed';
     final bottomNavLocation = _isOwnProfile
         ? '/profile'
@@ -1981,14 +1986,20 @@ class _ProfileScreenState extends State<ProfileScreen>
                   if (_isOwnProfile) ...[
                     IconButton(
                       icon: const Icon(Icons.edit_outlined, size: 20),
-                      onPressed: () => _showEditProfileSheet(),
-                      color: AppColors.charcoal,
+                      onPressed: profileReady ? _showEditProfileSheet : null,
+                      color: profileReady
+                          ? AppColors.charcoal
+                          : AppColors.textTertiary,
+                      disabledColor: AppColors.textTertiary,
                       tooltip: context.l('Edit profile'),
                     ),
                     IconButton(
                       icon: const Icon(Icons.more_horiz_rounded, size: 24),
-                      onPressed: _showOwnProfileMenu,
-                      color: AppColors.charcoal,
+                      onPressed: profileReady ? _showOwnProfileMenu : null,
+                      color: profileReady
+                          ? AppColors.charcoal
+                          : AppColors.textTertiary,
+                      disabledColor: AppColors.textTertiary,
                       tooltip: context.l('Profile menu'),
                     ),
                   ] else if (_profile != null) ...[
