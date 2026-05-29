@@ -33,6 +33,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../../../core/services/video_playback_coordinator.dart';
 import '../widgets/echo_video_player.dart';
 import '../widgets/link_preview_card.dart';
+import '../services/solana_record_retry_service.dart';
 
 class EchoDetailScreen extends StatefulWidget {
   const EchoDetailScreen({
@@ -61,6 +62,8 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
   bool _isContextsLoading = true;
   bool _isRepliesLoading = true;
   bool _previewUnavailable = false;
+  bool _isRetryingPostRecord = false;
+  bool _isRetryingVerificationRecord = false;
   String? _error;
 
   // realtime subscription
@@ -465,6 +468,77 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
     );
   }
 
+  Future<void> _retryPostRecord(EchoEntity echo) async {
+    if (_isRetryingPostRecord) return;
+    setState(() {
+      _isRetryingPostRecord = true;
+      _liveSolanaStatus = 'recording';
+    });
+    try {
+      final signature =
+          await SolanaRecordRetryService.retryEchoCreation(echo.id);
+      if (!mounted) return;
+      setState(() {
+        if (signature != null) {
+          _liveCreatedRecordTx = signature;
+          _liveSolanaStatus = 'anchored';
+        } else {
+          _liveSolanaStatus = 'recording';
+        }
+      });
+      showSuccessSnack(
+        context,
+        signature == null
+            ? 'Solana record retry started.'
+            : 'Solana post record anchored.',
+      );
+      unawaited(_loadEcho());
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _liveSolanaStatus = 'failed');
+      showErrorSnack(context, 'Could not retry the Solana post record.');
+    } finally {
+      if (mounted) setState(() => _isRetryingPostRecord = false);
+    }
+  }
+
+  Future<void> _retryVerificationRecord(EchoEntity echo) async {
+    if (_isRetryingVerificationRecord) return;
+    setState(() {
+      _isRetryingVerificationRecord = true;
+      _liveVerifiedRecordStatus = 'recording';
+    });
+    try {
+      final signature =
+          await SolanaRecordRetryService.retryEchoVerification(echo.id);
+      if (!mounted) return;
+      setState(() {
+        if (signature != null) {
+          _liveVerifiedRecordTx = signature;
+          _liveVerifiedRecordStatus = 'anchored';
+        } else {
+          _liveVerifiedRecordStatus = 'recording';
+        }
+      });
+      showSuccessSnack(
+        context,
+        signature == null
+            ? 'Solana verification retry started.'
+            : 'Solana verification record anchored.',
+      );
+      unawaited(_loadEcho());
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _liveVerifiedRecordStatus = 'failed');
+      showErrorSnack(
+        context,
+        'Could not retry the Solana verification record.',
+      );
+    } finally {
+      if (mounted) setState(() => _isRetryingVerificationRecord = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) return const Scaffold(body: _DetailShimmer());
@@ -502,6 +576,19 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
     final previewUrl =
         extractFirstUrl('${displayed.title}\n${displayed.content}');
     final hideUrlText = previewUrl != null && !_previewUnavailable;
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    final canRetryPostRecord = _canRetrySolanaRecord(
+      currentUserId: currentUserId,
+      authorId: displayed.userId,
+      status: displayed.solanaStatus,
+      signature: displayed.createdRecordTx,
+    );
+    final canRetryVerificationRecord = _canRetrySolanaRecord(
+      currentUserId: currentUserId,
+      authorId: displayed.userId,
+      status: displayed.verifiedRecordStatus,
+      signature: displayed.verifiedRecordTx,
+    );
 
     return Scaffold(
       backgroundColor: AppColors.white,
@@ -687,6 +774,10 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                             signature: displayed.createdRecordTx,
                             label: context.l('Solana post'),
                             compact: false,
+                            isRetrying: _isRetryingPostRecord,
+                            onRetry: canRetryPostRecord
+                                ? () => _retryPostRecord(displayed)
+                                : null,
                           ),
                           if (displayed.status == EchoStatus.verified)
                             SolanaStatusChip(
@@ -694,6 +785,10 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                               signature: displayed.verifiedRecordTx,
                               label: context.l('Solana verification'),
                               compact: false,
+                              isRetrying: _isRetryingVerificationRecord,
+                              onRetry: canRetryVerificationRecord
+                                  ? () => _retryVerificationRecord(displayed)
+                                  : null,
                             ),
                         ],
                       ),
@@ -1132,6 +1227,11 @@ class _PublicContextSectionState extends State<_PublicContextSection> {
     final closesAt = echo.publicContextClosesAt;
     final isClosed = echo.publicVerdict != 'open' ||
         (closesAt != null && !closesAt.isAfter(now));
+    final windowEndedOpen = echo.publicVerdict == 'open' &&
+        closesAt != null &&
+        !closesAt.isAfter(now);
+    final headerVerdict = windowEndedOpen ? 'Window closed' : verdict;
+    final headerColor = windowEndedOpen ? const Color(0xFF8A756B) : color;
 
     void openSheet(String stance) {
       if (isOwnEcho) {
@@ -1186,14 +1286,16 @@ class _PublicContextSectionState extends State<_PublicContextSection> {
                 vertical: 6,
               ),
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
+                color: headerColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-                border: Border.all(color: color.withValues(alpha: 0.35)),
+                border: Border.all(
+                  color: headerColor.withValues(alpha: 0.35),
+                ),
               ),
               child: Text(
-                verdict,
+                headerVerdict,
                 style: AppTypography.textTheme.labelSmall?.copyWith(
-                  color: color,
+                  color: headerColor,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -1212,15 +1314,35 @@ class _PublicContextSectionState extends State<_PublicContextSection> {
         LayoutBuilder(
           builder: (context, constraints) {
             final stacked = constraints.maxWidth < 360;
+            final canAddContext = !isClosed && !isOwnEcho;
+            final disabledStyle = OutlinedButton.styleFrom(
+              foregroundColor: AppColors.textTertiary,
+              disabledForegroundColor: AppColors.textTertiary,
+              side: BorderSide(
+                color: AppColors.borderMedium.withValues(alpha: 0.7),
+              ),
+            );
             final supportButton = OutlinedButton.icon(
-              onPressed: () => openSheet('support'),
+              onPressed: canAddContext ? () => openSheet('support') : null,
+              style: canAddContext ? null : disabledStyle,
               icon: const Icon(Icons.thumb_up_alt_outlined, size: 16),
-              label: const Text('Support with context'),
+              label: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  isClosed ? 'Window closed' : 'Support with context',
+                ),
+              ),
             );
             final challengeButton = OutlinedButton.icon(
-              onPressed: () => openSheet('challenge'),
+              onPressed: canAddContext ? () => openSheet('challenge') : null,
+              style: canAddContext ? null : disabledStyle,
               icon: const Icon(Icons.report_problem_outlined, size: 16),
-              label: const Text('Challenge with context'),
+              label: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  isClosed ? 'Window closed' : 'Challenge with context',
+                ),
+              ),
             );
 
             if (stacked) {
@@ -1512,6 +1634,8 @@ class _ContextEvaluationNote extends StatelessWidget {
         'Decided by public context${decidedAt == null ? '' : ' ${Formatters.timeAgo(decidedAt)}'}.',
       _ when echo.publicContextDecisionReason == 'insufficient_context' =>
         'The review window ended without enough public context, so it is not publicly supported.',
+      _ when closesAt != null && !closesAt.isAfter(DateTime.now()) =>
+        'The public context window has ended. Existing support and challenge context is still visible.',
       _ when closesAt != null =>
         'Evaluation closes ${_relativeWindow(closesAt)} or after $remaining more context point${remaining == 1 ? '' : 's'}.',
       _ =>
@@ -1570,7 +1694,7 @@ class _ContextBalanceBar extends StatelessWidget {
                       ((1 - supportShare) * 1000).round().clamp(1, 999).toInt(),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 260),
-                    color: AppColors.sunsetCoral,
+                    color: const Color(0xFFE08A76),
                   ),
                 ),
               ],
@@ -1593,7 +1717,7 @@ class _ContextBalanceBar extends StatelessWidget {
             ),
             _ContextBalanceLabel(
               '$challenge challenge',
-              color: AppColors.sunsetCoralDark,
+              color: const Color(0xFF9E4A38),
             ),
           ],
         ),
@@ -1909,6 +2033,17 @@ Color _publicVerdictColor(String verdict) => switch (verdict) {
       'contested' => AppColors.statusControversial,
       _ => AppColors.textTertiary,
     };
+
+bool _canRetrySolanaRecord({
+  required String? currentUserId,
+  required String authorId,
+  required String status,
+  required String? signature,
+}) {
+  if (currentUserId == null || currentUserId != authorId) return false;
+  if (signature != null && signature.isNotEmpty) return false;
+  return status == 'failed' || status == 'pending';
+}
 
 class _LiveScoreSection extends StatelessWidget {
   const _LiveScoreSection({

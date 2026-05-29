@@ -18,7 +18,6 @@ import '../widgets/feed_filter_sheet.dart';
 import '../../../../shared/widgets/shimmer_loader.dart';
 import 'package:echoproof/shared/widgets/app_bottom_nav.dart';
 import '../../../../app/app.dart';
-import '../../../../shared/widgets/ad_card.dart';
 import '../../../../shared/widgets/rating_prompt.dart';
 import '../../../auth/presentation/screens/permission_sheet.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -230,18 +229,8 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
     return _filter.apply(echoes);
   }
 
-  int _itemCount(List<EchoEntity> filtered, bool hasMore, bool showAds) {
-    final adCount = showAds ? filtered.length ~/ 7 : 0;
-    return filtered.length + adCount + (hasMore ? 1 : 0);
-  }
-
-  bool _isAdSlot(int index, bool showAds) {
-    return showAds && (index + 1) % 8 == 0;
-  }
-
-  int _echoIndexFor(int index, bool showAds) {
-    if (!showAds) return index;
-    return index - ((index + 1) ~/ 8);
+  int _itemCount(List<EchoEntity> filtered, bool hasMore) {
+    return filtered.length + (hasMore ? 1 : 0);
   }
 
   Widget _refreshableState(Widget child) {
@@ -303,9 +292,6 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
     }
 
     final filtered = _filtered(feed.echoes);
-    final subscription = context.watch<SubscriptionService>();
-    final adService = context.watch<AdService>();
-    final showAds = !subscription.isPro && !adService.isAdFreeActive;
 
     if (feed.echoes.isEmpty) return _refreshableState(const _EmptyFeed());
 
@@ -338,18 +324,9 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
               controller: _scrollCtrl,
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.only(top: AppSpacing.xs, bottom: 120),
-              itemCount: _itemCount(filtered, feed.hasMore, showAds),
+              itemCount: _itemCount(filtered, feed.hasMore),
               itemBuilder: (ctx, index) {
-                if (_isAdSlot(index, showAds)) {
-                  return const Padding(
-                    padding: EdgeInsets.only(bottom: AppSpacing.sm),
-                    child: AdCard(),
-                  );
-                }
-
-                final echoIndex = _echoIndexFor(index, showAds);
-
-                if (echoIndex >= filtered.length) {
+                if (index >= filtered.length) {
                   if (!feed.hasMore) return const SizedBox.shrink();
                   return const Padding(
                     padding: EdgeInsets.all(AppSpacing.xl),
@@ -358,10 +335,10 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
                 }
 
                 return _AnimatedCard(
-                  key: ValueKey(filtered[echoIndex].id),
-                  echoId: filtered[echoIndex].id,
-                  initialEcho: filtered[echoIndex],
-                  index: echoIndex,
+                  key: ValueKey(filtered[index].id),
+                  echoId: filtered[index].id,
+                  initialEcho: filtered[index],
+                  index: index,
                 );
               },
             ),

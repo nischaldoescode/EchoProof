@@ -626,6 +626,9 @@ class SecureRoomService extends ChangeNotifier {
     if (bytes.isEmpty) {
       throw Exception('Voice note is empty.');
     }
+    if (durationMs <= 0 || durationMs > 60000) {
+      throw Exception('Voice notes must be 1 minute or shorter.');
+    }
     if (bytes.length > 3 * 1024 * 1024) {
       throw Exception('Voice note is too large. Keep it under 60 seconds.');
     }
