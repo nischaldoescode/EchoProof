@@ -31,6 +31,7 @@ import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/snack.dart';
 import 'echo_video_player.dart';
 import 'link_preview_card.dart';
+import '../services/solana_record_retry_service.dart';
 
 class EchoCard extends StatefulWidget {
   const EchoCard({
@@ -52,6 +53,9 @@ class _EchoCardState extends State<EchoCard> {
   bool _isTranslating = false;
   bool _showTranslated = false;
   bool _previewUnavailable = false;
+  bool _isRetryingSolanaRecord = false;
+  String? _solanaStatusOverride;
+  String? _createdRecordTxOverride;
 
   DateTime? _visibleSince;
   static const _dwellThreshold = Duration(seconds: 3);
@@ -64,6 +68,9 @@ class _EchoCardState extends State<EchoCard> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.echo.id != widget.echo.id) {
       _previewUnavailable = false;
+      _isRetryingSolanaRecord = false;
+      _solanaStatusOverride = null;
+      _createdRecordTxOverride = null;
     }
   }
 
@@ -162,16 +169,67 @@ class _EchoCardState extends State<EchoCard> {
     } catch (_) {}
   }
 
+  Future<void> _retrySolanaRecord() async {
+    if (_isRetryingSolanaRecord) return;
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    if (currentUserId == null || currentUserId != echo.userId) {
+      showInfoSnack(context, 'Only the author can retry this record.');
+      return;
+    }
+    setState(() {
+      _isRetryingSolanaRecord = true;
+      _solanaStatusOverride = 'recording';
+    });
+    try {
+      final signature =
+          await SolanaRecordRetryService.retryEchoCreation(echo.id);
+      if (!mounted) return;
+      setState(() {
+        if (signature != null) {
+          _createdRecordTxOverride = signature;
+          _solanaStatusOverride = 'anchored';
+        } else {
+          _solanaStatusOverride = 'recording';
+        }
+      });
+      showSuccessSnack(
+        context,
+        signature == null
+            ? 'Solana record retry started.'
+            : 'Solana record anchored.',
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _solanaStatusOverride = 'failed');
+      showErrorSnack(context, 'Could not retry the Solana record.');
+    } finally {
+      if (mounted) setState(() => _isRetryingSolanaRecord = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final previewUrl = extractFirstUrl('${echo.title}\n${echo.content}');
     final hideUrlText = previewUrl != null && !_previewUnavailable;
-    final isNotSupported = echo.publicVerdict == 'not_supported';
-    final cardColor =
-        isNotSupported ? const Color(0xFFFFF7F4) : AppColors.white;
-    final dividerColor = isNotSupported
-        ? AppColors.sunsetCoral.withValues(alpha: 0.35)
-        : AppColors.borderSubtle;
+    final isWindowEndedOpen = _isContextWindowEndedOpen(echo);
+    final challengeHeavy = _isChallengeHeavy(echo);
+    final cardColor = isWindowEndedOpen
+        ? const Color(0xFFFAF8F2)
+        : challengeHeavy
+            ? const Color(0xFFFFFBF8)
+            : AppColors.white;
+    final dividerColor = isWindowEndedOpen
+        ? const Color(0xFFD8D0C4)
+        : challengeHeavy
+            ? AppColors.sunsetCoral.withValues(alpha: 0.22)
+            : AppColors.borderSubtle;
+    final solanaStatus = _solanaStatusOverride ?? echo.solanaStatus;
+    final createdRecordTx = _createdRecordTxOverride ?? echo.createdRecordTx;
+    final canRetrySolana = _canRetrySolanaRecord(
+      echo: echo,
+      status: solanaStatus,
+      signature: createdRecordTx,
+    );
 
     return VisibilityDetector(
       key: Key('echo_card_${echo.id}'),
@@ -278,8 +336,10 @@ class _EchoCardState extends State<EchoCard> {
                         ),
                         _StatusLabel(status: echo.status),
                         SolanaStatusChip(
-                          status: echo.solanaStatus,
-                          signature: echo.createdRecordTx,
+                          status: solanaStatus,
+                          signature: createdRecordTx,
+                          isRetrying: _isRetryingSolanaRecord,
+                          onRetry: canRetrySolana ? _retrySolanaRecord : null,
                         ),
                         _TranslateButton(
                           isTranslating: _isTranslating,
@@ -374,16 +434,22 @@ class _PublicVerdictPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final verdict = echo.publicVerdict;
+    final windowEndedOpen = _isContextWindowEndedOpen(echo);
+    final challengeHeavy = _isChallengeHeavy(echo);
     final color = switch (verdict) {
       'supported' => AppColors.fernGreenDark,
       'not_supported' => AppColors.sunsetCoralDark,
       'contested' => AppColors.statusControversial,
+      _ when windowEndedOpen => const Color(0xFF8A756B),
+      _ when challengeHeavy => AppColors.sunsetCoralDark,
       _ => AppColors.textTertiary,
     };
     final label = switch (verdict) {
       'supported' => 'Supported by public context',
       'not_supported' => 'Not supported by public context',
       'contested' => 'Public context is split',
+      _ when windowEndedOpen => 'Public context window ended',
+      _ when challengeHeavy => 'Challenge context is leading',
       _ => 'Open for public context',
     };
     final window = _contextWindowLabel(echo);
@@ -401,9 +467,11 @@ class _PublicVerdictPill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            verdict == 'not_supported'
+            verdict == 'not_supported' || challengeHeavy
                 ? Icons.report_problem_outlined
-                : Icons.groups_2_outlined,
+                : windowEndedOpen
+                    ? Icons.lock_clock_outlined
+                    : Icons.groups_2_outlined,
             size: 13,
             color: color,
           ),
@@ -465,7 +533,7 @@ class _ContextMiniBar extends StatelessWidget {
                     duration: const Duration(milliseconds: 220),
                     color: total == 0
                         ? AppColors.borderSubtle
-                        : AppColors.sunsetCoral,
+                        : const Color(0xFFE08A76),
                   ),
                 ),
               ],
@@ -498,7 +566,7 @@ class _ContextMiniBar extends StatelessWidget {
               style: GoogleFonts.josefinSans(
                 fontSize: 10.5,
                 fontWeight: FontWeight.w800,
-                color: AppColors.sunsetCoralDark,
+                color: const Color(0xFF9E4A38),
               ),
             ),
           ],
@@ -522,6 +590,32 @@ String _contextWindowLabel(EchoEntity echo) {
   if (diff.inDays >= 1) return '${diff.inDays}d left';
   if (diff.inHours >= 1) return '${diff.inHours}h left';
   return '${diff.inMinutes.clamp(1, 59)}m left';
+}
+
+bool _isContextWindowEndedOpen(EchoEntity echo) {
+  final closesAt = echo.publicContextClosesAt;
+  return echo.publicVerdict == 'open' &&
+      closesAt != null &&
+      !closesAt.isAfter(DateTime.now());
+}
+
+bool _isChallengeHeavy(EchoEntity echo) {
+  if (echo.publicVerdict == 'not_supported') return true;
+  final total = echo.supportCount + echo.challengeCount;
+  if (total < 3) return false;
+  final challengeShare = echo.challengeCount / total;
+  return challengeShare >= 0.62 && echo.challengeCount >= echo.supportCount + 2;
+}
+
+bool _canRetrySolanaRecord({
+  required EchoEntity echo,
+  required String status,
+  required String? signature,
+}) {
+  final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+  if (currentUserId == null || currentUserId != echo.userId) return false;
+  if (signature != null && signature.isNotEmpty) return false;
+  return status == 'failed' || status == 'pending';
 }
 
 class _ContextPreviewCard extends StatelessWidget {
