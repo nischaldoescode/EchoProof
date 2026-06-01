@@ -417,7 +417,8 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
     unawaited(_service.setTyping(widget.roomId, false));
     unawaited(
         _service.setPresence(widget.roomId, SecureRoomPresenceState.offline));
-    unawaited(_service.forgetRoomKey(widget.roomId));
+    unawaited(_service.markRoomUnavailable(widget.roomId, forgetKey: true));
+    unawaited(_service.loadRooms());
     setState(() {
       _closingRoom = true;
       _closingRoomReason = reason;

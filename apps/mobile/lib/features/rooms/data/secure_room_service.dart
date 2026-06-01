@@ -207,26 +207,30 @@ class SecureRoomService extends ChangeNotifier {
 
   Future<void> loadRooms() async {
     final userId = _client.auth.currentUser?.id;
-    if (userId == null) return;
+    if (userId == null) {
+      if (_rooms.isNotEmpty) {
+        _rooms = [];
+        notifyListeners();
+      }
+      return;
+    }
 
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      final rows = await _client
-          .from('secure_room_members')
-          .select('secure_rooms!inner(id, creator_id, invite_code, status, '
-              'message_ttl_seconds, max_members, wait_for_members, '
-              'started_at, waiting_expires_at, created_at)')
-          .eq('user_id', userId)
-          .isFilter('left_at', null)
-          .eq('secure_rooms.status', 'active')
-          .order('joined_at', ascending: false);
-
-      _rooms = (rows as List)
-          .map((row) => _mapRoom((row as Map<String, dynamic>)['secure_rooms']))
-          .toList();
+      var rooms = await _fetchActiveRooms(userId);
+      if (rooms.isNotEmpty) {
+        await Future.wait(
+          rooms.map(
+            (room) => _client.rpc('refresh_secure_room_state',
+                params: {'p_room_id': room.id}).catchError((_) {}),
+          ),
+        );
+        rooms = await _fetchActiveRooms(userId);
+      }
+      _rooms = rooms;
     } catch (e) {
       _error = 'Could not load rooms.';
       AppLogger.error('rooms: load failed', e);
@@ -234,6 +238,35 @@ class SecureRoomService extends ChangeNotifier {
 
     _isLoading = false;
     notifyListeners();
+  }
+
+  Future<List<SecureRoomSummary>> _fetchActiveRooms(String userId) async {
+    final rows = await _client
+        .from('secure_room_members')
+        .select('secure_rooms!inner(id, creator_id, invite_code, status, '
+            'message_ttl_seconds, max_members, wait_for_members, '
+            'started_at, waiting_expires_at, created_at)')
+        .eq('user_id', userId)
+        .isFilter('left_at', null)
+        .eq('secure_rooms.status', 'active')
+        .order('joined_at', ascending: false);
+
+    return (rows as List)
+        .map((row) => _mapRoom((row as Map<String, dynamic>)['secure_rooms']))
+        .where((room) => room.isActive)
+        .toList();
+  }
+
+  Future<void> markRoomUnavailable(
+    String roomId, {
+    bool forgetKey = false,
+  }) async {
+    if (forgetKey) {
+      await forgetRoomKey(roomId);
+    }
+    final before = _rooms.length;
+    _rooms = _rooms.where((room) => room.id != roomId).toList();
+    if (_rooms.length != before) notifyListeners();
   }
 
   Future<CreatedSecureRoom> createRoom({
@@ -359,10 +392,40 @@ class SecureRoomService extends ChangeNotifier {
         .eq('id', roomId)
         .maybeSingle();
     if (row == null) {
+      await markRoomUnavailable(roomId, forgetKey: true);
       throw Exception('Room is no longer available.');
     }
     final activeMemberCount = await _activeMemberCount(roomId);
-    return _mapRoom(row, activeMemberCount: activeMemberCount);
+    final room = _mapRoom(row, activeMemberCount: activeMemberCount);
+    if (!room.isActive) {
+      await markRoomUnavailable(roomId, forgetKey: true);
+    }
+    return room;
+  }
+
+  Future<SecureRoomSummary> ensureRoomCanSend(String roomId) async {
+    try {
+      final room = await loadRoom(roomId);
+      if (!room.isActive) {
+        await markRoomUnavailable(roomId, forgetKey: true);
+        throw Exception('This secure room has been destroyed.');
+      }
+      if (room.isWaiting) {
+        throw Exception(
+          'This room is still waiting for members before messages can be sent.',
+        );
+      }
+      return room;
+    } catch (e) {
+      final text = e.toString().toLowerCase();
+      if (text.contains('no longer available') ||
+          text.contains('destroyed') ||
+          text.contains('permission denied') ||
+          text.contains('row-level security')) {
+        await markRoomUnavailable(roomId, forgetKey: true);
+      }
+      rethrow;
+    }
   }
 
   Future<List<SecureRoomMessage>> loadMessages(String roomId) async {
@@ -562,6 +625,7 @@ class SecureRoomService extends ChangeNotifier {
     if (messageKind == 'video' && validation.sizeBytes > maxRoomVideoBytes) {
       throw Exception('Videos in secure rooms must be under 25 MB.');
     }
+    final room = await ensureRoomCanSend(roomId);
     await _assertMediaQuota(roomId: roomId, kind: messageKind);
     _assertLocalSendRate(roomId);
 
@@ -607,6 +671,7 @@ class SecureRoomService extends ChangeNotifier {
       mediaMac: encrypted.mac,
       countLocalRate: false,
       clientMessageId: clientMessageId,
+      precheckedRoom: room,
     );
   }
 
@@ -632,6 +697,7 @@ class SecureRoomService extends ChangeNotifier {
     if (bytes.length > 3 * 1024 * 1024) {
       throw Exception('Voice note is too large. Keep it under 60 seconds.');
     }
+    final room = await ensureRoomCanSend(roomId);
     _assertLocalSendRate(roomId);
 
     final roomKey = await requireRoomKey(roomId);
@@ -672,6 +738,7 @@ class SecureRoomService extends ChangeNotifier {
       mediaMac: encrypted.mac,
       countLocalRate: false,
       clientMessageId: clientMessageId,
+      precheckedRoom: room,
     );
   }
 
@@ -966,19 +1033,24 @@ class SecureRoomService extends ChangeNotifier {
     String? mediaMac,
     bool countLocalRate = true,
     String? clientMessageId,
+    SecureRoomSummary? precheckedRoom,
   }) async {
     if (countLocalRate) {
       _assertLocalSendRate(roomId);
     }
     final userId = _client.auth.currentUser?.id;
     if (userId == null) throw Exception('Sign in again.');
+    final room = precheckedRoom ?? await ensureRoomCanSend(roomId);
     await _registerSigningKey(roomId);
     final deviceId = await _deviceService.getDeviceId();
     final signingKey = await _ensureSigningKeyPair();
     final roomKey = await requireRoomKey(roomId);
     final now = await _serverNowUtc();
     final clientCreatedAt = now.toIso8601String();
-    final ttl = ttlSeconds.clamp(120, 300).toInt();
+    final requestedTtl = ttlSeconds.clamp(120, 300).toInt();
+    final ttl = requestedTtl > room.messageTtlSeconds
+        ? room.messageTtlSeconds
+        : requestedTtl;
     final encrypted = await SecureRoomCrypto.encryptString(plainText, roomKey);
     final effectiveClientMessageId =
         clientMessageId ?? SecureRoomCrypto.generateClientMessageId();
@@ -1003,28 +1075,33 @@ class SecureRoomService extends ChangeNotifier {
       createdAt: clientCreatedAt,
     );
 
-    final inserted = await _client
-        .from('secure_room_messages')
-        .insert({
-          'room_id': roomId,
-          'sender_id': userId,
-          'sender_device_id': deviceId,
-          'kind': kind,
-          'ciphertext': encrypted.ciphertext,
-          'nonce': encrypted.nonce,
-          'mac': encrypted.mac,
-          'signature': signature,
-          'sender_signature': senderSignature,
-          'media_path': mediaPath,
-          'media_nonce': mediaNonce,
-          'media_mac': mediaMac,
-          'client_message_id': effectiveClientMessageId,
-          'client_created_at': clientCreatedAt,
-          'created_at': clientCreatedAt,
-          'expires_at': now.add(Duration(seconds: ttl)).toIso8601String(),
-        })
-        .select()
-        .single();
+    Map<String, dynamic> inserted;
+    try {
+      final row = await _client
+          .from('secure_room_messages')
+          .insert({
+            'room_id': roomId,
+            'sender_id': userId,
+            'sender_device_id': deviceId,
+            'kind': kind,
+            'ciphertext': encrypted.ciphertext,
+            'nonce': encrypted.nonce,
+            'mac': encrypted.mac,
+            'signature': signature,
+            'sender_signature': senderSignature,
+            'media_path': mediaPath,
+            'media_nonce': mediaNonce,
+            'media_mac': mediaMac,
+            'client_message_id': effectiveClientMessageId,
+            'client_created_at': clientCreatedAt,
+            'expires_at': now.add(Duration(seconds: ttl)).toIso8601String(),
+          })
+          .select()
+          .single();
+      inserted = Map<String, dynamic>.from(row as Map);
+    } on PostgrestException catch (e) {
+      await _handleMessageInsertFailure(roomId, kind, e);
+    }
 
     final ownPublicKeys = <String, String>{
       '$userId:$deviceId': signingKey.publicKey,
@@ -1034,11 +1111,43 @@ class SecureRoomService extends ChangeNotifier {
       ownPublicKeys.addAll(cached.keys);
     }
     return _decryptMessage(
-      Map<String, dynamic>.from(inserted as Map),
+      inserted,
       roomKey,
       ownPublicKeys,
       const _ReceiptCounts(),
     );
+  }
+
+  Future<Never> _handleMessageInsertFailure(
+    String roomId,
+    String kind,
+    PostgrestException error,
+  ) async {
+    AppLogger.warn(
+      'rooms: message insert failed room=$roomId kind=$kind '
+      'code=${error.code ?? 'unknown'} message=${error.message}',
+    );
+    try {
+      await ensureRoomCanSend(roomId);
+    } catch (_) {
+      throw Exception('This secure room is no longer accepting messages.');
+    }
+
+    if (_isPermissionLikePostgrestError(error)) {
+      throw Exception(
+        'Could not send yet. Refresh the room and try again in a moment.',
+      );
+    }
+    throw Exception(error.message);
+  }
+
+  bool _isPermissionLikePostgrestError(PostgrestException error) {
+    final code = error.code?.toLowerCase() ?? '';
+    final message = error.message.toLowerCase();
+    return code == '42501' ||
+        message.contains('row-level security') ||
+        message.contains('permission denied') ||
+        message.contains('violates row-level security');
   }
 
   void _assertLocalSendRate(String roomId) {
