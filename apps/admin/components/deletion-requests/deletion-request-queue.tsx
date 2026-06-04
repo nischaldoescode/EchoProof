@@ -1,5 +1,8 @@
 "use client";
 
+// admin deletion request queue component
+// @params none
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { adminPath } from "@/lib/routes";
@@ -174,7 +177,7 @@ export function DeletionRequestQueue({ requests }: DeletionRequestQueueProps) {
               </div>
             </div>
 
-            {/* Expanded detail */}
+            {/* expanded detail */}
             {expandedId === request.id && (
               <div className="border-t border-[#F0F0F0] px-4 py-3 bg-[#F8F7F5]">
                 <div className="space-y-2">

@@ -1,3 +1,6 @@
+// image viewer
+// @params none
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../app/theme/colors.dart';
@@ -48,7 +51,7 @@ class _ImageViewerState extends State<ImageViewer> {
   final TransformationController _transformCtrl = TransformationController();
   bool _isZoomed = false;
 
-Future<void> _lockScreen() async {
+  Future<void> _lockScreen() async {
     if (!Platform.isAndroid) return;
     try {
       await FlutterWindowManagerPlus.addFlags(

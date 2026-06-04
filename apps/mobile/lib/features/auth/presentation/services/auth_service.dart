@@ -1,3 +1,6 @@
+// auth service
+// @params none
+
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -41,9 +44,9 @@ class AuthService extends ChangeNotifier {
   bool get isLoggedIn => currentUser != null;
   bool get hasUsername => _hasUsername;
 
-  /// True after at least one successful DB check has completed.
-  /// The router uses this to avoid redundant network calls on every
-  /// navigation event.
+  /// true after at least one successful db check has completed
+  /// the router uses this to avoid redundant network calls on every
+  /// navigation event
   bool get hasUsernameChecked => _hasUsernameChecked;
   String? get googleDisplayName => _googleDisplayName;
   bool _needsAgeGender = false;
@@ -118,9 +121,9 @@ class AuthService extends ChangeNotifier {
         }
       }
 
-// If after 5 retries the row still doesn't exist, the DB trigger failed.
-// Create a minimal stub row so the app can proceed to onboarding.
-// The full row gets created in completeOnboarding() via upsert.
+// if after 5 retries the row still doesn't exist, the db trigger failed
+// create a minimal stub row so the app can proceed to onboarding
+// the full row gets created in completeonboarding() via upsert
       if (row == null) {
         AppLogger.warn(
             'auth: trigger row missing after 5 retries, creating stub');
@@ -139,7 +142,7 @@ class AuthService extends ChangeNotifier {
             'is_public': true,
             'onboarding_complete': false,
           });
-          // Re-fetch to confirm the row exists now.
+          // re-fetch to confirm the row exists now
           row = await _client
               .from('users_public')
               .select('onboarding_complete, username, date_of_birth')
@@ -147,8 +150,8 @@ class AuthService extends ChangeNotifier {
               .maybeSingle();
         } catch (e) {
           AppLogger.error('auth: stub row creation failed $e');
-          // Row creation failed — proceed as new user without a row.
-          // Onboarding will create it via upsert.
+          // row creation failed proceed as new user without a row
+          // onboarding will create it via upsert
         }
       }
 
@@ -171,7 +174,7 @@ class AuthService extends ChangeNotifier {
       AppLogger.error('auth: profile check failed $e');
     }
 
-    notifyListeners(); // Single notify after all retries complete.
+    notifyListeners(); // single notify after all retries complete
   }
 
   Future<bool> sendOtp({required String email}) async {
@@ -225,8 +228,8 @@ class AuthService extends ChangeNotifier {
       await _client.auth.signInWithOtp(
         email: normalizedEmail,
         shouldCreateUser: true,
-        // If the email template includes a link, it should come back to the
-        // app. The 6-digit code still works independently of the link.
+        // if the email template includes a link, it should come back to the
+        // app. the 6-digit code still works independently of the link
         emailRedirectTo: _authRedirectUrl,
       );
       await _markOtpRequested(normalizedEmail);
@@ -406,9 +409,9 @@ class AuthService extends ChangeNotifier {
       AppLogger.info(
           'auth: Supabase sign in successful, clearing stale state then checking');
 
-// Clear stale Hive onboarding state BEFORE checking username.
-// Must run before checkUsername so the router never sees a stale
-// onboarding_done=true with hasUsername=false simultaneously.
+// clear stale hive onboarding state before checking username
+// must run before checkusername so the router never sees a stale
+// onboarding_done=true with hasusername=false simultaneously
       final box = Hive.box('app_settings');
       final currentUserId = _client.auth.currentUser?.id;
       final lastUserId = box.get('last_signed_in_user_id') as String?;
@@ -421,7 +424,7 @@ class AuthService extends ChangeNotifier {
       }
       await box.put('last_signed_in_user_id', currentUserId ?? '');
 
-// Now check the DB for username/onboarding status.
+// now check the db for username/onboarding status
       for (int i = 0; i < 3; i++) {
         await checkUsername();
         if (_hasUsername) break;

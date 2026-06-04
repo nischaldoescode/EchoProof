@@ -1,5 +1,8 @@
 "use client";
 
+// admin auth login page
+// @params none
+
 import { Suspense, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { adminPath } from "@/lib/routes";

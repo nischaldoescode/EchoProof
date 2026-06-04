@@ -1,9 +1,9 @@
 // discover screen
-// shows trending signals by country or globally
-// uses plain StatefulWidget with supabase queries — no riverpod
+// @params none shows trending signals by ip country or globally
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:ip_hunter/ip_hunter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
@@ -69,8 +69,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   }
 
   void _subscribeRealtime() {
-    // Refresh signals every 2 minutes via realtime-like polling.
-    // (echo_signals table doesn't have a natural realtime trigger, so we poll.)
+    // refresh signals with light polling because signals have no direct trigger
     Future.delayed(const Duration(minutes: 2), () {
       if (mounted) {
         _loadSignals();
@@ -80,7 +79,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   }
 
   Future<void> _detectCountryAndLoad() async {
-    final code = _supportedCountryCode(
+    var code = await _detectIpCountryCode();
+    code ??= _supportedCountryCode(
       WidgetsBinding.instance.platformDispatcher.locale.countryCode,
     );
     if (code != null) {
@@ -88,6 +88,22 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     }
 
     await _loadSignals();
+  }
+
+  Future<String?> _detectIpCountryCode() async {
+    try {
+      final code = await IpHunter.getCountryCode().timeout(
+        const Duration(seconds: 3),
+      );
+      final supported = _supportedCountryCode(code);
+      AppLogger.info(
+        'discover: ip country ${supported ?? 'unsupported'}',
+      );
+      return supported;
+    } catch (e) {
+      AppLogger.warn('discover: ip country lookup failed $e');
+      return null;
+    }
   }
 
   String? _supportedCountryCode(String? code) {
@@ -143,7 +159,6 @@ class _DiscoverScreenState extends State<DiscoverScreen>
 
       _entranceController.reset();
       _entranceController.forward();
-      // Realtime-like: also subscribe to postgres changes on echo_signals.
     } catch (e) {
       AppLogger.error('discover: load signals failed', e);
       setState(() => _isLoading = false);

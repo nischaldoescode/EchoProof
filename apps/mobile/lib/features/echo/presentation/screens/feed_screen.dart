@@ -1,4 +1,5 @@
-// TO DO: check at the line for 33 the _computeItemCount function
+// feed screen
+// @params none shows the signed-in home feed and root navigation
 
 import 'dart:async';
 
@@ -29,6 +30,7 @@ import '../../../../core/localization/app_copy.dart';
 import '../../../../core/services/ad_service.dart';
 import '../../../subscription/presentation/services/subscription_service.dart';
 import '../../../../core/utils/snack.dart';
+import '../../../notifications/presentation/services/notification_service.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
@@ -37,18 +39,6 @@ class FeedScreen extends StatefulWidget {
   State<FeedScreen> createState() => _FeedScreenState();
 }
 
-// compute count for loading the item cound we will show ads based on the interaction as well
-// the adcount will be counted based on the package scroll through the external package to monitor scroll usage
-// int _computeItemCount(EchoFeedService feed) {
-//   final echoCount = feed.echoes.length;
-
-//   // one ad every 7 echoes
-//   final adCount = echoCount ~/ 7;
-
-//   // +1 for loading spinner if more data exists
-//   return echoCount + adCount + (feed.hasMore ? 1 : 0);
-// }
-
 class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   final _scrollCtrl = ScrollController();
   FeedFilter _filter = const FeedFilter();
@@ -56,7 +46,7 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   DateTime _lastActiveAt = DateTime.now();
 
   Future<void> _maybeTriggerBirthdayEaster() async {
-    // Only check once per app session using Hive.
+    // check once per app session using hive
     final box = Hive.box('app_settings');
     final today = DateTime.now();
     final lastChecked =
@@ -91,7 +81,7 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
       _maybeShowPermissionsOverlay();
       _maybeTriggerBirthdayEaster();
       _startFeedAdRoutine();
-      // Show rating prompt after sufficient use — uses progressive schedule.
+      // rating prompt after enough real use
       Future.delayed(const Duration(seconds: 3), () {
         if (mounted) RatingPrompt.maybeShow(context);
       });
@@ -222,7 +212,21 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
 
   Future<void> _refreshFeed() async {
     if (showOfflineSnackIfNeeded(context)) return;
+    final notifications = context.read<NotificationService>();
     await context.read<EchoFeedService>().refresh();
+    unawaited(notifications.markFollowerEchoesRead());
+  }
+
+  Future<void> _handleFeedNavTap() async {
+    if (_scrollCtrl.hasClients && _scrollCtrl.offset > 8) {
+      await _scrollCtrl.animateTo(
+        0,
+        duration: const Duration(milliseconds: 520),
+        curve: Curves.easeOutCubic,
+      );
+    }
+    if (!mounted) return;
+    await _refreshFeed();
   }
 
   List<EchoEntity> _filtered(List<EchoEntity> echoes) {
@@ -268,10 +272,12 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
             appBar: _FeedAppBar(
               filterActive: _filter.isActive,
               onFilterTap: _openFilter,
-              onRefreshTap: _refreshFeed,
             ),
             floatingActionButton: const _CreateFab(),
-            bottomNavigationBar: const AppBottomNav(currentLocation: '/feed'),
+            bottomNavigationBar: AppBottomNav(
+              currentLocation: '/feed',
+              onFeedTap: _handleFeedNavTap,
+            ),
             body: _buildBody(feed, isTablet),
           ),
         ));
@@ -498,12 +504,10 @@ class _FeedAppBar extends StatelessWidget implements PreferredSizeWidget {
   const _FeedAppBar({
     required this.filterActive,
     required this.onFilterTap,
-    required this.onRefreshTap,
   });
 
   final bool filterActive;
   final VoidCallback onFilterTap;
-  final VoidCallback onRefreshTap;
 
   @override
   Size get preferredSize => const Size.fromHeight(56);
@@ -554,12 +558,6 @@ class _FeedAppBar extends StatelessWidget implements PreferredSizeWidget {
                 ),
               ),
           ],
-        ),
-        IconButton(
-          icon: const Icon(Icons.refresh_rounded, size: 22),
-          onPressed: onRefreshTap,
-          color: AppColors.charcoal,
-          tooltip: context.l('Refresh feed'),
         ),
         IconButton(
           icon: const Icon(Icons.search_rounded, size: 22),

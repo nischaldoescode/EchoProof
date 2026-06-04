@@ -1,7 +1,7 @@
 // echo feed service
 // fetches and manages the personalized feed
 // replaces: echo_feed_provider.dart (riverpod version)
-// screens listen via context.watch<EchoFeedService>()
+// screens listen via context.watch<echofeedservice>()
 
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
@@ -119,7 +119,7 @@ class EchoFeedService extends ChangeNotifier {
     }
   }
 
-  // loads the first page — call this when the feed screen mounts
+  // loads the first page call this when the feed screen mounts
   Future<void> loadFeed() async {
     if (_loadState == FeedLoadState.loading) return;
     _offset = 0;
@@ -156,7 +156,7 @@ class EchoFeedService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // loads next page and appends — call when user scrolls near bottom
+  // loads next page and appends call when user scrolls near bottom
   Future<void> loadMore() async {
     if (_loadState == FeedLoadState.loadingMore || !_hasMore) return;
     _loadState = FeedLoadState.loadingMore;
@@ -176,7 +176,7 @@ class EchoFeedService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // pull to refresh — reloads from page 1 with cache bust
+  // pull to refresh reloads from page 1 with cache bust
   Future<void> refresh() async {
     _offset = 0;
     _loadState = FeedLoadState.loading;
@@ -196,7 +196,7 @@ class EchoFeedService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // optimistic update — updates local state immediately before server confirms
+  // optimistic update updates local state immediately before server confirms
   void applyOptimisticInteraction({
     required String echoId,
     required String type,

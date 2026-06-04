@@ -1,3 +1,6 @@
+// admin routes helper
+// @params none
+
 const rawAdminBasePath =
   process.env.NEXT_PUBLIC_ADMIN_BASE_PATH || process.env.ADMIN_BASE_PATH || "";
 

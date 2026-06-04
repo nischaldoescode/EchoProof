@@ -1,3 +1,6 @@
+// secure room service
+// @params none
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -768,8 +771,8 @@ class SecureRoomService extends ChangeNotifier {
   }
 
   void _cachePlaintextMedia(String path, List<int> bytes) {
-    // Keep just-sent small media in memory so the sender sees it immediately
-    // instead of waiting for a storage round trip that may lag behind realtime.
+    // keep just-sent small media in memory so the sender sees it immediately
+    // instead of waiting for a storage round trip that may lag behind realtime
     if (bytes.length > maxRoomVideoBytes) return;
     final existing = _mediaPlaintextCache.remove(path);
     if (existing != null) {
@@ -855,8 +858,8 @@ class SecureRoomService extends ChangeNotifier {
     try {
       await _client.storage.from('room-media').remove([mediaPath]);
     } catch (_) {
-      // The guarded RPC removes the live database row immediately; storage
-      // cleanup can be retried by a server-side janitor without blocking UI.
+      // the guarded rpc removes the live database row immediately; storage
+      // cleanup can be retried by a server-side janitor without blocking ui
     }
   }
 

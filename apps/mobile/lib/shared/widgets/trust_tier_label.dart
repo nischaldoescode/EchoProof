@@ -1,5 +1,5 @@
-// trust tier label widget — full text version (for profiles)
-// compact version is TrustBadge in echo/presentation/widgets
+// trust tier label widget full text version (for profiles)
+// compact version is trustbadge in echo/presentation/widgets
 
 import 'package:flutter/material.dart';
 import '../../app/theme/colors.dart';
@@ -15,11 +15,31 @@ class TrustTierLabel extends StatelessWidget {
     final trustTier = TrustTier.fromString(tier);
 
     final (label, textColor, bgColor) = switch (trustTier) {
-      TrustTier.elite      => ('Elite',      AppColors.fernGreenDark, AppColors.fernGreenLight),
-      TrustTier.high       => ('High trust', AppColors.fernGreenDark, AppColors.fernGreenLight),
-      TrustTier.medium     => ('Medium trust', AppColors.textSecondary, AppColors.softSand),
-      TrustTier.low        => ('Low trust',  AppColors.textTertiary, AppColors.softSand),
-      TrustTier.unverified => ('Unverified', AppColors.textTertiary, AppColors.softSand),
+      TrustTier.elite => (
+          'Elite',
+          AppColors.fernGreenDark,
+          AppColors.fernGreenLight
+        ),
+      TrustTier.high => (
+          'High trust',
+          AppColors.fernGreenDark,
+          AppColors.fernGreenLight
+        ),
+      TrustTier.medium => (
+          'Medium trust',
+          AppColors.textSecondary,
+          AppColors.softSand
+        ),
+      TrustTier.low => (
+          'Low trust',
+          AppColors.textTertiary,
+          AppColors.softSand
+        ),
+      TrustTier.unverified => (
+          'Unverified',
+          AppColors.textTertiary,
+          AppColors.softSand
+        ),
     };
 
     return Container(

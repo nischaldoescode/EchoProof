@@ -1,4 +1,4 @@
-// subscribe screen — pro plan purchase
+// subscribe screen pro plan purchase
 // shows features, pricing, native purchase flow
 // google admob shown to free users only
 
@@ -318,7 +318,7 @@ class _PricingSectionState extends State<_PricingSection> {
           ),
           child: Column(
             children: [
-              // Stable height: enough room for label, price, and the yearly badge.
+              // stable height: enough room for label, price, and the yearly badge
               Container(
                 height: 96,
                 padding: const EdgeInsets.all(4),

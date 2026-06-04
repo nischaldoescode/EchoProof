@@ -1,5 +1,5 @@
 // onboarding step progress indicator
-// animated dots — filled for completed and current, grey for upcoming
+// animated dots filled for completed and current, grey for upcoming
 
 import 'package:flutter/material.dart';
 import '../../../../app/theme/colors.dart';

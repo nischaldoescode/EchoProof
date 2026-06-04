@@ -13,9 +13,8 @@ class EchoWaveDivider extends StatefulWidget {
 
 class _EchoWaveDividerState extends State<EchoWaveDivider>
     with SingleTickerProviderStateMixin {
-
   late final AnimationController _controller;
-  late final Animation<double>   _phase;
+  late final Animation<double> _phase;
 
   @override
   void initState() {
@@ -64,7 +63,15 @@ class _WavePainter extends CustomPainter {
 
     for (double x = 0; x <= size.width; x++) {
       final y = size.height / 2 +
-          amplitude * (0.5 * (1 + (x / wavelength + phase * 2 * 3.14159).remainder(3.14159).abs() * 2 - 1).sign);
+          amplitude *
+              (0.5 *
+                  (1 +
+                          (x / wavelength + phase * 2 * 3.14159)
+                                  .remainder(3.14159)
+                                  .abs() *
+                              2 -
+                          1)
+                      .sign);
       if (x == 0) {
         path.moveTo(x, y);
       } else {

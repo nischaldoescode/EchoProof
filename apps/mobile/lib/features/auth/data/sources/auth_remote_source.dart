@@ -1,5 +1,5 @@
 // auth remote data source
-// direct supabase auth calls — no business logic here
+// direct supabase auth calls no business logic here
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/user_model.dart';
@@ -16,7 +16,7 @@ class AuthRemoteSource {
     AppLogger.info('auth: sign in with email');
 
     final response = await _client.auth.signInWithPassword(
-      email:    email,
+      email: email,
       password: password,
     );
 
@@ -34,7 +34,7 @@ class AuthRemoteSource {
     AppLogger.info('auth: sign up with email');
 
     final response = await _client.auth.signUp(
-      email:    email,
+      email: email,
       password: password,
     );
 
@@ -45,10 +45,10 @@ class AuthRemoteSource {
     // new users do not have a users_public row yet
     // the onboarding flow creates it after they pick a username
     return UserModel(
-      id:                 response.user!.id,
-      username:           '',
-      trustTier:          'unverified',
-      trustScore:         0,
+      id: response.user!.id,
+      username: '',
+      trustTier: 'unverified',
+      trustScore: 0,
       isIdentityVerified: false,
     );
   }
@@ -61,8 +61,8 @@ class AuthRemoteSource {
       redirectTo: 'echoproof://auth-callback',
     );
 
-    // oauth redirects to the app — the session is set by the deep link handler
-    // after redirect, currentUser is available
+    // oauth redirects to the app the session is set by the deep link handler
+    // after redirect, currentuser is available
     final user = _client.auth.currentUser;
     if (user == null) throw const AuthException('google sign in failed');
 
@@ -86,17 +86,18 @@ class AuthRemoteSource {
     try {
       final row = await _client
           .from('users_public')
-          .select('id, username, trust_tier, trust_score, avatar_url, wallet_address')
+          .select(
+              'id, username, trust_tier, trust_score, avatar_url, wallet_address')
           .eq('id', userId)
           .maybeSingle();
 
       if (row == null) {
         // user exists in auth but has not completed onboarding
         return UserModel(
-          id:                 userId,
-          username:           '',
-          trustTier:          'unverified',
-          trustScore:         0,
+          id: userId,
+          username: '',
+          trustTier: 'unverified',
+          trustScore: 0,
           isIdentityVerified: false,
         );
       }
@@ -109,13 +110,14 @@ class AuthRemoteSource {
           .maybeSingle();
 
       return UserModel(
-        id:                 row['id'] as String,
-        username:           row['username'] as String? ?? '',
-        trustTier:          row['trust_tier'] as String? ?? 'unverified',
-        trustScore:         (row['trust_score'] as num?)?.toInt() ?? 0,
-        isIdentityVerified: privateRow?['is_identity_verified'] as bool? ?? false,
-        avatarUrl:          row['avatar_url'] as String?,
-        walletAddress:      row['wallet_address'] as String?,
+        id: row['id'] as String,
+        username: row['username'] as String? ?? '',
+        trustTier: row['trust_tier'] as String? ?? 'unverified',
+        trustScore: (row['trust_score'] as num?)?.toInt() ?? 0,
+        isIdentityVerified:
+            privateRow?['is_identity_verified'] as bool? ?? false,
+        avatarUrl: row['avatar_url'] as String?,
+        walletAddress: row['wallet_address'] as String?,
       );
     } catch (e) {
       AppLogger.error('auth: fetch public profile failed', e);

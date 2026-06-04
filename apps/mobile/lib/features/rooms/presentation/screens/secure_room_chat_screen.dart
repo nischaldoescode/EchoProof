@@ -1,3 +1,6 @@
+// secure room chat screen
+// @params none
+
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
@@ -1140,7 +1143,7 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
     try {
       await File(path).delete();
     } catch (_) {
-      // Best effort cleanup for temporary encrypted-room recordings.
+      // best effort cleanup for temporary encrypted-room recordings
     }
   }
 
@@ -3355,7 +3358,7 @@ class _EncryptedVideoState extends State<_EncryptedVideo> {
     try {
       await file.delete();
     } catch (_) {
-      // Best effort cleanup for decrypted playback cache.
+      // best effort cleanup for decrypted playback cache
     }
   }
 
@@ -3480,7 +3483,7 @@ class _EncryptedAudioState extends State<_EncryptedAudio> {
     try {
       await file.delete();
     } catch (_) {
-      // Best effort cleanup for decrypted playback cache.
+      // best effort cleanup for decrypted playback cache
     }
   }
 

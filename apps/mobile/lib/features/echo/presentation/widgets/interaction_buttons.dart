@@ -1,4 +1,4 @@
-// interaction buttons — support, challenge, replies, and actions
+// interaction buttons support, challenge, replies, and actions
 // applies optimistic update, calls edge function, reverts on failure
 
 import 'package:echoproof/core/utils/snack.dart';

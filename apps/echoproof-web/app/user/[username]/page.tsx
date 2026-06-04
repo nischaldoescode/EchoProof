@@ -1,5 +1,5 @@
-// public profile page — server component, app router only
-// generateMetadata requires app router — never put this in pages/
+// public profile page server component, app router only
+// generatemetadata requires app router never put this in pages
 
 import type { Metadata } from "next";
 import { cache } from "react";
@@ -8,7 +8,7 @@ import { supabaseAdmin as supabase } from "@/lib/supabase";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 
-// next.js 16 app router — params is a Promise
+// next.js 16 app router params is a promise
 interface Props {
   params: Promise<{ username: string }>;
 }
@@ -481,7 +481,7 @@ export default async function UserProfilePage({ params }: Props) {
               Echoes
             </p>
 
-            {/* skeleton cards — empty chrome only, no real data */}
+            {/* skeleton cards empty chrome only, no real data */}
             <div
               style={{
                 filter: "blur(7px)",

@@ -1,4 +1,4 @@
-// echo detail page — admin view
+// echo detail page admin view
 // shows full echo content, trust scores, interactions, reports, moderation actions
 
 import { createAdminClient } from "@/lib/supabase/admin";

@@ -1,5 +1,8 @@
 "use client";
 
+// web delete account page
+// @params none
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";

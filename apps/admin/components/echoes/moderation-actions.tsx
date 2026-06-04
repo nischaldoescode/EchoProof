@@ -1,5 +1,8 @@
 "use client";
 
+// admin echoes moderation actions component
+// @params none
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Echo } from "@/types/echo";

@@ -1,5 +1,5 @@
-// typography — Josefin Sans throughout
-// loaded from Google Fonts package — no asset files needed
+// typography josefin sans throughout
+// loaded from google fonts package no asset files needed
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -50,7 +50,7 @@ abstract final class AppTypography {
     );
   }
 
-  // use this when you need a TextStyle outside of the theme
+  // use this when you need a textstyle outside of the theme
   static TextStyle josefin({
     double size = 14,
     FontWeight weight = FontWeight.w400,

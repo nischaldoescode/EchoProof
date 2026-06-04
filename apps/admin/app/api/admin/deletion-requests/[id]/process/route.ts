@@ -1,3 +1,6 @@
+// admin deletion request process api
+// @params none
+
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
@@ -69,7 +72,7 @@ async function deleteUserAccount(
       },
     })
     .catch(() => {
-      // Push is best-effort. The account deletion continues either way.
+      // push is best-effort. the account deletion continues either way
     });
 
   await ignoreMissing(

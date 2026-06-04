@@ -1,3 +1,6 @@
+// push notification service
+// @params none
+
 import 'dart:async';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -55,7 +58,7 @@ class PushNotificationService {
       return;
     }
 
-    // v18+ API — uses named 'settings' parameter
+    // v18+ api uses named 'settings' parameter
     await _localNotifs.initialize(
       settings: const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
@@ -142,7 +145,7 @@ class PushNotificationService {
     final notif = message.notification;
     if (notif == null) return;
 
-    // v18+ API — uses named parameters id, title, body, notificationDetails
+    // v18+ api uses named parameters id, title, body, notificationdetails
     await _localNotifs.show(
       id: message.hashCode,
       title: notif.title,
@@ -164,7 +167,7 @@ class PushNotificationService {
 
   void _handleMessageTap(RemoteMessage message) {
     AppLogger.info('fcm: tapped ${message.data}');
-    // navigation handled in main.dart via FirebaseMessaging.onMessageOpenedApp
+    // navigation handled in main.dart via firebasemessaging.onmessageopenedapp
   }
 
   void _onNotificationTapped(NotificationResponse response) {

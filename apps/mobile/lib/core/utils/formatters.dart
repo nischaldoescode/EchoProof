@@ -2,11 +2,11 @@
 
 abstract final class Formatters {
   // twitter-style time ago
-  // < 60s    → "just now"
-  // < 60m    → "42m"
-  // < 24h    → "6h"
-  // < 7 days → "Mon" (day name)
-  // else     → "Apr 24"
+  // < 60s → "just now"
+  // < 60m → "42m"
+  // < 24h → "6h"
+  // < 7 days → "mon" (day name)
+  // else → "apr 24"
   static String timeAgo(DateTime date) {
     final now = DateTime.now();
     final diff = now.difference(date);
@@ -71,7 +71,7 @@ abstract final class Formatters {
         : '${compact.toStringAsFixed(1).replaceAll('.0', '')}M';
   }
 
-  // formats a signal tag — ensures ~ prefix and lowercase
+  // formats a signal tag ensures ~ prefix and lowercase
   static String formatSignal(String raw) {
     final cleaned = raw.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '').toLowerCase();
     return '~$cleaned';

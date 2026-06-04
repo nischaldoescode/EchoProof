@@ -17,11 +17,10 @@ class EmptyFeed extends StatefulWidget {
 
 class _EmptyFeedState extends State<EmptyFeed>
     with SingleTickerProviderStateMixin {
-
   late final AnimationController _controller;
-  late final Animation<double>   _logoFloat;
-  late final Animation<double>   _ringPulse;
-  late final Animation<double>   _textFade;
+  late final Animation<double> _logoFloat;
+  late final Animation<double> _ringPulse;
+  late final Animation<double> _textFade;
 
   @override
   void initState() {
@@ -63,7 +62,8 @@ class _EmptyFeedState extends State<EmptyFeed>
               animation: _controller,
               builder: (context, _) {
                 return SizedBox(
-                  width: 140, height: 140,
+                  width: 140,
+                  height: 140,
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
@@ -71,11 +71,13 @@ class _EmptyFeedState extends State<EmptyFeed>
                       Transform.scale(
                         scale: _ringPulse.value,
                         child: Container(
-                          width: 120, height: 120,
+                          width: 120,
+                          height: 120,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: AppColors.fernGreen.withValues(alpha: 0.15),
+                              color:
+                                  AppColors.fernGreen.withValues(alpha: 0.15),
                               width: 2,
                             ),
                           ),
@@ -84,11 +86,13 @@ class _EmptyFeedState extends State<EmptyFeed>
                       Transform.scale(
                         scale: _ringPulse.value * 0.85,
                         child: Container(
-                          width: 100, height: 100,
+                          width: 100,
+                          height: 100,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: AppColors.fernGreen.withValues(alpha: 0.25),
+                              color:
+                                  AppColors.fernGreen.withValues(alpha: 0.25),
                               width: 1.5,
                             ),
                           ),
@@ -99,21 +103,23 @@ class _EmptyFeedState extends State<EmptyFeed>
                       Transform.translate(
                         offset: Offset(0, _logoFloat.value),
                         child: Container(
-                          width: 72, height: 72,
+                          width: 72,
+                          height: 72,
                           decoration: BoxDecoration(
                             color: AppColors.fernGreenLight,
                             borderRadius: BorderRadius.circular(20),
                             boxShadow: [
                               BoxShadow(
-                                color:       AppColors.fernGreen.withValues(alpha: 0.3),
-                                blurRadius:  16,
-                                offset:      Offset(0, 4 + _logoFloat.value * 0.3),
+                                color:
+                                    AppColors.fernGreen.withValues(alpha: 0.3),
+                                blurRadius: 16,
+                                offset: Offset(0, 4 + _logoFloat.value * 0.3),
                               ),
                             ],
                           ),
                           child: const Icon(
                             Icons.radio_button_unchecked_rounded,
-                            size:  36,
+                            size: 36,
                             color: AppColors.fernGreen,
                           ),
                         ),
@@ -137,9 +143,9 @@ class _EmptyFeedState extends State<EmptyFeed>
                   Text(
                     'No echoes yet.',
                     style: GoogleFonts.josefinSans(
-                      fontSize:   22,
+                      fontSize: 22,
                       fontWeight: FontWeight.w700,
-                      color:      AppColors.charcoal,
+                      color: AppColors.charcoal,
                       letterSpacing: -0.3,
                     ),
                   ),
@@ -150,7 +156,7 @@ class _EmptyFeedState extends State<EmptyFeed>
                     'Be the first to send one.',
                     style: GoogleFonts.josefinSans(
                       fontSize: 15,
-                      color:    AppColors.textSecondary,
+                      color: AppColors.textSecondary,
                     ),
                   ),
 
@@ -161,13 +167,14 @@ class _EmptyFeedState extends State<EmptyFeed>
 
                   const SizedBox(height: AppSpacing.xxl),
 
-                  // CTA
+                  // cta
                   ElevatedButton.icon(
                     onPressed: () => context.push('/create'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.charcoal,
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 28, vertical: 14,
+                        horizontal: 28,
+                        vertical: 14,
                       ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
@@ -177,7 +184,7 @@ class _EmptyFeedState extends State<EmptyFeed>
                     label: Text(
                       'Create your first Echo',
                       style: GoogleFonts.josefinSans(
-                        fontSize:   14,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -198,7 +205,7 @@ class _EcosystemCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
-        color:        AppColors.softSand,
+        color: AppColors.softSand,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.borderSubtle),
       ),
@@ -208,35 +215,41 @@ class _EcosystemCard extends StatelessWidget {
           Text(
             'How Echoproof works',
             style: GoogleFonts.josefinSans(
-              fontSize:   14,
+              fontSize: 14,
               fontWeight: FontWeight.w600,
-              color:      AppColors.charcoal,
+              color: AppColors.charcoal,
             ),
           ),
           const SizedBox(height: AppSpacing.md),
           ...[
-            (Icons.record_voice_over_outlined, 'Post an Echo — any opinion or claim'),
-            (Icons.people_outline,             'Community supports or challenges it'),
-            (Icons.verified_outlined,          'High-signal echoes get verified on-chain'),
-            (Icons.link_outlined,              'Bond your reputation to verified truths'),
-          ].map((item) => Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-            child: Row(
-              children: [
-                Icon(item.$1, size: 16, color: AppColors.fernGreen),
-                const SizedBox(width: AppSpacing.sm),
-                Expanded(
-                  child: Text(
-                    item.$2,
-                    style: GoogleFonts.josefinSans(
-                      fontSize: 13,
-                      color:    AppColors.textSecondary,
-                    ),
-                  ),
-                ),
-              ],
+            (
+              Icons.record_voice_over_outlined,
+              'Post an Echo — any opinion or claim'
             ),
-          )),
+            (Icons.people_outline, 'Community supports or challenges it'),
+            (
+              Icons.verified_outlined,
+              'High-signal echoes get verified on-chain'
+            ),
+            (Icons.link_outlined, 'Bond your reputation to verified truths'),
+          ].map((item) => Padding(
+                padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                child: Row(
+                  children: [
+                    Icon(item.$1, size: 16, color: AppColors.fernGreen),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        item.$2,
+                        style: GoogleFonts.josefinSans(
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )),
         ],
       ),
     );

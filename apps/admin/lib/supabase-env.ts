@@ -1,3 +1,6 @@
+// admin supabase env helper
+// @params none
+
 export function getSupabaseProjectUrl() {
   return normalizeSupabaseUrl(
     process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL,

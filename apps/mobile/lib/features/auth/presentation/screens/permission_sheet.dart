@@ -1,3 +1,6 @@
+// permission sheet
+// @params none
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -75,17 +78,17 @@ class _PermissionsSheetState extends State<PermissionsSheet> {
   Future<void> _requestAll() async {
     setState(() => _isRequesting = true);
 
-    // Request notification permission.
+    // request notification permission
     final notifStatus = await Permission.notification.request();
     if (notifStatus.isPermanentlyDenied) {
       await openAppSettings();
     }
 
-    // Request camera.
+    // request camera
     final camStatus = await Permission.camera.request();
     if (camStatus.isPermanentlyDenied) await openAppSettings();
 
-    // Request photos.
+    // request photos
     final photoStatus = await Permission.photos.request();
     if (photoStatus.isPermanentlyDenied) await openAppSettings();
 

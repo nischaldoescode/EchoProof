@@ -1,6 +1,6 @@
-// Renders markdown-style inline formatting from echo content.
-// Supports **bold**, ***bold italic***, _italic_, ~~strikethrough~~,
-// [large], [small], @mentions, and ~signals.
+// renders markdown-style inline formatting from echo content
+// supports **bold**, ***bold italic***, _italic_, ~~strikethrough~~,
+// [large], [small], @mentions, and ~signals
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';

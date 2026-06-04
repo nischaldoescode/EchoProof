@@ -1,6 +1,6 @@
-// onboarding step 6 — optional first echo creation
-// skip is allowed — completes onboarding either way
-// char limit: 308 (Twitter free = 280, +10% = 308)
+// onboarding step 6 optional first echo creation
+// skip is allowed completes onboarding either way
+// char limit: 308 (twitter free = 280, +10% = 308)
 // live counter with colour shift near/at limit
 
 import 'package:flutter/material.dart';
@@ -26,7 +26,7 @@ class StepFirstEcho extends StatefulWidget {
 }
 
 class _StepFirstEchoState extends State<StepFirstEcho> {
-  static const int _maxChars = 308; // 10% above Twitter free (280)
+  static const int _maxChars = 308; // 10% above twitter free (280)
 
   final _controller = TextEditingController();
   EchoCategory? _selectedCategory;

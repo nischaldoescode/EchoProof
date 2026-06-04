@@ -5,9 +5,9 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../../../../core/utils/logger.dart';
 
 class EchoLocalSource {
-  static const _cacheKey       = 'feed_cache';
+  static const _cacheKey = 'feed_cache';
   static const _cacheTimestamp = 'feed_cache_ts';
-  static const _maxAgeMinutes  = 5;
+  static const _maxAgeMinutes = 5;
 
   Box get _box => Hive.box('echo_cache');
 

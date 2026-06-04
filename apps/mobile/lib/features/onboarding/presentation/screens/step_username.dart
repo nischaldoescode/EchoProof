@@ -1,6 +1,6 @@
-// onboarding step 3 — anonymous username
+// onboarding step 3 anonymous username
 // checks uniqueness against supabase users_public
-// uses OnboardingService via provider — no riverpod
+// uses onboardingservice via provider no riverpod
 // this is a stateful widget since it has local state for error/loading, and
 // it also asks for a display name
 import 'package:echoproof/core/utils/snack.dart';
@@ -38,7 +38,7 @@ class _StepUsernameState extends State<StepUsername> {
   @override
   void initState() {
     super.initState();
-    // pre-fill display name from Google if available
+    // pre-fill display name from google if available
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final auth = context.read<AuthService>();
       if (auth.googleDisplayName != null && _displayNameCtrl.text.isEmpty) {

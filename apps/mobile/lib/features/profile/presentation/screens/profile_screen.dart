@@ -1,3 +1,6 @@
+// profile screen
+// @params username opens a public profile when present
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -62,7 +65,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   void initState() {
     super.initState();
     _isOwnProfile = widget.username == null;
-    // Pro users get analytics tab; length depends on isPro and isOwnProfile.
+    // pro users get analytics when viewing their own profile
     _entranceCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 400),
@@ -90,8 +93,11 @@ class _ProfileScreenState extends State<ProfileScreen>
   bool get _canViewProfileContent =>
       _isOwnProfile || (!_isBlockedByMe && (_isPublic || _isFollowing));
 
-// opens the edit profile bottom sheet
-// covers display name, username (requires otp), gender, and dob (requires otp)
+  bool get _canOpenFollowLists =>
+      _isOwnProfile || (!_isBlockedByMe && _isPublic);
+
+  // opens the edit profile bottom sheet
+  // covers display name username gender and dob
   Future<void> _showEditProfileSheet() async {
     if (_isLoading || _profile == null || _isSavingProfile) return;
 
@@ -100,7 +106,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     final currentDisplay = _profile?['display_name'] as String? ?? '';
     final currentGender = _profile?['gender'] as String?;
 
-    // parse stored dob — format is yyyy-mm-dd from postgres
+    // parse stored dob from postgres yyyy-mm-dd
     DateTime? currentDob;
     final dobRaw = _profile?['date_of_birth'] as String?;
     if (dobRaw != null) {
@@ -349,7 +355,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                       }),
                   const SizedBox(height: AppSpacing.lg),
 
-                  // date of birth — requires otp to change
+                  // date of birth requires otp to change
                   Text(
                     context.l('Date of birth'),
                     style: GoogleFonts.josefinSans(
@@ -550,9 +556,9 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-// saves profile changes
-// username changes and dob changes both require otp re-verification
-// gender and display name save silently without otp
+  // saves profile changes
+  // username and dob changes require otp reverification
+  // gender and display name save without otp
   Future<void> _saveProfileChanges({
     required String newUsername,
     required String newDisplayName,
@@ -585,7 +591,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       }
     }
 
-    // otp required if username or dob changed
+    // otp is required when username or dob changed
     final needsOtp = usernameChanged || dobChanged;
 
     if (needsOtp) {
@@ -624,7 +630,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       final userId = client.auth.currentUser?.id;
       if (userId == null) return;
 
-      // build patch — only include changed fields
+      // build a patch with only changed fields
       final patch = <String, dynamic>{
         'display_name': Sanitizer.displayName(
             newDisplayName.isNotEmpty ? newDisplayName : newUsername),
@@ -870,7 +876,7 @@ class _ProfileScreenState extends State<ProfileScreen>
         }
         final row = result;
         profile = row;
-        // as Map<String, dynamic>
+        // as map<string, dynamic>
       }
 
       final targetId = profile['id'] as String;
@@ -1006,7 +1012,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             bonds.where((b) => b['bond_status'] == 'contested').length;
         _activeBonds = bonds.where((b) => b['bond_status'] == 'active').length;
         _isIdentityVerified = priv?['is_identity_verified'] as bool? ?? false;
-        // Check if pending
+        // check if pending
         final lastReqStr = priv?['last_verification_request_at'] as String?;
         if (lastReqStr != null && !_isIdentityVerified) {
           final reqTime = DateTime.tryParse(lastReqStr);
@@ -1138,7 +1144,7 @@ class _ProfileScreenState extends State<ProfileScreen>
           'target_id': targetId,
         }));
       }
-      // Refresh follower count on profile.
+      // refresh follower count on profile
       await _loadProfile();
     } catch (e) {
       setState(() {
@@ -1463,14 +1469,38 @@ class _ProfileScreenState extends State<ProfileScreen>
     }
   }
 
+  Widget _refreshableProfileState(Widget child) {
+    final minHeight = MediaQuery.sizeOf(context).height -
+        kToolbarHeight -
+        MediaQuery.paddingOf(context).top -
+        MediaQuery.paddingOf(context).bottom -
+        120;
+
+    return RefreshIndicator(
+      color: AppColors.fernGreen,
+      onRefresh: _loadProfile,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          SizedBox(
+            height: minHeight.clamp(360.0, double.infinity).toDouble(),
+            child: Center(child: child),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBody() {
     if (_isLoading) {
-      return EchoLogoLoader(label: context.l('Loading profile'));
+      return _refreshableProfileState(
+        EchoLogoLoader(label: context.l('Loading profile')),
+      );
     }
 
     if (_profile == null) {
-      return Center(
-        child: Text(
+      return _refreshableProfileState(
+        Text(
           context.l('Could not load profile'),
           style: AppTypography.textTheme.bodyMedium,
         ),
@@ -1484,8 +1514,6 @@ class _ProfileScreenState extends State<ProfileScreen>
             Tab(text: context.l('Echoes')),
             Tab(text: context.l('Replies')),
             Tab(text: context.l('Media')),
-            Tab(text: context.l('Followers')),
-            Tab(text: context.l('Following')),
             if (_isOwnProfile && userIsPro) Tab(text: context.l('Analytics')),
           ];
 
@@ -1497,22 +1525,6 @@ class _ProfileScreenState extends State<ProfileScreen>
             _EchoesTab(echoes: _echoes),
             _RepliesTab(userId: _profile!['id']),
             _MediaTab(userId: _profile!['id']),
-            _FollowUsersTab(
-              mode: 'followers',
-              loadUsers: () => _loadFollowUsers(
-                client: Supabase.instance.client,
-                targetId: _profile!['id'] as String,
-                mode: 'followers',
-              ),
-            ),
-            _FollowUsersTab(
-              mode: 'following',
-              loadUsers: () => _loadFollowUsers(
-                client: Supabase.instance.client,
-                targetId: _profile!['id'] as String,
-                mode: 'following',
-              ),
-            ),
             if (_isOwnProfile && userIsPro)
               AnalyticsTab(userId: _profile!['id']),
           ];
@@ -1523,284 +1535,135 @@ class _ProfileScreenState extends State<ProfileScreen>
         opacity: _fade,
         child: SlideTransition(
           position: _slide,
-          child: SlideTransition(
-            position: _slide,
-            child: RefreshIndicator(
-              color: AppColors.fernGreen,
-              onRefresh: _loadProfile,
-              child: NestedScrollView(
-                  headerSliverBuilder: (context, innerBoxIsScrolled) => [
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.all(AppSpacing.xl),
-                            child: Column(
-                              children: [
-                                _AvatarCard(
-                                  profile: _profile!,
-                                  isIdentityVerified: _isIdentityVerified,
-                                  isOwnProfile: _isOwnProfile,
-                                  showStats: _canViewProfileContent,
-                                  onOpenFollowers: () =>
-                                      _showFollowList(mode: 'followers'),
-                                  onOpenFollowing: () =>
-                                      _showFollowList(mode: 'following'),
-                                  onEditBio: _showEditBioSheet,
+          child: RefreshIndicator(
+            color: AppColors.fernGreen,
+            onRefresh: _loadProfile,
+            child: NestedScrollView(
+                headerSliverBuilder: (context, innerBoxIsScrolled) => [
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.all(AppSpacing.xl),
+                          child: Column(
+                            children: [
+                              _AvatarCard(
+                                profile: _profile!,
+                                isIdentityVerified: _isIdentityVerified,
+                                isOwnProfile: _isOwnProfile,
+                                showStats: _canViewProfileContent,
+                                onOpenFollowers: () =>
+                                    _openFollowList(mode: 'followers'),
+                                onOpenFollowing: () =>
+                                    _openFollowList(mode: 'following'),
+                                onEditBio: _showEditBioSheet,
+                              ),
+                              if (!_isOwnProfile) ...[
+                                const SizedBox(height: AppSpacing.md),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: _isBlockedByMe
+                                      ? _UnblockButton(
+                                          onPressed: () =>
+                                              _unblockProfileUser(),
+                                        )
+                                      : _ProfileFollowButton(
+                                          isFollowing: _isFollowing,
+                                          requestStatus: _followRequestStatus,
+                                          isPrivate: !_isPublic,
+                                          onPressed: _toggleFollow,
+                                        ),
                                 ),
-                                if (!_isOwnProfile) ...[
-                                  const SizedBox(height: AppSpacing.md),
-                                  SizedBox(
-                                    width: double.infinity,
-                                    child: _isBlockedByMe
-                                        ? _UnblockButton(
-                                            onPressed: () =>
-                                                _unblockProfileUser(),
-                                          )
-                                        : _ProfileFollowButton(
-                                            isFollowing: _isFollowing,
-                                            requestStatus: _followRequestStatus,
-                                            isPrivate: !_isPublic,
-                                            onPressed: _toggleFollow,
-                                          ),
-                                  ),
-                                ],
-                                const SizedBox(height: AppSpacing.md),
-                                if (_isOwnProfile)
-                                  _VisibilityToggle(
-                                    isPublic: _isPublic,
-                                    onToggle: _setPublic,
-                                  ),
-                                if (!_isOwnProfile &&
-                                    !_isPublic &&
-                                    !_isBlockedByMe)
-                                  _PrivateProfileNotice(
-                                    username: _profile!['username'] as String,
-                                    requestStatus: _followRequestStatus,
-                                  ),
-                                if (!_isOwnProfile && _isBlockedByMe)
-                                  _BlockedProfileNotice(
-                                    username: _profile!['username'] as String,
-                                    onUnblock: () => _unblockProfileUser(),
-                                  ),
-                                const SizedBox(height: AppSpacing.md),
-                                if (_canViewProfileContent)
-                                  ReputationCard(
-                                    username:
-                                        _profile!['username'] as String? ?? '',
-                                    trustTier:
-                                        _profile!['trust_tier'] as String? ??
-                                            'unverified',
-                                    trustScore:
-                                        (_profile!['trust_score'] as num?)
-                                                ?.toInt() ??
-                                            0,
-                                    echoCount: (_profile!['echo_count'] as num?)
-                                            ?.toInt() ??
-                                        0,
-                                    proofCount:
-                                        (_profile!['proof_count'] as num?)
-                                                ?.toInt() ??
-                                            0,
-                                    isIdentityVerified: _isIdentityVerified,
-                                    settledBonds: _settledBonds,
-                                    contestedBonds: _contestedBonds,
-                                    activeBonds: _activeBonds,
-                                    avatarUrl:
-                                        _profile!['avatar_url'] as String?,
-                                    walletAddress:
-                                        _profile!['wallet_address'] as String?,
-                                  ),
-                                const SizedBox(height: AppSpacing.lg),
-                                if (_isOwnProfile && !_isIdentityVerified)
-                                  _VerifyPrompt(
-                                      isPending: _isVerificationPending),
-                                const SizedBox(height: AppSpacing.lg),
-                                if (_isOwnProfile) ...[
-                                  const SolanaInfoCard(),
-                                  const SizedBox(height: AppSpacing.lg),
-                                ],
                               ],
-                            ),
+                              const SizedBox(height: AppSpacing.md),
+                              if (_isOwnProfile)
+                                _VisibilityToggle(
+                                  isPublic: _isPublic,
+                                  onToggle: _setPublic,
+                                ),
+                              if (!_isOwnProfile &&
+                                  !_isPublic &&
+                                  !_isBlockedByMe)
+                                _PrivateProfileNotice(
+                                  username: _profile!['username'] as String,
+                                  requestStatus: _followRequestStatus,
+                                ),
+                              if (!_isOwnProfile && _isBlockedByMe)
+                                _BlockedProfileNotice(
+                                  username: _profile!['username'] as String,
+                                  onUnblock: () => _unblockProfileUser(),
+                                ),
+                              const SizedBox(height: AppSpacing.md),
+                              if (_canViewProfileContent)
+                                ReputationCard(
+                                  username:
+                                      _profile!['username'] as String? ?? '',
+                                  trustTier:
+                                      _profile!['trust_tier'] as String? ??
+                                          'unverified',
+                                  trustScore: (_profile!['trust_score'] as num?)
+                                          ?.toInt() ??
+                                      0,
+                                  echoCount: (_profile!['echo_count'] as num?)
+                                          ?.toInt() ??
+                                      0,
+                                  proofCount: (_profile!['proof_count'] as num?)
+                                          ?.toInt() ??
+                                      0,
+                                  isIdentityVerified: _isIdentityVerified,
+                                  settledBonds: _settledBonds,
+                                  contestedBonds: _contestedBonds,
+                                  activeBonds: _activeBonds,
+                                  avatarUrl: _profile!['avatar_url'] as String?,
+                                  walletAddress:
+                                      _profile!['wallet_address'] as String?,
+                                ),
+                              const SizedBox(height: AppSpacing.lg),
+                              if (_isOwnProfile && !_isIdentityVerified)
+                                _VerifyPrompt(
+                                    isPending: _isVerificationPending),
+                              const SizedBox(height: AppSpacing.lg),
+                              if (_isOwnProfile) ...[
+                                const SolanaInfoCard(),
+                                const SizedBox(height: AppSpacing.lg),
+                              ],
+                            ],
                           ),
                         ),
-                        SliverPersistentHeader(
-                          pinned: true,
-                          delegate: _TabBarDelegate(
-                            TabBar(
-                              tabs: tabs,
-                              isScrollable: tabs.length > 4,
-                              tabAlignment:
-                                  tabs.length > 4 ? TabAlignment.start : null,
-                            ),
+                      ),
+                      SliverPersistentHeader(
+                        pinned: true,
+                        delegate: _TabBarDelegate(
+                          TabBar(
+                            tabs: tabs,
+                            isScrollable: tabs.length > 4,
+                            tabAlignment:
+                                tabs.length > 4 ? TabAlignment.start : null,
                           ),
                         ),
-                      ],
-                  body: TabBarView(children: tabViews)),
-            ),
+                      ),
+                    ],
+                body: TabBarView(children: tabViews)),
           ),
         ),
       ),
     );
   }
 
-  Future<void> _showFollowList({required String mode}) async {
+  void _openFollowList({required String mode}) {
     if (_profile == null || !_canViewProfileContent) return;
 
-    final title =
-        mode == 'followers' ? context.l('Followers') : context.l('Following');
-    final client = Supabase.instance.client;
-    final targetId = _profile!['id'] as String;
+    if (!_canOpenFollowLists) {
+      showInfoSnack(
+        context,
+        context.l('Follower lists are visible only on public profiles.'),
+      );
+      return;
+    }
 
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetContext) => FutureBuilder<List<Map<String, dynamic>>>(
-        future:
-            _loadFollowUsers(client: client, targetId: targetId, mode: mode),
-        builder: (context, snapshot) {
-          final users = snapshot.data ?? const <Map<String, dynamic>>[];
-          return DraggableScrollableSheet(
-            expand: false,
-            initialChildSize: 0.55,
-            minChildSize: 0.35,
-            maxChildSize: 0.9,
-            builder: (context, controller) => Column(
-              children: [
-                const SizedBox(height: AppSpacing.sm),
-                Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.borderMedium,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(AppSpacing.lg),
-                  child: Row(
-                    children: [
-                      Text(title, style: AppTypography.textTheme.titleMedium),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.close_rounded),
-                        onPressed: () => Navigator.pop(sheetContext),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: snapshot.connectionState == ConnectionState.waiting
-                      ? const Center(
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: AppColors.fernGreen,
-                          ),
-                        )
-                      : users.isEmpty
-                          ? Center(
-                              child: Text(
-                                context.l('No {kind} yet.', {
-                                  'kind': mode == 'followers'
-                                      ? context.l('followers')
-                                      : context.l('following'),
-                                }),
-                                style: AppTypography.textTheme.bodySmall
-                                    ?.copyWith(color: AppColors.textSecondary),
-                              ),
-                            )
-                          : ListView.separated(
-                              controller: controller,
-                              physics: const AlwaysScrollableScrollPhysics(),
-                              itemCount: users.length,
-                              separatorBuilder: (_, __) =>
-                                  const Divider(height: 1),
-                              itemBuilder: (context, index) {
-                                final user = users[index];
-                                final username =
-                                    user['username'] as String? ?? '';
-                                final displayName =
-                                    (user['display_name'] as String?)
-                                                ?.trim()
-                                                .isNotEmpty ==
-                                            true
-                                        ? user['display_name'] as String
-                                        : username;
-                                final avatarUrl = user['avatar_url'] as String?;
-
-                                return ListTile(
-                                  leading: CircleAvatar(
-                                    backgroundColor: AppColors.softSand,
-                                    backgroundImage:
-                                        avatarImageProvider(avatarUrl),
-                                    child:
-                                        avatarImageProvider(avatarUrl) == null
-                                            ? const Icon(Icons.person_outline,
-                                                color: AppColors.textTertiary)
-                                            : null,
-                                  ),
-                                  title: Text(
-                                    displayName,
-                                    style: AppTypography.textTheme.titleSmall,
-                                  ),
-                                  subtitle: Text(
-                                    '@$username',
-                                    style: AppTypography.textTheme.labelMedium,
-                                  ),
-                                  onTap: username.isEmpty
-                                      ? null
-                                      : () {
-                                          Navigator.pop(sheetContext);
-                                          if (username ==
-                                              _profile?['username']) {
-                                            return;
-                                          }
-                                          context.push(
-                                            '/profile/${Uri.encodeComponent(username)}',
-                                          );
-                                        },
-                                );
-                              },
-                            ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
+    final username = _profile!['username'] as String? ?? '';
+    if (username.isEmpty) return;
+    context.push(
+      '/profile/${Uri.encodeComponent(username)}/follows?tab=$mode',
     );
-  }
-
-  Future<List<Map<String, dynamic>>> _loadFollowUsers({
-    required SupabaseClient client,
-    required String targetId,
-    required String mode,
-  }) async {
-    final idColumn = mode == 'followers' ? 'follower_id' : 'following_id';
-    final matchColumn = mode == 'followers' ? 'following_id' : 'follower_id';
-    final rows = await client
-        .from('user_follows')
-        .select(idColumn)
-        .eq(matchColumn, targetId)
-        .limit(100);
-
-    final ids = (rows as List)
-        .map((row) => (row as Map<String, dynamic>)[idColumn] as String?)
-        .whereType<String>()
-        .toList();
-    if (ids.isEmpty) return const [];
-
-    final idList = ids.join(',');
-    final users = await client
-        .from('users_public')
-        .select('id, username, display_name, avatar_url, trust_tier, is_pro')
-        .filter('id', 'in', '($idList)')
-        .order('username');
-
-    return List<Map<String, dynamic>>.from(users as List);
   }
 
   void _showBlockedUsersSheet() {
@@ -2311,6 +2174,376 @@ class _BlockedProfileNotice extends StatelessWidget {
   }
 }
 
+class ProfileFollowsScreen extends StatefulWidget {
+  const ProfileFollowsScreen({
+    super.key,
+    required this.username,
+    this.initialMode = 'followers',
+  });
+
+  final String username;
+  final String initialMode;
+
+  @override
+  State<ProfileFollowsScreen> createState() => _ProfileFollowsScreenState();
+}
+
+class _ProfileFollowsScreenState extends State<ProfileFollowsScreen> {
+  late Future<_FollowListProfileState> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _loadProfileState();
+  }
+
+  Future<_FollowListProfileState> _loadProfileState() async {
+    final client = Supabase.instance.client;
+    final myId = client.auth.currentUser?.id;
+    final profile = await client
+        .from('users_public')
+        .select(
+          'id, username, display_name, avatar_url, is_public, follower_count, following_count, trust_tier, is_pro',
+        )
+        .eq('username', widget.username)
+        .maybeSingle();
+
+    if (profile == null) {
+      return const _FollowListProfileState.notFound();
+    }
+
+    final targetId = profile['id'] as String;
+    final isOwnProfile = myId != null && myId == targetId;
+    var isBlockedByMe = false;
+
+    if (!isOwnProfile && myId != null) {
+      final block = await client
+          .from('user_blocks')
+          .select('id')
+          .eq('blocker_id', myId)
+          .eq('blocked_id', targetId)
+          .maybeSingle();
+      isBlockedByMe = block != null;
+    }
+
+    final isPublic = profile['is_public'] as bool? ?? true;
+    final canView = isOwnProfile || (!isBlockedByMe && isPublic);
+    return _FollowListProfileState(
+      profile: Map<String, dynamic>.from(profile),
+      canView: canView,
+      isOwnProfile: isOwnProfile,
+      isBlockedByMe: isBlockedByMe,
+    );
+  }
+
+  Future<void> _refresh() async {
+    setState(() => _future = _loadProfileState());
+    await _future;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final initialIndex = widget.initialMode == 'following' ? 1 : 0;
+
+    return FutureBuilder<_FollowListProfileState>(
+      future: _future,
+      builder: (context, snapshot) {
+        final state = snapshot.data;
+        final profile = state?.profile;
+        final username = profile?['username'] as String? ?? widget.username;
+        final title = username.isEmpty ? context.l('Profile') : '@$username';
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Scaffold(
+            backgroundColor: AppColors.surfaceSecondary,
+            appBar: _followListAppBar(context, title),
+            body: EchoLogoLoader(label: context.l('Loading profile')),
+          );
+        }
+
+        if (snapshot.hasError || state == null || profile == null) {
+          return _FollowListMessageScaffold(
+            title: title,
+            icon: Icons.person_off_outlined,
+            heading: context.l('Could not load profile'),
+            message: context.l('Pull down and try again.'),
+            onRefresh: _refresh,
+          );
+        }
+
+        if (!state.canView) {
+          return _FollowListMessageScaffold(
+            title: title,
+            icon: state.isBlockedByMe
+                ? Icons.block_rounded
+                : Icons.lock_outline_rounded,
+            heading: state.isBlockedByMe
+                ? context.l('Profile blocked')
+                : context.l('Private profile'),
+            message: context.l(
+              'Follower lists are visible only on public profiles.',
+            ),
+            onRefresh: _refresh,
+          );
+        }
+
+        return DefaultTabController(
+          length: 2,
+          initialIndex: initialIndex,
+          child: Scaffold(
+            backgroundColor: AppColors.surfaceSecondary,
+            appBar: _followListAppBar(
+              context,
+              title,
+              bottom: _FollowTopTabBar(profile: profile),
+            ),
+            body: TabBarView(
+              children: [
+                _FollowUsersTab(
+                  mode: 'followers',
+                  loadUsers: () => _loadFollowUsers(
+                    client: Supabase.instance.client,
+                    username: username,
+                    mode: 'followers',
+                  ),
+                ),
+                _FollowUsersTab(
+                  mode: 'following',
+                  loadUsers: () => _loadFollowUsers(
+                    client: Supabase.instance.client,
+                    username: username,
+                    mode: 'following',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  PreferredSizeWidget _followListAppBar(
+    BuildContext context,
+    String title, {
+    PreferredSizeWidget? bottom,
+  }) {
+    return AppBar(
+      backgroundColor: AppColors.white,
+      foregroundColor: AppColors.charcoal,
+      surfaceTintColor: AppColors.white,
+      elevation: 0,
+      centerTitle: true,
+      bottom: bottom,
+      title: Text(
+        title,
+        style: GoogleFonts.josefinSans(
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+          color: AppColors.charcoal,
+        ),
+      ),
+    );
+  }
+}
+
+class _FollowListProfileState {
+  const _FollowListProfileState({
+    required this.profile,
+    required this.canView,
+    required this.isOwnProfile,
+    required this.isBlockedByMe,
+  });
+
+  const _FollowListProfileState.notFound()
+      : profile = null,
+        canView = false,
+        isOwnProfile = false,
+        isBlockedByMe = false;
+
+  final Map<String, dynamic>? profile;
+  final bool canView;
+  final bool isOwnProfile;
+  final bool isBlockedByMe;
+}
+
+class _FollowTopTabBar extends StatelessWidget implements PreferredSizeWidget {
+  const _FollowTopTabBar({required this.profile});
+
+  final Map<String, dynamic> profile;
+
+  @override
+  Size get preferredSize => const Size.fromHeight(54);
+
+  @override
+  Widget build(BuildContext context) {
+    final followerCount = (profile['follower_count'] as num?)?.toInt() ?? 0;
+    final followingCount = (profile['following_count'] as num?)?.toInt() ?? 0;
+
+    return Material(
+      color: AppColors.white,
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          border: Border(
+            top: BorderSide(color: AppColors.borderSubtle),
+            bottom: BorderSide(color: AppColors.borderSubtle),
+          ),
+        ),
+        child: TabBar(
+          labelColor: AppColors.charcoal,
+          unselectedLabelColor: AppColors.textSecondary,
+          indicatorColor: AppColors.fernGreen,
+          indicatorWeight: 2.5,
+          dividerColor: Colors.transparent,
+          tabs: [
+            _FollowTopTab(
+              label: context.l('Followers'),
+              count: _compactCount(followerCount),
+            ),
+            _FollowTopTab(
+              label: context.l('Following'),
+              count: _compactCount(followingCount),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _compactCount(int value) {
+    if (value >= 1000000) {
+      return '${(value / 1000000).toStringAsFixed(1)}m';
+    }
+    if (value >= 1000) {
+      return '${(value / 1000).toStringAsFixed(1)}k';
+    }
+    return value.toString();
+  }
+}
+
+class _FollowTopTab extends StatelessWidget {
+  const _FollowTopTab({
+    required this.label,
+    required this.count,
+  });
+
+  final String label;
+  final String count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tab(
+      height: 52,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.josefinSans(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            count,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.josefinSans(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _compactCount(int value) {
+    if (value >= 1000000) {
+      return '${(value / 1000000).toStringAsFixed(1)}m';
+    }
+    if (value >= 1000) {
+      return '${(value / 1000).toStringAsFixed(1)}k';
+    }
+    return value.toString();
+  }
+}
+
+class _FollowListMessageScaffold extends StatelessWidget {
+  const _FollowListMessageScaffold({
+    required this.title,
+    required this.icon,
+    required this.heading,
+    required this.message,
+    required this.onRefresh,
+  });
+
+  final String title;
+  final IconData icon;
+  final String heading;
+  final String message;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.surfaceSecondary,
+      appBar: AppBar(
+        backgroundColor: AppColors.white,
+        foregroundColor: AppColors.charcoal,
+        surfaceTintColor: AppColors.white,
+        elevation: 0,
+        centerTitle: true,
+        title: Text(
+          title,
+          style: GoogleFonts.josefinSans(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: AppColors.charcoal,
+          ),
+        ),
+      ),
+      body: RefreshIndicator(
+        color: AppColors.fernGreen,
+        onRefresh: onRefresh,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          children: [
+            SizedBox(height: MediaQuery.sizeOf(context).height * 0.18),
+            _ProfileEmptyTab(
+              icon: icon,
+              title: heading,
+              message: message,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Future<List<Map<String, dynamic>>> _loadFollowUsers({
+  required SupabaseClient client,
+  required String username,
+  required String mode,
+}) async {
+  final response = await client.rpc(
+    'get_profile_follow_users',
+    params: {
+      'p_target_username': username,
+      'p_mode': mode,
+      'p_limit': 100,
+      'p_offset': 0,
+    },
+  );
+  return List<Map<String, dynamic>>.from(response as List);
+}
+
 class _BlockedUsersSheet extends StatefulWidget {
   const _BlockedUsersSheet({
     required this.loadBlockedUsers,
@@ -2647,7 +2880,7 @@ class _AvatarCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppSpacing.lg),
-          // Stats row: echoes | followers | following
+          // stats row: echoes | followers | following
           if (showStats)
             Row(
               children: [
@@ -3000,7 +3233,7 @@ class _ProfileAvatarWithBadgeState extends State<_ProfileAvatarWithBadge>
       CurvedAnimation(parent: _badgeCtrl, curve: Curves.easeOutBack),
     );
     if (widget.isIdentityVerified) {
-      // Small delay so it pops in after the avatar loads.
+      // delay slightly so the badge appears after avatar load
       Future.delayed(const Duration(milliseconds: 300), () {
         if (mounted) _badgeCtrl.forward();
       });
@@ -3024,9 +3257,9 @@ class _ProfileAvatarWithBadgeState extends State<_ProfileAvatarWithBadge>
   @override
   Widget build(BuildContext context) {
     final diameter = widget.radius * 2;
-    // Ring thickness: 2.5px for profile (larger avatar).
+    // ring thickness is larger for the profile avatar
     const ringWidth = 2.5;
-    // Total container size = diameter + ring on each side + gap.
+    // total size includes diameter ring and gap
     final containerSize = diameter + (ringWidth + 2) * 2;
 
     return SizedBox(
@@ -3035,7 +3268,7 @@ class _ProfileAvatarWithBadgeState extends State<_ProfileAvatarWithBadge>
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // Animated verified ring.
+          // animated verified ring
           if (widget.isIdentityVerified)
             ScaleTransition(
               scale: _badgeScale,
@@ -3053,7 +3286,7 @@ class _ProfileAvatarWithBadgeState extends State<_ProfileAvatarWithBadge>
               ),
             ),
 
-          // Avatar, inset from the ring.
+          // avatar inset from the ring
           Positioned(
             left: widget.isIdentityVerified ? ringWidth + 2 : 0,
             top: widget.isIdentityVerified ? ringWidth + 2 : 0,
@@ -3095,7 +3328,7 @@ class _ProfileAvatarWithBadgeState extends State<_ProfileAvatarWithBadge>
             ),
           ),
 
-          // Verified checkmark dot — animated pop-in.
+          // verified checkmark dot with pop-in
           if (widget.isIdentityVerified)
             Positioned(
               right: 2,
@@ -3108,7 +3341,7 @@ class _ProfileAvatarWithBadgeState extends State<_ProfileAvatarWithBadge>
                   decoration: const BoxDecoration(
                     color: AppColors.fernGreen,
                     shape: BoxShape.circle,
-                    // White border separates the dot from the ring.
+                    // white border separates the dot from the ring
                   ),
                   child: const Icon(
                     Icons.verified_rounded,
@@ -3311,8 +3544,8 @@ class _VerifyPrompt extends StatelessWidget {
   }
 }
 
-// add these at the bottom of profile_screen.dart
-// outside _ProfileScreenState, as top-level widget classes
+// profile tab widgets
+// placed outside the state class
 
 class _EchoesTab extends StatelessWidget {
   const _EchoesTab({required this.echoes});
@@ -3431,7 +3664,7 @@ class _RepliesTabState extends State<_RepliesTab>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // context — which echo this is a reply to
+                // context for the echo this replies to
                 Row(
                   children: [
                     const Icon(Icons.reply_rounded,
@@ -3641,7 +3874,7 @@ class _MediaTabState extends State<_MediaTab>
   Future<void> _load() async {
     try {
       final client = Supabase.instance.client;
-      // echoes that have media_urls array — not empty
+      // echoes that have a non-empty media list
       final rows = await client
           .from('echoes')
           .select('id, title, media_urls, created_at')
@@ -3679,7 +3912,7 @@ class _MediaTabState extends State<_MediaTab>
       );
     }
 
-    // Twitter-style 3-column grid
+    // three-column media grid
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(2, 2, 2, 96),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -3733,6 +3966,8 @@ class _FollowUsersTab extends StatefulWidget {
 class _FollowUsersTabState extends State<_FollowUsersTab>
     with AutomaticKeepAliveClientMixin {
   late Future<List<Map<String, dynamic>>> _future;
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _query = '';
 
   @override
   bool get wantKeepAlive => true;
@@ -3741,6 +3976,12 @@ class _FollowUsersTabState extends State<_FollowUsersTab>
   void initState() {
     super.initState();
     _future = widget.loadUsers();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _refresh() async {
@@ -3762,11 +4003,43 @@ class _FollowUsersTabState extends State<_FollowUsersTab>
       future: _future,
       builder: (context, snapshot) {
         final users = snapshot.data ?? const <Map<String, dynamic>>[];
+        final query = _query.trim().toLowerCase();
+        final visibleUsers = query.isEmpty
+            ? users
+            : users.where((user) {
+                final username =
+                    (user['username'] as String? ?? '').toLowerCase();
+                final displayName =
+                    (user['display_name'] as String? ?? '').toLowerCase();
+                return username.contains(query) || displayName.contains(query);
+              }).toList();
+
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
             child: CircularProgressIndicator(
               strokeWidth: 2,
               color: AppColors.fernGreen,
+            ),
+          );
+        }
+        if (snapshot.hasError) {
+          return RefreshIndicator(
+            color: AppColors.fernGreen,
+            onRefresh: _refresh,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                SizedBox(
+                  height: MediaQuery.sizeOf(context).height * 0.45,
+                  child: _ProfileEmptyTab(
+                    icon: Icons.lock_outline_rounded,
+                    title: context.l('Could not load list.'),
+                    message: context.l(
+                      'Follower lists are visible only on public profiles.',
+                    ),
+                  ),
+                ),
+              ],
             ),
           );
         }
@@ -3792,54 +4065,134 @@ class _FollowUsersTabState extends State<_FollowUsersTab>
         return RefreshIndicator(
           color: AppColors.fernGreen,
           onRefresh: _refresh,
-          child: ListView.separated(
+          child: ListView.builder(
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.lg,
               AppSpacing.md,
               AppSpacing.lg,
               96,
             ),
-            itemCount: users.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemCount: visibleUsers.isEmpty ? 2 : visibleUsers.length + 1,
             itemBuilder: (context, index) {
-              final user = users[index];
+              if (index == 0) {
+                return _FollowSearchField(
+                  controller: _searchCtrl,
+                  onChanged: (value) => setState(() => _query = value),
+                );
+              }
+
+              if (visibleUsers.isEmpty) {
+                return SizedBox(
+                  height: MediaQuery.sizeOf(context).height * 0.35,
+                  child: _ProfileEmptyTab(
+                    icon: Icons.search_off_rounded,
+                    title: context.l('No matching accounts.'),
+                    message: context.l('Try another name or username.'),
+                  ),
+                );
+              }
+
+              final user = visibleUsers[index - 1];
               final username = user['username'] as String? ?? '';
               final displayName =
                   (user['display_name'] as String?)?.trim().isNotEmpty == true
                       ? user['display_name'] as String
                       : username;
               final avatarUrl = user['avatar_url'] as String?;
-              return ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: CircleAvatar(
-                  backgroundColor: AppColors.softSand,
-                  backgroundImage: avatarImageProvider(avatarUrl),
-                  child: avatarImageProvider(avatarUrl) == null
-                      ? const Icon(
-                          Icons.person_outline,
-                          color: AppColors.textTertiary,
-                        )
-                      : null,
+              final image = avatarImageProvider(avatarUrl);
+
+              return Container(
+                decoration: const BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(color: AppColors.borderSubtle),
+                  ),
                 ),
-                title: Text(
-                  displayName,
-                  style: AppTypography.textTheme.titleSmall,
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    backgroundColor: AppColors.softSand,
+                    backgroundImage: image,
+                    child: image == null
+                        ? const Icon(
+                            Icons.person_outline,
+                            color: AppColors.textTertiary,
+                          )
+                        : null,
+                  ),
+                  title: Text(
+                    displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.textTheme.titleSmall,
+                  ),
+                  subtitle: Text(
+                    '@$username',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.josefinSans(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  trailing: const Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppColors.textTertiary,
+                  ),
+                  onTap: username.isEmpty
+                      ? null
+                      : () => context.push(
+                            '/profile/${Uri.encodeComponent(username)}',
+                          ),
                 ),
-                subtitle: Text('@$username'),
-                trailing: const Icon(
-                  Icons.chevron_right_rounded,
-                  color: AppColors.textTertiary,
-                ),
-                onTap: username.isEmpty
-                    ? null
-                    : () => context.push(
-                          '/profile/${Uri.encodeComponent(username)}',
-                        ),
               );
             },
           ),
         );
       },
+    );
+  }
+}
+
+class _FollowSearchField extends StatelessWidget {
+  const _FollowSearchField({
+    required this.controller,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: context.l('Search'),
+          prefixIcon: const Icon(Icons.search_rounded),
+          filled: true,
+          fillColor: AppColors.white,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: 12,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: AppColors.borderSubtle),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: AppColors.borderSubtle),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: AppColors.fernGreen),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -1,3 +1,6 @@
+// admin root layout
+// @params none
+
 import type { Metadata } from "next";
 import { Theme } from "@radix-ui/themes";
 import "@radix-ui/themes/styles.css";

@@ -1,28 +1,28 @@
-// Device security checks.
-// Detects common root/jailbreak indicators as a soft deterrent.
-// These are speed bumps, not walls — a determined attacker can bypass them.
-// The real security is in Supabase RLS + server-side validation.
-// Never rely on client-side security as the sole protection for sensitive data.
+// device security checks
+// detects common root/jailbreak indicators as a soft deterrent
+// these are speed bumps, not walls a determined attacker can bypass them
+// the real security is in supabase rls + server-side validation
+// never rely on client-side security as the sole protection for sensitive data
 
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../utils/logger.dart';
 
 abstract final class DeviceSecurity {
-  // Returns true if the device appears tampered or unsafe.
-  // Never blocks in debug mode.
+  // returns true if the device appears tampered or unsafe
+  // never blocks in debug mode
   static bool get isCompromised {
     if (kDebugMode) return false;
     if (Platform.isAndroid) return _isAndroidRooted;
     if (Platform.isIOS) return _isIosJailbroken;
     return false;
-    // Note: Emulator check removed — legitimate developers and some QA
-    // setups run on emulators. Block only in production if needed.
+    // note: emulator check removed legitimate developers and some qa
+    // setups run on emulators. block only in production if needed
   }
 
   static bool get _isAndroidRooted {
-    // Check for common su binary locations.
-    // Note: Magisk Hide can conceal these — this is a basic deterrent.
+    // check for common su binary locations
+    // note: magisk hide can conceal these this is a basic deterrent
     const rootPaths = [
       '/system/app/Superuser.apk',
       '/system/xbin/su',
@@ -44,7 +44,7 @@ abstract final class DeviceSecurity {
 
     if (_hasAnyPath(rootPaths, 'root')) return true;
 
-    // Check for test-keys build signature (common on custom ROMs).
+    // check for test-keys build signature (common on custom roms)
     try {
       final buildProp = File('/system/build.prop').readAsStringSync();
       if (buildProp.contains('test-keys')) {
@@ -80,13 +80,13 @@ abstract final class DeviceSecurity {
           return true;
         }
       } catch (_) {
-        // File access may throw on some devices — ignore.
+        // file access may throw on some devices ignore
       }
     }
     return false;
   }
 
-  // Soft emulator check — used for logging only, not blocking.
+  // soft emulator check used for logging only, not blocking
   static bool get isEmulator {
     if (!Platform.isAndroid) return false;
     final v = Platform.operatingSystemVersion.toLowerCase();

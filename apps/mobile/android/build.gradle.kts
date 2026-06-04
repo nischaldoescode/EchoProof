@@ -1,3 +1,6 @@
+// build gradle
+// @params none
+
 allprojects {
     repositories {
         google()

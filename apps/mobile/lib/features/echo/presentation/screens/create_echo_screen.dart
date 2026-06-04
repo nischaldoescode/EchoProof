@@ -1,6 +1,5 @@
 // create echo screen
-// full form: title, content, category, verification toggle
-// uses CreateEchoService via provider — no riverpod
+// @params none creates a verified echo draft and submits it
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -50,7 +49,6 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
   late final AnimationController _entranceController;
   late final Animation<double> _slideY;
   late final Animation<double> _fade;
-  late final Animation<double> _rotX;
 
   @override
   void initState() {
@@ -68,9 +66,6 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
         curve: const Interval(0, 0.55, curve: Curves.easeOut),
       ),
     );
-    _rotX = Tween<double>(begin: 0.06, end: 0).animate(
-      CurvedAnimation(parent: _entranceController, curve: Curves.easeOutCubic),
-    );
     _entranceController.forward();
 
     // restore draft into text controllers
@@ -78,7 +73,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
       final service = context.read<CreateEchoService>();
       _titleController.text = service.title;
       _loadMentionableUsers();
-      // Sync Pro status so character limits are correct.
+      // sync pro status so character limits are correct
       final isPro = context.read<SubscriptionService>().isPro;
       service.setProStatus(isPro);
     });
@@ -166,7 +161,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
       return;
     }
 
-    // Store local path for preview + upload later.
+    // store local path for preview and upload later
     service.addLocalMedia(file.path);
     HapticFeedback.selectionClick();
   }
@@ -400,7 +395,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
         if (mounted) {
           context.read<CreateEchoService>().resetSuccess();
 
-          // show rewarded interstitial every 3rd echo for non-pro users
+          // show rewarded interstitial every third echo for non-pro users
           final isPro = context.read<SubscriptionService>().isPro;
           final count =
               context.read<CreateEchoService>().echoesCreatedThisSession;
@@ -441,9 +436,9 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
             service.reset();
             context.pop();
           }
-          // If save — just close (service retains state since it's a provider).
+          // save keeps the current provider draft
           if (action == _DraftAction.save || action == _DraftAction.discard) {
-            // save = just close without clearing
+            // save closes without clearing
             if (action == _DraftAction.save) context.pop();
           }
         },
@@ -465,7 +460,7 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                   service.reset();
                   context.pop();
                 } else if (action == _DraftAction.save) {
-                  context.pop(); // retain draft in service
+                  context.pop();
                 }
               },
             ),
@@ -492,12 +487,8 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
             builder: (context, child) {
               return Opacity(
                 opacity: _fade.value,
-                child: Transform(
-                  transform: Matrix4.identity()
-                    ..setEntry(3, 2, 0.001)
-                    ..rotateX(_rotX.value)
-                    ..translateByDouble(0.0, _slideY.value, 0.0, 1.0),
-                  alignment: Alignment.topCenter,
+                child: Transform.translate(
+                  offset: Offset(0, _slideY.value),
                   child: child,
                 ),
               );
@@ -628,13 +619,6 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
                                 ),
                               )
                             : const SizedBox.shrink(),
-                      ),
-                      const SizedBox(height: AppSpacing.xl),
-                      _VerificationToggle(
-                        value: service.requiresVerification,
-                        onToggle: context
-                            .read<CreateEchoService>()
-                            .toggleVerification,
                       ),
                       AnimatedSwitcher(
                         duration: const Duration(milliseconds: 220),
@@ -1640,7 +1624,6 @@ class _MediaPickerRow extends StatelessWidget {
     required this.onRemove,
   });
 
-  // final List<String> mediaUrls;
   final VoidCallback onPickImage;
   final VoidCallback onPickVideo;
   final List<String> localPaths;
@@ -1655,7 +1638,7 @@ class _MediaPickerRow extends StatelessWidget {
       children: [
         const SizedBox(height: 12),
 
-        // 🎯 PICKER ROW
+        // picker row
         Row(
           children: [
             IconButton(
@@ -1731,7 +1714,7 @@ class _MediaPickerRow extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      // 🎬 Thumbnail / Icon
+                      // thumbnail or icon
                       ClipRRect(
                         borderRadius: const BorderRadius.only(
                           topLeft: Radius.circular(11),
@@ -1767,7 +1750,7 @@ class _MediaPickerRow extends StatelessWidget {
 
                       const SizedBox(width: 12),
 
-                      // 📝 FILE INFO
+                      // file info
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1810,7 +1793,7 @@ class _MediaPickerRow extends StatelessWidget {
                         ),
                       ),
 
-                      // ❌ REMOVE
+                      // remove
                       GestureDetector(
                         onTap: () => onRemove(i),
                         child: Container(
@@ -1840,76 +1823,6 @@ class _MediaPickerRow extends StatelessWidget {
           const SizedBox(height: AppSpacing.xs),
         ],
       ],
-    );
-  }
-}
-
-class _VerificationToggle extends StatelessWidget {
-  const _VerificationToggle({required this.value, required this.onToggle});
-  final bool value;
-  final VoidCallback onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onToggle,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        decoration: BoxDecoration(
-          color: value ? AppColors.fernGreenLight : AppColors.softSand,
-          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-          border: Border.all(
-            color: value
-                ? AppColors.fernGreen.withValues(alpha: 0.25)
-                : AppColors.borderSubtle,
-          ),
-        ),
-        child: Row(
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 44,
-              height: 26,
-              decoration: BoxDecoration(
-                color: value ? AppColors.fernGreen : AppColors.borderMedium,
-                borderRadius: BorderRadius.circular(13),
-              ),
-              child: AnimatedAlign(
-                duration: const Duration(milliseconds: 200),
-                alignment: value ? Alignment.centerRight : Alignment.centerLeft,
-                child: Container(
-                  margin: const EdgeInsets.all(3),
-                  width: 20,
-                  height: 20,
-                  decoration: const BoxDecoration(
-                    color: AppColors.white,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    context.l('Require verification'),
-                    style: AppTypography.textTheme.titleSmall,
-                  ),
-                  Text(
-                    context.l(
-                      'Community members will be asked to support or challenge this echo',
-                    ),
-                    style: AppTypography.textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

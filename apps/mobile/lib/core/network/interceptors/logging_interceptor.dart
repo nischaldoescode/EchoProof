@@ -12,13 +12,16 @@ class LoggingInterceptor extends Interceptor {
 
   @override
   void onResponse(Response response, ResponseInterceptorHandler handler) {
-    AppLogger.debug('res ${response.statusCode} ${response.requestOptions.uri.path}');
+    AppLogger.debug(
+        'res ${response.statusCode} ${response.requestOptions.uri.path}');
     handler.next(response);
   }
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
-    AppLogger.error('req error ${err.response?.statusCode} ${err.requestOptions.uri.path}', err);
+    AppLogger.error(
+        'req error ${err.response?.statusCode} ${err.requestOptions.uri.path}',
+        err);
     handler.next(err);
   }
 }

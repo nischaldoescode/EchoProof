@@ -1,3 +1,6 @@
+// snack
+// @params none
+
 import 'package:flutter/material.dart';
 import 'package:hyper_snackbar/hyper_snackbar.dart';
 import '../../app/theme/colors.dart';

@@ -1,3 +1,6 @@
+// web echo detail page
+// @params none
+
 import { cache } from "react";
 import type { Metadata } from "next";
 import Nav from "@/components/Nav";
