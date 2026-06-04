@@ -1,7 +1,7 @@
 // auth service
 // manages authentication state using changenotifier
 // replaces auth_provider.dart (riverpod version)
-// screens access via context.watch<AuthService>() and context.read<AuthService>()
+// screens access via context.watch<authservice>() and context.read<authservice>()
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -76,7 +76,7 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  // opens google oauth flow — completes via deep link redirect
+  // opens google oauth flow completes via deep link redirect
   Future<void> signInWithGoogle() async {
     _setLoading(true);
     try {
@@ -101,7 +101,7 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // clears the current error — call after showing error snackbar
+  // clears the current error call after showing error snackbar
   void clearError() {
     _error = null;
     notifyListeners();

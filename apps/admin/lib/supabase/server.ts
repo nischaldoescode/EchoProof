@@ -1,4 +1,4 @@
-// server supabase client — use in server components and route handlers
+// server supabase client use in server components and route handlers
 
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
@@ -38,7 +38,7 @@ export async function createServer() {
               cookieStore.set(name, value, options)
             );
           } catch {
-            // server component — cookie setting is best-effort
+            // server component cookie setting is best-effort
           }
         },
       },
@@ -46,5 +46,5 @@ export async function createServer() {
   );
 }
 
-// Backward-compatible alias for older admin pages and data helpers.
+// backward-compatible alias for older admin pages and data helpers
 export const createClient = createServer;

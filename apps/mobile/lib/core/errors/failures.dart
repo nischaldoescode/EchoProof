@@ -1,4 +1,4 @@
-// failure types for the Either<Failure, T> pattern
+// failure types for the either<failure, t> pattern
 // all repository errors are mapped to one of these before reaching the ui
 
 abstract class Failure {
@@ -7,7 +7,8 @@ abstract class Failure {
 }
 
 class NetworkFailure extends Failure {
-  const NetworkFailure([super.message = 'network error — check your connection']);
+  const NetworkFailure(
+      [super.message = 'network error — check your connection']);
 }
 
 class AuthFailure extends Failure {

@@ -1,3 +1,6 @@
+// admin subscriptions page
+// @params none
+
 import { redirect } from "next/navigation";
 import { adminPath } from "@/lib/routes";
 

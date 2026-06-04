@@ -33,8 +33,8 @@ class StorageService {
   final SupabaseClient _client;
   final _uuid = const Uuid();
 
-  // picks an image file and validates it before returning bytes.
-  // throws StorageException if file is too large or wrong type.
+  // picks an image file and validates it before returning bytes
+  // throws storageexception if file is too large or wrong type
   Future<PlatformFile?> pickProofImage() async {
     final result = await FilePicker.pickFiles(
       type: FileType.custom,
@@ -70,8 +70,8 @@ class StorageService {
     return file;
   }
 
-  // uploads proof image for an echo.
-  // path format: echo-proofs/{echoId}/{uuid}.{ext}
+  // uploads proof image for an echo
+  // path format: echo-proofs/{echoid}/{uuid}.{ext}
   // returns public url stored in echo_proofs table
   Future<UploadResult> uploadProofImage({
     required String echoId,

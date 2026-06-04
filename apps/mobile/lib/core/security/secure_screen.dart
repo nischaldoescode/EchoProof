@@ -1,3 +1,6 @@
+// secure screen
+// @params none
+
 import 'package:flutter/material.dart';
 import 'package:flutter_windowmanager_plus/flutter_windowmanager_plus.dart';
 import 'dart:io' show Platform;

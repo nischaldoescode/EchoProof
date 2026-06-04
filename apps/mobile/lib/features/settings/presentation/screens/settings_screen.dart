@@ -73,7 +73,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       if (!mounted) return;
       setState(() {
         _isVerified = row?['is_identity_verified'] as bool? ?? false;
-        // Pending = requested in last 30 minutes and not yet verified
+        // pending = requested in last 30 minutes and not yet verified
         final lastReq = row?['last_verification_request_at'] as String?;
         if (lastReq != null && !_isVerified) {
           final reqTime = DateTime.tryParse(lastReq);
@@ -228,7 +228,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Hide secret panel when app goes to background.
+    // hide secret panel when app goes to background
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
       if (_secretUnlocked) {
@@ -244,7 +244,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     final now = DateTime.now();
     if (_lastSecretTap != null &&
         now.difference(_lastSecretTap!) > const Duration(seconds: 2)) {
-      // Reset if too slow.
+      // reset if too slow
       _secretTapCount = 0;
     }
     _lastSecretTap = now;
@@ -547,7 +547,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             box.get('notif_${entry.key}', defaultValue: entry.value) as bool,
     };
 
-    // Migration bridge for early builds that had only this local key.
+    // migration bridge for early builds that had only this local key
     if (box.containsKey('notif_someone_supported') &&
         !box.containsKey('notif_echo_context')) {
       localPrefs['echo_context'] =
@@ -608,8 +608,8 @@ class _SettingsScreenState extends State<SettingsScreen>
     unawaited(_saveServerNotifPrefs({'push_enabled': v}));
     if (!v) {
       unawaited(PushNotificationService.instance.removeToken());
-      // Revoke notification permission is not possible programmatically on Android/iOS.
-      // Show guidance instead.
+      // revoke notification permission is not possible programmatically on android/ios
+      // show guidance instead
       if (mounted) {
         showInfoSnack(context,
             'To fully disable notifications, go to System Settings > Apps > Echoproof > Notifications.');
@@ -769,17 +769,17 @@ class _SettingsScreenState extends State<SettingsScreen>
                 );
               },
             ),
-            // _Tile(
-            //   icon: Icons.receipt_long_outlined,
-            //   label: 'Purchase history',
-            //   onTap: () {
-            //     final sub = context.read<SubscriptionService>();
-            //     if (!sub.hasEverAttemptedPurchase && !sub.isPro) {
-            //       showInfoSnack(context, 'No purchase history yet.');
-            //       return;
-            //     }
-            //     context.push('/purchase-history');
-            //   },
+            // tile(
+            // icon: icons.receipt_long_outlined,
+            // label: 'purchase history',
+            // ontap: () {
+            // final sub = context.read<subscriptionservice>();
+            // if (!sub.haseverattemptedpurchase && !sub.ispro) {
+            // showinfosnack(context, 'no purchase history yet.');
+            // return;
+            // }
+            // context.push('/purchase-history');
+            // },
             // ),
           ]),
           _Section(title: context.l('Subscription'), tiles: [
@@ -804,7 +804,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               value: _pushEnabled,
               onChanged: _setPushEnabled,
             ),
-            // In-app notifications are always on — shown greyed out.
+            // in-app notifications are always on shown greyed out
             _Tile(
               icon: Icons.notifications_active_outlined,
               label: context.l('In-app notifications'),
@@ -947,7 +947,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               onTap: () {},
             ),
           ]),
-          // Secret developer panel — only visible after 5 quick taps on ?
+          // secret developer panel only visible after 5 quick taps on ?
           AnimatedSize(
             duration: const Duration(milliseconds: 350),
             curve: Curves.easeOutCubic,
@@ -1182,7 +1182,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   void _showDeleteAccount(BuildContext context) {
-    // empty controller — user must type email themselves
+    // empty controller user must type email themselves
     final emailCtrl = TextEditingController();
     final currentEmail = Supabase.instance.client.auth.currentUser?.email ?? '';
 
@@ -1722,11 +1722,11 @@ class _SecretDevPanelState extends State<_SecretDevPanel>
     final adService = context.read<AdService>();
     if (!adService.rewardedReady) return;
 
-    // Shows the rewarded ad but deliberately does NOT call onRewarded
-    // with any user-facing reward. Developer earns impression revenue.
+    // shows the rewarded ad but deliberately does not call onrewarded
+    // with any user-facing reward. developer earns impression revenue
     await adService.showRewarded(
       onRewarded: () {
-        // Intentionally empty — developer earns, user gets no reward.
+        // intentionally empty developer earns, user gets no reward
         if (context.mounted) {
           showErrorSnack(
               context, 'Ad Completed Thank You For Supporting EchoProof.');

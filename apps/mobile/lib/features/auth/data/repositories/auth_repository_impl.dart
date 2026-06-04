@@ -22,7 +22,8 @@ class AuthRepositoryImpl implements AuthRepository {
   }) async {
     try {
       final model = await _remoteSource.signInWithEmail(
-        email: email, password: password,
+        email: email,
+        password: password,
       );
       return Right(model.toEntity());
     } on AuthException catch (e) {
@@ -41,7 +42,8 @@ class AuthRepositoryImpl implements AuthRepository {
   }) async {
     try {
       final model = await _remoteSource.signUpWithEmail(
-        email: email, password: password,
+        email: email,
+        password: password,
       );
       return Right(model.toEntity());
     } on AuthException catch (e) {

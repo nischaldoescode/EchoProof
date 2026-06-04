@@ -1,6 +1,6 @@
 // trust tier badge widget
 // shown on echo cards and user profiles
-// subtle, not flashy — green for verified tiers, neutral for unverified
+// subtle, not flashy green for verified tiers, neutral for unverified
 
 import 'package:flutter/material.dart';
 import '../../../../app/theme/colors.dart';
@@ -38,11 +38,27 @@ class TrustBadge extends StatelessWidget {
 
   (String, Color, Color) _style(TrustTier tier) {
     return switch (tier) {
-      TrustTier.elite      => ('Elite',      AppColors.fernGreenDark,      AppColors.fernGreenLight),
-      TrustTier.high       => ('High',       AppColors.fernGreenDark,      AppColors.fernGreenLight),
-      TrustTier.medium     => ('Medium',     AppColors.textSecondary,      AppColors.softSand),
-      TrustTier.low        => ('Low',        AppColors.textTertiary,       AppColors.softSand),
-      TrustTier.unverified => ('Unverified', AppColors.textTertiary,       AppColors.softSand),
+      TrustTier.elite => (
+          'Elite',
+          AppColors.fernGreenDark,
+          AppColors.fernGreenLight
+        ),
+      TrustTier.high => (
+          'High',
+          AppColors.fernGreenDark,
+          AppColors.fernGreenLight
+        ),
+      TrustTier.medium => (
+          'Medium',
+          AppColors.textSecondary,
+          AppColors.softSand
+        ),
+      TrustTier.low => ('Low', AppColors.textTertiary, AppColors.softSand),
+      TrustTier.unverified => (
+          'Unverified',
+          AppColors.textTertiary,
+          AppColors.softSand
+        ),
     };
   }
 }

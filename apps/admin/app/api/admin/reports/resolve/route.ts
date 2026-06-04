@@ -1,4 +1,4 @@
-// admin API: resolve one report or all unresolved reports for an echo
+// admin api: resolve one report or all unresolved reports for an echo
 
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";

@@ -1,6 +1,6 @@
 // splash screen
 // two-phase animation: native splash (instant) then this animated screen
-// uses AuthService and OnboardingService via provider — no riverpod
+// uses authservice and onboardingservice via provider no riverpod
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -264,8 +264,8 @@ class _LogoMark extends StatelessWidget {
               borderRadius: BorderRadius.circular(28),
               boxShadow: [
                 BoxShadow(
-                  color:
-                      const Color(0xFF4CAF6E).withValues(alpha: glowOpacity * 0.25),
+                  color: const Color(0xFF4CAF6E)
+                      .withValues(alpha: glowOpacity * 0.25),
                   blurRadius: 24,
                   spreadRadius: 4,
                 ),

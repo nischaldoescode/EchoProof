@@ -1,5 +1,8 @@
 "use client";
 
+// admin dashboard activity chart component
+// @params none
+
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,

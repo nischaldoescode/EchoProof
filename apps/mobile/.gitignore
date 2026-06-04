@@ -50,6 +50,7 @@ firebase_options.dart
 firebase.json
 *.json
 *.yaml
+pubspec.yaml
 .yaml
 .metadata
 *.metadata

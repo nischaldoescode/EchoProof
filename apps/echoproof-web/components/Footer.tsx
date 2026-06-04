@@ -1,3 +1,6 @@
+// web footer component
+// @params none
+
 export default function Footer() {
   return (
     <footer className="border-t border-neutral-100 bg-white">

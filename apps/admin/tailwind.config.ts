@@ -1,3 +1,6 @@
+// admin tailwind config
+// @params none
+
 import type { Config } from "tailwindcss";
 
 const config: Config = {
@@ -9,7 +12,7 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // echoproof brand colors — matches flutter AppColors exactly
+        // echoproof brand colors matches flutter appcolors exactly
         charcoal:    "#1A1A1A",
         "fern-green": "#4CAF6E",
         "fern-light": "#E8F5EE",

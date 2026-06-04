@@ -27,7 +27,7 @@ class OnboardingService extends ChangeNotifier {
   bool _isSubmitting = false;
   bool get isSubmitting => _isSubmitting;
 
-  // step (Hive-backed)
+  // step (hive-backed)
   int get currentStep =>
       Hive.box('app_settings').get(_kStep, defaultValue: 0) as int;
 
@@ -52,8 +52,8 @@ class OnboardingService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Persist selected language code (e.g. 'en', 'hi').
-  /// Called from StepLanguage and SettingsScreen.
+  /// persist selected language code (e.g. 'en', 'hi')
+  /// called from steplanguage and settingsscreen
   void setLanguage(String code) {
     AppLogger.info('onboarding: language set to $code');
     Hive.box('app_settings').put(_kLanguage, code);
@@ -75,7 +75,7 @@ class OnboardingService extends ChangeNotifier {
     if (current > 0) setStep(current - 1);
   }
 
-  // kept for backward-compat with StepUsername
+  // kept for backward-compat with stepusername
   void advance() => nextStep();
 
   void markUsernameSet() {
@@ -116,10 +116,10 @@ class OnboardingService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // completeOnboarding
-  /// Called from StepFirstEcho (skip or post).
-  /// Writes onboarding_complete=true to DB with upsert so it works even if
-  /// the trigger-created row is missing (e.g. trigger was broken during dev).
+  // completeonboarding
+  /// called from stepfirstecho (skip or post)
+  /// writes onboarding_complete=true to db with upsert so it works even if
+  /// the trigger-created row is missing (e.g. trigger was broken during dev)
   Future<void> completeOnboarding({AuthService? authService}) async {
     _isSubmitting = true;
     notifyListeners();
@@ -129,7 +129,7 @@ class OnboardingService extends ChangeNotifier {
       final userId = client.auth.currentUser?.id;
 
       if (userId != null) {
-        // Generate avatar first — uses maybeSingle so it is safe for new users.
+        // generate avatar first uses maybesingle so it is safe for new users
         try {
           final avatarService = AvatarService(client);
           await avatarService.generateAndStore(
@@ -141,10 +141,10 @@ class OnboardingService extends ChangeNotifier {
               'onboarding: avatar generation failed, continuing: $e');
         }
 
-        // Only UPDATE — the DB trigger at signup already created the row.
-        // Upsert (INSERT on conflict) fails with RLS 42501 because the
-        // authenticated role has no INSERT policy on users_public.
-        // We only patch the fields that belong to onboarding completion.
+        // only update the db trigger at signup already created the row
+        // upsert (insert on conflict) fails with rls 42501 because the
+        // authenticated role has no insert policy on users_public
+        // we only patch the fields that belong to onboarding completion
         final patch = <String, dynamic>{
           'onboarding_complete': true,
         };
@@ -152,9 +152,9 @@ class OnboardingService extends ChangeNotifier {
           patch['username'] = Sanitizer.username(username);
         }
 
-        // Try update first (existing row from trigger).
-        // If no row exists yet (trigger delayed or failed), fall back to insert.
-        // The insert RLS policy from migration 023 allows this.
+        // try update first (existing row from trigger)
+        // if no row exists yet (trigger delayed or failed), fall back to insert
+        // the insert rls policy from migration 023 allows this
         final updateRes = await client
             .from('users_public')
             .update(patch)
@@ -163,8 +163,8 @@ class OnboardingService extends ChangeNotifier {
 
         if ((updateRes as List).isEmpty) {
           AppLogger.warn('onboarding: no row to update, attempting upsert');
-          // Use upsert (INSERT ... ON CONFLICT DO UPDATE) so that if the avatar
-          // service already created a partial row, we merge instead of failing.
+          // use upsert (insert ... on conflict do update) so that if the avatar
+          // service already created a partial row, we merge instead of failing
           final tempUsername = username.isNotEmpty
               ? username
               : 'user${userId.replaceAll('-', '').substring(0, 8)}';
@@ -186,7 +186,7 @@ class OnboardingService extends ChangeNotifier {
             onConflict: 'id',
           );
         } else {
-          // Row existed — patch display_name too if provided.
+          // row existed patch display_name too if provided
           if (displayName.isNotEmpty) {
             await client
                 .from('users_public')

@@ -1,3 +1,6 @@
+// identity verification screen
+// @params none
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -105,7 +108,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
     super.dispose();
   }
 
-  // Block back navigation mid-verification
+  // block back navigation mid-verification
   Future<bool> _onWillPop() async {
     if (_isLoading) {
       showInfoSnack(
@@ -133,7 +136,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
     }
 
     try {
-      // Get session token from your edge function
+      // get session token from your edge function
       final requestBody = <String, dynamic>{
         'user_id': userId,
         'redirect_uri': 'echoproof://verify-complete',
@@ -167,7 +170,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
       VerificationResult result;
 
       if (sessionToken != null && sessionToken.isNotEmpty) {
-        // Use session token (recommended)
+        // use session token (recommended)
         result = await DiditSdk.startVerification(
           sessionToken,
           config: const DiditConfig(loggingEnabled: true),
@@ -177,7 +180,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
           throw Exception('didit_workflow_missing');
         }
 
-        // Fallback to workflow ID
+        // fallback to workflow id
         result = await DiditSdk.startVerificationWithWorkflow(
           _diditWorkflowId,
           vendorData: userId,
@@ -395,13 +398,13 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                   left: AppSpacing.xl,
                   right: AppSpacing.xl,
                   top: AppSpacing.xl,
-                  // Bottom padding accounts for home gesture bar
+                  // bottom padding accounts for home gesture bar
                   bottom: MediaQuery.paddingOf(context).bottom + AppSpacing.xxl,
                 ),
                 children: [
                   const SizedBox(height: AppSpacing.xl),
 
-                  // Hero icon with pulse
+                  // hero icon with pulse
                   Center(
                     child: AnimatedBuilder(
                       animation: _pulseCtrl,
@@ -464,7 +467,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
 
                   const SizedBox(height: AppSpacing.xxl),
 
-                  // What didit checks
+                  // what didit checks
                   Container(
                     padding: const EdgeInsets.all(AppSpacing.xl),
                     decoration: BoxDecoration(
@@ -524,7 +527,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
 
                   const SizedBox(height: AppSpacing.lg),
 
-                  // Privacy note
+                  // privacy note
                   Container(
                     padding: const EdgeInsets.all(AppSpacing.lg),
                     decoration: BoxDecoration(
@@ -573,7 +576,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
 
                   const SizedBox(height: AppSpacing.xxl),
 
-                  // CTA button
+                  // cta button
                   ScaleTransition(
                     scale: _isLoading
                         ? const AlwaysStoppedAnimation(0.97)

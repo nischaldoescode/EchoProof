@@ -1,6 +1,5 @@
 // create echo service
-// manages form state and echo submission
-// replaces: create_echo_provider.dart (riverpod version)
+// @params none manages form state and echo submission
 
 import 'dart:async';
 import 'dart:io';
@@ -20,7 +19,6 @@ class CreateEchoService extends ChangeNotifier {
   String _content = '';
   EchoCategory? _category;
   String _categoryDetail = '';
-  bool _requiresVerification = true;
   bool _isSubmitting = false;
   bool _success = false;
   String? _error;
@@ -30,7 +28,7 @@ class CreateEchoService extends ChangeNotifier {
   String get content => _content;
   EchoCategory? get category => _category;
   String get categoryDetail => _categoryDetail;
-  bool get requiresVerification => _requiresVerification;
+  bool get requiresVerification => true;
   bool get isSubmitting => _isSubmitting;
   bool get success => _success;
   String? get error => _error;
@@ -38,7 +36,7 @@ class CreateEchoService extends ChangeNotifier {
   bool _isPro = false;
   bool get isPro => _isPro;
 
-  // Call this from the screen after subscription status is known.
+  // call this after subscription status is known
   void setProStatus(bool isPro) {
     if (_isPro == isPro) return;
     _isPro = isPro;
@@ -62,7 +60,7 @@ class CreateEchoService extends ChangeNotifier {
   final List<String> _mediaUrls = [];
   List<String> get mediaUrls => List.unmodifiable(_mediaUrls);
 
-  // Local file paths for preview before upload.
+  // local file paths for preview before upload
   final List<String> _localPaths = [];
   List<String> get localMediaPaths => List.unmodifiable(_localPaths);
 
@@ -74,7 +72,7 @@ class CreateEchoService extends ChangeNotifier {
       if (userId == null) return;
 
       final ext = MediaFileSafety.extensionOf(localPath);
-      // Rename to UUID to strip original filename metadata
+      // rename to uuid to strip original filename metadata
       final uuid = DateTime.now().millisecondsSinceEpoch.toRadixString(16);
       final name = '$uuid.$ext';
       final path = '$userId/$name';
@@ -158,11 +156,6 @@ class CreateEchoService extends ChangeNotifier {
     notifyListeners();
   }
 
-  void toggleVerification() {
-    _requiresVerification = !_requiresVerification;
-    notifyListeners();
-  }
-
   void resetSuccess() {
     reset();
     notifyListeners();
@@ -235,7 +228,7 @@ class CreateEchoService extends ChangeNotifier {
             'category_detail': _category == EchoCategory.other
                 ? Sanitizer.text(_categoryDetail).trim()
                 : null,
-            'verification_required': _requiresVerification,
+            'verification_required': true,
             'status': 'pending_verification',
             'media_urls': _mediaUrls,
           })

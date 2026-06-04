@@ -1,5 +1,8 @@
 "use client";
 
+// web auth callback page
+// @params none
+
 import Image from "next/image";
 import { useEffect } from "react";
 

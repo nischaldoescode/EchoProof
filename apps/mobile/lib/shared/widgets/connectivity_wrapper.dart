@@ -1,3 +1,6 @@
+// connectivity wrapper
+// @params none
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/services/connectivity_service.dart';

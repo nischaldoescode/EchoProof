@@ -1,7 +1,7 @@
 // avatar service
 // generates a deterministic dicebear avatar, downloads it once,
 // uploads to supabase storage, saves url to users_public.avatar_url
-// called once at end of onboarding — never again
+// called once at end of onboarding never again
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
@@ -25,14 +25,14 @@ class AvatarService {
     ).toString();
   }
 
-  // generates and stores avatar for a user.
-  // safe to call multiple times — checks if avatar already exists first.
+  // generates and stores avatar for a user
+  // safe to call multiple times checks if avatar already exists first
   Future<String> generateAndStore({
     required String userId,
     required String username,
   }) async {
-    // Use maybeSingle so that a missing row returns null instead of throwing
-    // PGRST116. New users may not have a row yet if the DB trigger is slow.
+    // use maybesingle so that a missing row returns null instead of throwing
+    // pgrst116. new users may not have a row yet if the db trigger is slow
     final existing = await _client
         .from('users_public')
         .select('avatar_url')
@@ -65,8 +65,8 @@ class AvatarService {
 
     final bytes = response.bodyBytes;
 
-    // Store a local copy when storage is available; the remote URL is already
-    // saved as a fallback so onboarding never ends with a blank avatar.
+    // store a local copy when storage is available; the remote url is already
+    // saved as a fallback so onboarding never ends with a blank avatar
     final storagePath = '$userId.png';
     try {
       await _client.storage.from('avatars').uploadBinary(
@@ -104,8 +104,8 @@ class AvatarService {
         .select('id');
 
     if ((updated as List).isEmpty) {
-      // Row doesn't exist yet — insert a minimal row with avatar_url.
-      // completeOnboarding will fill in the rest shortly after.
+      // row doesn't exist yet insert a minimal row with avatar_url
+      // completeonboarding will fill in the rest shortly after
       final tempUsername = 'user${userId.replaceAll('-', '').substring(0, 8)}';
       await _client.from('users_public').insert({
         'id': userId,

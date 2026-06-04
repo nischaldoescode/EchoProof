@@ -17,8 +17,8 @@ abstract final class AppLogger {
   static void error(String message, [Object? error, StackTrace? stack]) {
     dev.log(
       '[ERROR] $message',
-      name:       'echoproof',
-      error:      error,
+      name: 'echoproof',
+      error: error,
       stackTrace: stack,
     );
   }

@@ -1,5 +1,8 @@
 "use client";
 
+// web confidence bar component
+// @params none
+
 import { useEffect, useState } from "react";
 
 interface ConfidenceBarProps {

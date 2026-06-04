@@ -69,21 +69,21 @@ class ConfidenceBar extends StatelessWidget {
 
   Color _barColor(EchoStatus status) {
     return switch (status) {
-      EchoStatus.verified     => AppColors.fernGreen,
-      EchoStatus.disputed     => AppColors.sunsetCoral,
+      EchoStatus.verified => AppColors.fernGreen,
+      EchoStatus.disputed => AppColors.sunsetCoral,
       EchoStatus.controversial => AppColors.statusControversial,
-      EchoStatus.underReview  => AppColors.statusUnderReview,
-      _                       => AppColors.textTertiary,
+      EchoStatus.underReview => AppColors.statusUnderReview,
+      _ => AppColors.textTertiary,
     };
   }
 
   String _label(double confidence, EchoStatus status) {
     if (confidence == 0) return 'awaiting signals';
     return switch (status) {
-      EchoStatus.verified     => 'community confidence',
-      EchoStatus.disputed     => 'community confidence',
+      EchoStatus.verified => 'community confidence',
+      EchoStatus.disputed => 'community confidence',
       EchoStatus.controversial => 'community split',
-      _                       => 'community confidence',
+      _ => 'community confidence',
     };
   }
 }

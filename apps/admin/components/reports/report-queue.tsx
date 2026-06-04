@@ -1,5 +1,8 @@
 "use client";
 
+// admin report queue component
+// @params none
+
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";

@@ -1,3 +1,6 @@
+// admin subscription grant api
+// @params none
+
 import { requireAdmin } from '@/lib/auth/require-admin';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { adminUrl } from '@/lib/public-url';

@@ -1,3 +1,6 @@
+// admin public url helper
+// @params none
+
 import type { NextRequest } from "next/server";
 import { adminPath } from "@/lib/routes";
 

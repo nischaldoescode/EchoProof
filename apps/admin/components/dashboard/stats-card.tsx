@@ -1,3 +1,6 @@
+// admin dashboard stats card component
+// @params none
+
 interface DashboardStatsProps {
   totalUsers: number;
   verifiedUsers: number;

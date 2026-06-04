@@ -16,9 +16,9 @@ class CreateEchoUseCase {
     required bool verificationRequired,
   }) {
     return _repository.createEcho(
-      title:                title,
-      content:              content,
-      category:             category,
+      title: title,
+      content: content,
+      category: category,
       verificationRequired: verificationRequired,
     );
   }

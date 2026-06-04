@@ -1,6 +1,6 @@
 // permissions screen
-// shown once after OTP verification, before onboarding
-// explains each permission clearly — like a human, not legalese
+// shown once after otp verification, before onboarding
+// explains each permission clearly like a human, not legalese
 // if denied, shows a button to grant permission in settings
 
 import 'package:flutter/material.dart';
@@ -105,16 +105,16 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
     if (!context.mounted) return;
 
     final auth = context.read<AuthService>();
-    // If user already has a username (returning user who went through permissions again),
-    // mark done and go to feed.
+    // if user already has a username (returning user who went through permissions again),
+    // mark done and go to feed
     if (auth.hasUsername) {
       context.read<OnboardingService>().complete();
       context.go('/feed');
       return;
     }
-    // New user: go to onboarding (username + categories selection).
-    // Do NOT call onboarding.complete() here — that happens in StepFirstEcho/StepUsername.
-    // Do NOT call markOnboardingComplete() here either.
+    // new user: go to onboarding (username + categories selection)
+    // do not call onboarding.complete() here that happens in stepfirstecho/stepusername
+    // do not call markonboardingcomplete() here either
     context.go('/onboarding');
   }
 
@@ -171,7 +171,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
 
               const Spacer(),
 
-              // main CTA
+              // main cta
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(

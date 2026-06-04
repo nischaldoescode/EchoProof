@@ -1,5 +1,5 @@
 // onboarding_root.dart
-// routes between all 7 steps via OnboardingService.currentStep
+// routes between all 7 steps via onboardingservice.currentstep
 // step 0 = language, 1 = identity, 2 = categories, 3 = username,
 // 4 = trust_intro, 5 = guide, 6 = first_echo
 

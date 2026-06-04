@@ -1,3 +1,6 @@
+// admin auth access login api
+// @params none
+
 import { NextRequest, NextResponse } from "next/server";
 import { isAllowedAdminEmail } from "@/lib/auth/allowlist";
 import { adminBasePath } from "@/lib/routes";

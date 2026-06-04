@@ -1,3 +1,6 @@
+// admin reports api
+// @params none
+
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function getUnresolvedReports() {

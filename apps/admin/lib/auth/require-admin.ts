@@ -1,3 +1,6 @@
+// admin auth require helper
+// @params none
+
 import type { User } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
