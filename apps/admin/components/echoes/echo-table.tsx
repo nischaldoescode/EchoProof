@@ -1,5 +1,8 @@
 "use client";
 
+// admin echoes echo table component
+// @params none
+
 import { useState } from "react";
 import type { Echo, EchoStatus } from "@/types/echo";
 import { ModerationActions } from "./moderation-actions";

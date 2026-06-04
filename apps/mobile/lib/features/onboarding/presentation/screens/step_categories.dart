@@ -1,6 +1,6 @@
-// onboarding step 2 — category selection
+// onboarding step 2 category selection
 // minimum 3 required
-// uses OnboardingService via provider
+// uses onboardingservice via provider
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';

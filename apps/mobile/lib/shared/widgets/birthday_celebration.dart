@@ -1,17 +1,20 @@
+// birthday celebration
+// @params none
+
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../app/theme/colors.dart';
 
-/// Call this from main.dart after successful login to check birthday.
-/// Pass the date_of_birth from users_public.
+/// call this from main.dart after successful login to check birthday
+/// pass the date_of_birth from users_public
 void maybeTriggerBirthdayEaster(BuildContext context, String? dateOfBirth) {
   if (dateOfBirth == null) return;
   final dob = DateTime.tryParse(dateOfBirth);
   if (dob == null) return;
   final now = DateTime.now();
   if (dob.month == now.month && dob.day == now.day) {
-    // Small delay so the feed loads first.
+    // small delay so the feed loads first
     Future.delayed(const Duration(milliseconds: 800), () {
       if (context.mounted) {
         showGeneralDialog(
@@ -72,7 +75,7 @@ class _BirthdayModalState extends State<_BirthdayModal>
       CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut),
     );
 
-    // Generate confetti particles.
+    // generate confetti particles
     for (int i = 0; i < 60; i++) {
       _particles.add(_ConfettiParticle.random(_rng));
     }
@@ -95,7 +98,7 @@ class _BirthdayModalState extends State<_BirthdayModal>
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // Confetti layer.
+          // confetti layer
           AnimatedBuilder(
             animation: _confettiCtrl,
             builder: (_, __) => SizedBox(
@@ -110,7 +113,7 @@ class _BirthdayModalState extends State<_BirthdayModal>
             ),
           ),
 
-          // Card.
+          // card
           Container(
             decoration: BoxDecoration(
               color: Colors.white,
@@ -127,7 +130,7 @@ class _BirthdayModalState extends State<_BirthdayModal>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Animated cake emoji.
+                // animated cake emoji
                 ScaleTransition(
                   scale: _pulse,
                   child: Text(
@@ -151,7 +154,7 @@ class _BirthdayModalState extends State<_BirthdayModal>
 
                 const SizedBox(height: 10),
 
-                // Echoproof-branded message.
+                // echoproof-branded message
                 RichText(
                   textAlign: TextAlign.center,
                   text: TextSpan(
@@ -179,12 +182,12 @@ class _BirthdayModalState extends State<_BirthdayModal>
 
                 const SizedBox(height: 24),
 
-                // Echo rings — brand motif.
+                // echo rings brand motif
                 _EchoRings(),
 
                 const SizedBox(height: 28),
 
-                // Trust tier message.
+                // trust tier message
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -241,7 +244,7 @@ class _BirthdayModalState extends State<_BirthdayModal>
   }
 }
 
-// Animated echo rings — Echoproof's brand motif as decoration.
+// animated echo rings echoproof's brand motif as decoration
 class _EchoRings extends StatefulWidget {
   @override
   State<_EchoRings> createState() => _EchoRingsState();
@@ -301,7 +304,7 @@ class _RingsPainter extends CustomPainter {
           ..strokeWidth = 1.5,
       );
     }
-    // Center dot.
+    // center dot
     canvas.drawCircle(
       center,
       5,

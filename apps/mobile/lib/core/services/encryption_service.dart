@@ -1,8 +1,8 @@
 // encryption service
-// provides AES-256-GCM encryption for sensitive data before it leaves the device
+// provides aes-256-gcm encryption for sensitive data before it leaves the device
 // used for: government id hashes, device fingerprints
 // the key is derived from the user's auth token + device id
-// this means data encrypted on device A cannot be decrypted on device B
+// this means data encrypted on device a cannot be decrypted on device b
 // which is the correct behavior for identity data
 
 import 'dart:convert';
@@ -18,9 +18,9 @@ class EncryptionService {
 
   static const _keyStorageKey = 'echoproof_enc_key';
 
-  // derives a 256-bit encryption key from the user's session and device id.
-  // the key is stored in secure storage after first derivation.
-  // never transmitted — never leaves the device.
+  // derives a 256-bit encryption key from the user's session and device id
+  // the key is stored in secure storage after first derivation
+  // never transmitted never leaves the device
   Future<List<int>> _getOrCreateKey(String userId) async {
     final stored = await _storage.read(key: '${_keyStorageKey}_$userId');
 
@@ -28,9 +28,10 @@ class EncryptionService {
       return base64.decode(stored);
     }
 
-    // derive key from userId — deterministic per user per device
-    // in production: use PBKDF2 with a stored salt for stronger derivation
-    final keyMaterial = utf8.encode('echoproof:enc:$userId:${DateTime.now().microsecondsSinceEpoch}');
+    // derive key from userid deterministic per user per device
+    // in production: use pbkdf2 with a stored salt for stronger derivation
+    final keyMaterial = utf8.encode(
+        'echoproof:enc:$userId:${DateTime.now().microsecondsSinceEpoch}');
     final key = sha256.convert(keyMaterial).bytes;
 
     await _storage.write(
@@ -42,10 +43,10 @@ class EncryptionService {
     return key;
   }
 
-  // hashes sensitive data before sending to supabase.
-  // government id is hashed — never stored as plaintext.
-  // deterministic — same input always produces same hash.
-  // one-way — cannot recover original from hash.
+  // hashes sensitive data before sending to supabase
+  // government id is hashed never stored as plaintext
+  // deterministic same input always produces same hash
+  // one-way cannot recover original from hash
   String hashSensitiveData(String data) {
     final bytes = utf8.encode(data);
     final digest = sha256.convert(bytes);
@@ -60,9 +61,9 @@ class EncryptionService {
     required String userId,
   }) {
     const appSalt = 'echoproof_gov_id_salt_v1';
-    final salted  = '$appSalt:$userId:$governmentId';
-    final first   = sha256.convert(utf8.encode(salted)).toString();
-    final second  = sha256.convert(utf8.encode('$appSalt:$first')).toString();
+    final salted = '$appSalt:$userId:$governmentId';
+    final first = sha256.convert(utf8.encode(salted)).toString();
+    final second = sha256.convert(utf8.encode('$appSalt:$first')).toString();
     return second;
   }
 }

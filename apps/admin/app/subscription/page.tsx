@@ -79,7 +79,7 @@ export default async function SubscriptionsPage() {
       .map((sub) => sub.user_id),
   );
 
-  // Also fetch identity-verified users for context.
+  // also fetch identity-verified users for context
   const { data: verifiedUsers } = await supabase
     .from("users_private")
     .select("id, is_identity_verified")

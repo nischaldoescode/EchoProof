@@ -1,3 +1,6 @@
+// echo replies screen
+// @params none
+
 import 'dart:async';
 
 import 'package:echoproof/core/utils/snack.dart';
@@ -210,7 +213,7 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
       _replyingToId = replyId;
       _replyingToUsername = username;
     });
-    // Pre-fill with @mention
+    // pre-fill with @mention
     _replyKey.currentState?.controller?.text = '@$username ';
   }
 
@@ -366,7 +369,7 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Group replies into threads: top-level and their children
+    // group replies into threads: top-level and their children
     final topLevel =
         _replies.where((r) => r['parent_reply_id'] == null).toList();
     final byParent = <String, List<Map<String, dynamic>>>{};
@@ -601,7 +604,7 @@ class _ReplyThread extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Avatar column with thread line below
+              // avatar column with thread line below
               SizedBox(
                 width: 56,
                 child: Column(
@@ -626,7 +629,7 @@ class _ReplyThread extends StatelessWidget {
                   ],
                 ),
               ),
-              // Reply content
+              // reply content
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(
@@ -667,7 +670,7 @@ class _ReplyThread extends StatelessWidget {
             ],
           ),
         ),
-        // Nested children
+        // nested children
         ...children.map((child) => _NestedReply(
               reply: child,
               onReply: onReply,
@@ -719,7 +722,7 @@ class _NestedReply extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Indent + thread connector
+        // indent + thread connector
         SizedBox(
           width: 56,
           child: Row(
@@ -1072,7 +1075,7 @@ class _ReplyInput extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Replying to banner - like Twitter
+            // replying to banner - like twitter
             if (replyingToUsername != null)
               Container(
                 width: double.infinity,

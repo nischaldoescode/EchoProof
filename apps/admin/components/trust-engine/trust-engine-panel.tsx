@@ -1,5 +1,8 @@
 "use client";
 
+// admin trust engine panel component
+// @params none
+
 import { useState } from "react";
 import { adminPath } from "@/lib/routes";
 

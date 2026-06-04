@@ -1,4 +1,4 @@
-// root app widget — handles back button behavior
+// root app widget handles back button behavior
 // double-tap back to exit only from root screens
 // prevents accidental back to login when logged in
 
@@ -39,11 +39,11 @@ class EchoProofApp extends StatelessWidget {
     final langCode = context.watch<OnboardingService>().language;
     final locale = _localeMap[langCode] ?? const Locale('en');
 
-    // Do NOT wrap MaterialApp.router in AnimatedSwitcher — it creates
-    // duplicate GlobalKeys during the cross-fade because GoRouter uses
-    // GlobalObjectKey internally. Instead let MaterialApp.router react
-    // to locale changes directly. The locale prop itself is reactive since
-    // build() is called whenever OnboardingService notifies.
+    // do not wrap materialapp.router in animatedswitcher it creates
+    // duplicate globalkeys during the cross-fade because gorouter uses
+    // globalobjectkey internally. instead let materialapp.router react
+    // to locale changes directly. the locale prop itself is reactive since
+    // build() is called whenever onboardingservice notifies
     return MaterialApp.router(
       title: 'Echoproof',
       debugShowCheckedModeBanner: false,
@@ -161,8 +161,8 @@ class _ExitConfirmWrapperState extends State<ExitConfirmWrapper> {
   }
 
   double _rootSnackBottomMargin(BuildContext context) {
-    // Root screens include bottom nav, optional ad units, and the gesture bar.
-    // Keep the exit prompt visibly above that chrome.
+    // root screens include bottom nav, optional ad units, and the gesture bar
+    // keep the exit prompt visibly above that chrome
     final shortestSide = MediaQuery.sizeOf(context).shortestSide;
     return shortestSide >= 600 ? 118 : 142;
   }

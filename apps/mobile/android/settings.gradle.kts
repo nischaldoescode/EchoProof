@@ -1,3 +1,6 @@
+// settings gradle
+// @params none
+
 pluginManagement {
     val flutterSdkPath =
         run {

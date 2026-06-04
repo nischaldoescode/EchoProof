@@ -1,4 +1,4 @@
-// proof model — maps echo_proofs rows
+// proof model maps echo_proofs rows
 
 import '../../../../core/utils/formatters.dart';
 

@@ -1,4 +1,4 @@
-// reusable auth button — used on login screen for email and google options
+// reusable auth button used on login screen for email and google options
 
 import 'package:flutter/material.dart';
 import '../../../../app/theme/colors.dart';
@@ -15,11 +15,11 @@ class AuthButton extends StatelessWidget {
     this.icon,
   });
 
-  final String    label;
+  final String label;
   final VoidCallback onPressed;
-  final bool      isLoading;
-  final bool      isPrimary;
-  final Widget?   icon;
+  final bool isLoading;
+  final bool isPrimary;
+  final Widget? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -33,9 +33,11 @@ class AuthButton extends StatelessWidget {
                 onPressed: isLoading ? null : onPressed,
                 child: isLoading
                     ? const SizedBox(
-                        width: 18, height: 18,
+                        width: 18,
+                        height: 18,
                         child: CircularProgressIndicator(
-                          strokeWidth: 2, color: AppColors.white,
+                          strokeWidth: 2,
+                          color: AppColors.white,
                         ),
                       )
                     : Text(label),

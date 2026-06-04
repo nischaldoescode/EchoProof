@@ -1,3 +1,6 @@
+// app router
+// @params child supplies the page widget for custom transitions
+
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import '../features/auth/presentation/screens/splash_screen.dart'
@@ -73,32 +76,7 @@ String? _secureRoomKeyFromUri(Uri uri) {
 }
 
 CustomTransitionPage<void> _profilePage(Widget child) {
-  return CustomTransitionPage<void>(
-    child: child,
-    transitionDuration: const Duration(milliseconds: 340),
-    reverseTransitionDuration: const Duration(milliseconds: 230),
-    transitionsBuilder: (context, animation, secondaryAnimation, child) {
-      final curve = CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeInCubic,
-      );
-
-      return FadeTransition(
-        opacity: curve,
-        child: SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0, 0.035),
-            end: Offset.zero,
-          ).animate(curve),
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.985, end: 1).animate(curve),
-            child: child,
-          ),
-        ),
-      );
-    },
-  );
+  return _slidePage(child);
 }
 
 class _RouterRefreshStream extends ChangeNotifier {
@@ -113,7 +91,7 @@ class _RouterRefreshStream extends ChangeNotifier {
   void _onChanged() {
     if (_pending) return;
     _pending = true;
-    // Debounce: collapse multiple rapid notifyListeners into one redirect.
+    // debounce rapid notifylisteners into one redirect
     Future.microtask(() {
       _pending = false;
       notifyListeners();
@@ -146,10 +124,10 @@ GoRouter createRouter({
 
       AppLogger.info('router: check — loggedIn=$isLoggedIn loc=$location');
 
-      // Splash handles its own navigation — never redirect it.
+      // splash handles its own navigation
       if (location == '/splash') return null;
 
-      // Not logged in: only allow login and email verify routes.
+      // signed-out users can only reach auth routes
       if (!isLoggedIn) {
         if (location == '/login' || location.startsWith('/verify-email')) {
           return null;
@@ -157,7 +135,7 @@ GoRouter createRouter({
         return '/login';
       }
 
-      // Check username/onboarding status if we don't have it yet.
+      // check username status once before redirecting
       if (!authService.hasUsernameChecked) {
         await authService.checkUsername();
       }
@@ -165,33 +143,31 @@ GoRouter createRouter({
       final hasUsername = authService.hasUsername;
       final needsAgeGender = authService.needsAgeGender;
 
-      // Hive onboarding completion  only trust it if hasUsername is also true.
-      // A stale Hive "done" with no username = first-time user, ignore the Hive flag.
+      // hive completion is valid only when the profile has a username
+      // stale hive state after reinstall should not skip onboarding
       final isHiveDone = onboardingService.isComplete() && hasUsername;
 
       AppLogger.info(
         'router: hasUsername=$hasUsername needsAge=$needsAgeGender hiveDone=$isHiveDone loc=$location',
       );
 
-      // Logged in, onboarding complete
-      // User has a username and Hive confirms done → they belong in the main app.
+      // signed-in user has completed onboarding
       if (hasUsername && isHiveDone) {
-        // Pull them out of any onboarding route back to feed.
+        // return completed users from onboarding to feed
         if (_isOnboardingRoute(location)) {
           AppLogger.info('router: onboarding done, redirecting to feed');
           return '/feed';
         }
-        // Redirect login/splash to feed.
+        // auth entry routes should not stay visible after login
         if (location == '/login' || location == '/splash') {
           return '/feed';
         }
-        // Anywhere else in the main app: let them stay.
+        // keep users on the current app route
         return null;
       }
 
-      // Logged in, username exists but Hive not marked done
-      // DB says they have a username but Hive was cleared (e.g. reinstall).
-      // Mark Hive as done and let them through.
+      // profile exists but local onboarding state was cleared
+      // this usually happens after reinstall or local data reset
       if (hasUsername && !isHiveDone) {
         onboardingService.complete();
         if (location == '/login' ||
@@ -203,22 +179,21 @@ GoRouter createRouter({
         return null;
       }
 
-      // --- Logged in, no username (new user or mid-onboarding) ---
-      // From here: hasUsername=false. They need to complete onboarding.
+      // signed-in user still needs onboarding
 
-      // If they're already on an onboarding route, let them stay there.
-      // Never redirect someone mid-onboarding back to the start.
+      // age and gender are required before username setup
       if (needsAgeGender && location != '/age-gender') {
         AppLogger.info('router: new user needs age-gender');
         return '/age-gender';
       }
 
+      // keep users on their current onboarding step
       if (_isOnboardingRoute(location)) {
         AppLogger.info('router: on onboarding route, staying put');
         return null;
       }
 
-      // Age/gender done but no username yet → onboarding flow.
+      // age and gender are done so continue to username onboarding
       AppLogger.info('router: no username → onboarding');
       return '/onboarding';
     },
@@ -314,6 +289,15 @@ GoRouter createRouter({
       GoRoute(
         path: '/profile',
         pageBuilder: (_, __) => _profilePage(const ProfileScreen()),
+      ),
+      GoRoute(
+        path: '/profile/:username/follows',
+        pageBuilder: (_, s) => _profilePage(
+          ProfileFollowsScreen(
+            username: s.pathParameters['username']!,
+            initialMode: s.uri.queryParameters['tab'] ?? 'followers',
+          ),
+        ),
       ),
       GoRoute(
         path: '/profile/:username',

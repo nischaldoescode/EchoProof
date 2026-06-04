@@ -1,3 +1,6 @@
+// admin user types
+// @params none
+
 export type TrustTier = "unverified" | "low" | "medium" | "high" | "elite";
 
 export interface PublicUser {

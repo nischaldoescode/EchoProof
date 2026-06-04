@@ -1,6 +1,6 @@
 // echoproof landing page
 // storytelling scroll-reveal layout with parallax, horizontal ticker, and scroll animations
-// all animation via css — no extra animation libraries needed
+// all animation via css no extra animation libraries needed
 
 import type { Metadata } from "next";
 import Nav from "@/components/Nav";

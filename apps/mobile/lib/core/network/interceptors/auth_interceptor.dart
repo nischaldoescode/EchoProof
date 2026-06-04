@@ -16,7 +16,7 @@ class AuthInterceptor extends Interceptor {
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
     if (err.response?.statusCode == 401) {
-      // session expired — supabase_flutter handles refresh automatically
+      // session expired supabase_flutter handles refresh automatically
       // if we still get 401, the session is truly invalid
     }
     handler.next(err);

@@ -1,5 +1,8 @@
 "use client";
 
+// admin users trust score editor component
+// @params none
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { adminPath } from "@/lib/routes";

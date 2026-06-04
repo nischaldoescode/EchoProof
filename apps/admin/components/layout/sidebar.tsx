@@ -1,5 +1,8 @@
 "use client";
 
+// admin layout sidebar component
+// @params none
+
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useRouter } from "next/navigation";

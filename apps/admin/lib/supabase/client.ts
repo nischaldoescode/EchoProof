@@ -1,5 +1,5 @@
-// Supabase browser client for the admin panel. Service-role access lives in
-// lib/supabase/admin.ts so it cannot be pulled into client bundles by mistake.
+// supabase browser client for the admin panel. service-role access lives in
+// lib/supabase/admin.ts so it cannot be pulled into client bundles by mistake
 
 import {
   type SupabaseClient,
@@ -14,7 +14,7 @@ const supabaseUrl = getSupabaseBrowserUrl();
 const supabaseAnon = getSupabaseBrowserAnonKey();
 let browserClient: SupabaseClient | null = null;
 
-// client-side client — uses anon key, subject to RLS
+// client-side client uses anon key, subject to rls
 export function createBrowserClient() {
   if (!supabaseUrl || !supabaseAnon) {
     throw new Error(
@@ -34,5 +34,5 @@ export function createBrowserClient() {
   return browserClient;
 }
 
-// Backward-compatible alias for existing client components.
+// backward-compatible alias for existing client components
 export const createClient = createBrowserClient;

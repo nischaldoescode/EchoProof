@@ -1,3 +1,6 @@
+// admin echoes page
+// @params none
+
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";

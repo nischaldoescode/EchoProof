@@ -1,7 +1,7 @@
 // storage service
 // handles all file uploads to supabase storage
 // enforces: 1mb limit, images only (jpg png webp), no video
-// stores public url — never stores binary data in the database
+// stores public url never stores binary data in the database
 
 import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
@@ -33,8 +33,8 @@ class StorageService {
   final SupabaseClient _client;
   final _uuid = const Uuid();
 
-  // picks an image file and validates it before returning bytes.
-  // throws StorageException if file is too large or wrong type.
+  // picks an image file and validates it before returning bytes
+  // throws storageexception if file is too large or wrong type
   Future<PlatformFile?> pickProofImage() async {
     final result = await FilePicker.pickFiles(
       type: FileType.custom,
@@ -70,8 +70,8 @@ class StorageService {
     return file;
   }
 
-  // uploads proof image for an echo.
-  // path format: echo-proofs/{echoId}/{uuid}.{ext}
+  // uploads proof image for an echo
+  // path format: echo-proofs/{echoid}/{uuid}.{ext}
   // returns public url stored in echo_proofs table
   Future<UploadResult> uploadProofImage({
     required String echoId,
@@ -100,7 +100,7 @@ class StorageService {
     return UploadResult(publicUrl: publicUrl, storagePath: path);
   }
 
-  // deletes a proof from storage — called when a proof is removed
+  // deletes a proof from storage called when a proof is removed
   Future<void> deleteProof(String storagePath) async {
     await _client.storage.from('echo-proofs').remove([storagePath]);
     AppLogger.info('storage: deleted $storagePath');

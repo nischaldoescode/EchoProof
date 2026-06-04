@@ -1,18 +1,16 @@
 // subscription_service.dart
-// Manages Google Play subscription state with server-side validation.
-//
-// Security model:
-//   - Purchase tokens NEVER grant entitlement locally
-//   - All validation happens in verify-purchase edge function
-//   - Edge function calls Google Play Developer API
-//   - Pro status read from DB, not local state
-//   - Obfuscated account ID sent with every purchase for fraud prevention
-//
-// PBL 8 integration:
-//   - enableAutoServiceReconnection()
-//   - enablePendingPurchases(PendingPurchasesParams) - not the deprecated no-arg version
-//   - queryProductDetailsAsync with QueryProductDetailsParams
-//   - setObfuscatedAccountId for purchase attribution
+// manages google play subscription state with server-side validation
+// security model:
+// purchase tokens never grant entitlement locally
+// all validation happens in verify-purchase edge function
+// edge function calls google play developer api
+// pro status read from db, not local state
+// obfuscated account id sent with every purchase for fraud prevention
+// pbl 8 integration:
+// enableautoservicereconnection()
+// enablependingpurchases(pendingpurchasesparams) - not the deprecated no-arg version
+// queryproductdetailsasync with queryproductdetailsparams
+// setobfuscatedaccountid for purchase attribution
 
 import 'dart:async';
 import 'dart:convert';
@@ -22,7 +20,7 @@ import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/utils/logger.dart';
 
-// Product IDs — must match exactly what's in Play Console
+// product ids must match exactly what's in play console
 const _kMonthlyId = 'echoproof_pro_monthly';
 const _kYearlyId = 'echoproof_pro_yearly';
 const _kProductIds = {_kMonthlyId, _kYearlyId};
@@ -42,11 +40,11 @@ class SubscriptionService extends ChangeNotifier {
   Completer<void>? _restoreCompleter;
   bool _restoreSawPurchase = false;
 
-  // Product details from Play Store
+  // product details from play store
   ProductDetails? _monthlyProduct;
   ProductDetails? _yearlyProduct;
 
-  // Purchase history for the history screen
+  // purchase history for the history screen
   List<Map<String, dynamic>> _purchaseHistory = [];
   bool _historyLoading = false;
 
@@ -64,7 +62,7 @@ class SubscriptionService extends ChangeNotifier {
       List.unmodifiable(_purchaseHistory);
   bool get historyLoading => _historyLoading;
 
-  // True if user has ever attempted a purchase (unlocks history screen)
+  // true if user has ever attempted a purchase (unlocks history screen)
   bool get hasEverAttemptedPurchase => _purchaseHistory.isNotEmpty;
 
   SubscriptionService() {
@@ -72,26 +70,26 @@ class SubscriptionService extends ChangeNotifier {
   }
 
   Future<void> _init() async {
-    // Check server-side subscription status on startup
+    // check server-side subscription status on startup
     await checkSubscriptionStatus();
 
-    // Initialize Play Billing
+    // initialize play billing
     _isAvailable = await _iap.isAvailable();
     if (!_isAvailable) {
       AppLogger.warn('subscription: Play Billing not available');
       return;
     }
 
-    // Listen for purchase updates
+    // listen for purchase updates
     _purchaseSub = _iap.purchaseStream.listen(
       _onPurchaseUpdate,
       onError: (e) => AppLogger.error('subscription: purchase stream error $e'),
     );
 
-    // Load product details
+    // load product details
     await _loadProducts();
 
-    // Restore any unprocessed purchases (handles app kills mid-purchase)
+    // restore any unprocessed purchases (handles app kills mid-purchase)
     await _iap.restorePurchases();
   }
 
@@ -101,10 +99,8 @@ class SubscriptionService extends ChangeNotifier {
     super.dispose();
   }
 
-  // -------------------------------------------------------------------------
-  // Server-side status check
-  // Called on startup and app resume to keep Pro status in sync.
-  // -------------------------------------------------------------------------
+  // server-side status check
+  // called on startup and app resume to keep pro status in sync
   Future<void> checkSubscriptionStatus() async {
     try {
       final client = Supabase.instance.client;
@@ -124,7 +120,7 @@ class SubscriptionService extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       AppLogger.warn('subscription: status check failed $e');
-      // Fall back to local DB read
+      // fall back to local db read
       await _readStatusFromDb();
     }
   }
@@ -147,7 +143,7 @@ class SubscriptionService extends ChangeNotifier {
         final expiresStr = row['pro_expires_at'] as String?;
         _expiresAt = expiresStr != null ? DateTime.tryParse(expiresStr) : null;
 
-        // Local expiry check as extra safety
+        // local expiry check as extra safety
         if (_expiresAt != null && _expiresAt!.isBefore(DateTime.now())) {
           _isPro = false;
         }
@@ -159,9 +155,7 @@ class SubscriptionService extends ChangeNotifier {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Load product details from Play Store
-  // -------------------------------------------------------------------------
+  // load product details from play store
   Future<void> _loadProducts() async {
     _isLoading = true;
     notifyListeners();
@@ -189,9 +183,9 @@ class SubscriptionService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Initiate purchase
-  // Sends obfuscatedAccountId for fraud prevention and purchase attribution.
-  // Google Play returns this in the purchase token verification response.
+  // initiate purchase
+  // sends obfuscatedaccountid for fraud prevention and purchase attribution
+  // google play returns this in the purchase token verification response
   Future<void> purchase(ProductDetails product) async {
     if (_isLoading) return;
 
@@ -206,15 +200,15 @@ class SubscriptionService extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    // Obfuscated account ID = SHA-256-like hash of userId
-    // We send this so the server can verify the purchase belongs to this user.
-    // Must be <= 64 chars and not contain PII.
+    // obfuscated account id = sha-256-like hash of userid
+    // we send this so the server can verify the purchase belongs to this user
+    // must be <= 64 chars and not contain pii
     final obfuscatedId = _obfuscateUserId(userId);
 
     PurchaseParam purchaseParam;
 
     if (defaultTargetPlatform == TargetPlatform.android) {
-      // PBL 8: Use GooglePlayPurchaseParam with obfuscated IDs
+      // pbl 8: use googleplaypurchaseparam with obfuscated ids
       purchaseParam = GooglePlayPurchaseParam(
         productDetails: product,
         applicationUserName: obfuscatedId,
@@ -228,7 +222,7 @@ class SubscriptionService extends ChangeNotifier {
 
     try {
       await _iap.buyNonConsumable(purchaseParam: purchaseParam);
-      // Purchase result arrives in _onPurchaseUpdate via stream
+      // purchase result arrives in _onpurchaseupdate via stream
     } catch (e) {
       _error = 'Could not initiate purchase. Please try again.';
       _isLoading = false;
@@ -237,10 +231,8 @@ class SubscriptionService extends ChangeNotifier {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Handle purchase stream updates
-  // This is called for new purchases AND restored purchases.
-  // -------------------------------------------------------------------------
+  // handle purchase stream updates
+  // this is called for new purchases and restored purchases
   void _completeRestoreWait({required bool sawPurchase}) {
     final completer = _restoreCompleter;
     if (completer == null) return;
@@ -255,7 +247,7 @@ class SubscriptionService extends ChangeNotifier {
     for (final purchase in purchases) {
       switch (purchase.status) {
         case PurchaseStatus.pending:
-          // User is in the purchase flow — show loading
+          // user is in the purchase flow show loading
           AppLogger.info(
               'subscription: purchase pending ${purchase.productID}');
           _isLoading = true;
@@ -264,7 +256,7 @@ class SubscriptionService extends ChangeNotifier {
 
         case PurchaseStatus.purchased:
         case PurchaseStatus.restored:
-          // Send to server for validation — never grant entitlement locally
+          // send to server for validation never grant entitlement locally
           await _serverValidatePurchase(purchase);
           _completeRestoreWait(sawPurchase: true);
           break;
@@ -274,7 +266,7 @@ class SubscriptionService extends ChangeNotifier {
           _error = _friendlyBillingError(purchase.error);
           AppLogger.error('subscription: purchase error ${purchase.error}');
 
-          // Record failed attempt in history
+          // record failed attempt in history
           await _recordFailedPurchase(purchase);
           _completeRestoreWait(sawPurchase: false);
           notifyListeners();
@@ -288,7 +280,7 @@ class SubscriptionService extends ChangeNotifier {
           break;
       }
 
-      // Complete the purchase on the Play side
+      // complete the purchase on the play side
       if (purchase.pendingCompletePurchase) {
         await _iap.completePurchase(purchase);
       }
@@ -302,7 +294,7 @@ class SubscriptionService extends ChangeNotifier {
       final userId = client.auth.currentUser?.id;
       if (userId == null) throw Exception('not authenticated');
 
-      // Extract Android-specific purchase details
+      // extract android-specific purchase details
       String? purchaseToken;
       String? orderId;
       int? purchaseTimeMs;
@@ -361,9 +353,7 @@ class SubscriptionService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // -------------------------------------------------------------------------
-  // Restore purchases (Google Play)
-  // -------------------------------------------------------------------------
+  // restore purchases (google play)
   Future<void> restorePurchases() async {
     if (_isLoading) return;
 
@@ -383,8 +373,8 @@ class SubscriptionService extends ChangeNotifier {
 
     try {
       await _iap.restorePurchases();
-      // Google Play emits restored purchases through purchaseStream. If there
-      // are no previous purchases, no event may arrive, so do not wait forever.
+      // google play emits restored purchases through purchasestream. if there
+      // are no previous purchases, no event may arrive, so do not wait forever
       await restoreCompleter.future.timeout(
         const Duration(seconds: 5),
         onTimeout: () {},
@@ -407,9 +397,7 @@ class SubscriptionService extends ChangeNotifier {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Load purchase history from server
-  // -------------------------------------------------------------------------
+  // load purchase history from server
   Future<void> loadPurchaseHistory() async {
     _historyLoading = true;
     notifyListeners();
@@ -435,9 +423,7 @@ class SubscriptionService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // -------------------------------------------------------------------------
-  // Record a failed purchase attempt for the history screen
-  // -------------------------------------------------------------------------
+  // record a failed purchase attempt for the history screen
   Future<void> _recordFailedPurchase(PurchaseDetails purchase) async {
     try {
       final client = Supabase.instance.client;
@@ -465,16 +451,14 @@ class SubscriptionService extends ChangeNotifier {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Helpers
-  // -------------------------------------------------------------------------
+  // helpers
 
-  // Creates a consistent obfuscated ID for fraud prevention.
-  // Not reversible to the original UUID without the salt.
-  // Must be deterministic so the same user always gets the same value.
+  // creates a consistent obfuscated id for fraud prevention
+  // not reversible to the original uuid without the salt
+  // must be deterministic so the same user always gets the same value
   String _obfuscateUserId(String userId) {
-    // Simple XOR + base64 — not cryptographic, but sufficient for Play's purpose
-    // (Play uses this for display/attribution, not security verification)
+    // simple xor + base64 not cryptographic, but sufficient for play's purpose
+    // (play uses this for display/attribution, not security verification)
     final bytes = utf8.encode(userId);
     final salt = utf8.encode('echoproof_salt_2026');
     final mixed = List<int>.generate(
@@ -486,12 +470,12 @@ class SubscriptionService extends ChangeNotifier {
         .substring(0, (64).clamp(0, mixed.length * 2).toInt());
   }
 
-  // Converts Google Play billing error codes to user-friendly messages
+  // converts google play billing error codes to user-friendly messages
   String _friendlyBillingError(IAPError? error) {
     if (error == null) return 'Purchase failed. Please try again.';
     final code = error.code;
 
-    // BillingResponseCode values as strings from the plugin
+    // billingresponsecode values as strings from the plugin
     switch (code) {
       case 'BillingResponse.billingUnavailable':
       case '3':

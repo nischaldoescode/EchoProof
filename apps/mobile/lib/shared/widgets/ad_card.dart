@@ -1,6 +1,6 @@
-// ad card — shown every 7th item in the feed
+// ad card shown every 7th item in the feed
 // creative: not a banner, looks like content
-// pro users never see this — checked before rendering
+// pro users never see this checked before rendering
 // rewarded: user watches ad to get 1 hour ad-free
 
 import 'package:echoproof/core/utils/snack.dart';

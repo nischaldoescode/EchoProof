@@ -1,3 +1,6 @@
+// web email validation helper
+// @params none
+
 const EMAIL_MAX_LENGTH = 254;
 const LOCAL_MAX_LENGTH = 64;
 const DOMAIN_MAX_LENGTH = 253;

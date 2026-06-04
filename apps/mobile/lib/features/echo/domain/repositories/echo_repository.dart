@@ -1,5 +1,5 @@
-// abstract echo repository — defines the contract
-// implemented by EchoRepositoryImpl in the data layer
+// abstract echo repository defines the contract
+// implemented by echorepositoryimpl in the data layer
 
 import 'package:dartz/dartz.dart';
 import '../../../../core/errors/failures.dart';

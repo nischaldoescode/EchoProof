@@ -1,5 +1,5 @@
 // animated category selection chip for onboarding
-// scale + color transition on tap — no riverpod dependency
+// scale + color transition on tap no riverpod dependency
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';

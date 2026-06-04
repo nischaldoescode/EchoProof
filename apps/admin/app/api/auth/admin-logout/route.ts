@@ -1,3 +1,6 @@
+// admin auth logout api
+// @params none
+
 import { NextResponse } from "next/server";
 import { adminBasePath } from "@/lib/routes";
 import { ADMIN_SESSION_COOKIE } from "@/lib/auth/admin-session";

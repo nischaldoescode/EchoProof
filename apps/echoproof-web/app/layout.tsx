@@ -1,7 +1,10 @@
+// web root layout
+// @params none
+
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
-// advanced seo — covers og, twitter, robots, canonical, verification slots
+// advanced seo covers og, twitter, robots, canonical, verification slots
 export const metadata: Metadata = {
   metadataBase: new URL("https://echoproof.online"),
   title: {

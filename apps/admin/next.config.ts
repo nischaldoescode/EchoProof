@@ -1,3 +1,6 @@
+// admin next config
+// @params none
+
 import type { NextConfig } from "next";
 
 function normalizeBasePath(value?: string) {

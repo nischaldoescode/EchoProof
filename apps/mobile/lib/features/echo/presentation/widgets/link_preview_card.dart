@@ -1,6 +1,6 @@
-// Link preview card — shows OG title, description, and favicon for URLs.
-// Fetches metadata via a Supabase edge function to keep API calls server-side.
-// Users can dismiss the preview with the X button.
+// link preview card shows og title, description, and favicon for urls
+// fetches metadata via a supabase edge function to keep api calls server-side
+// users can dismiss the preview with the x button
 
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -130,7 +130,7 @@ class _LinkPreviewCardState extends State<LinkPreviewCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // OG image if present.
+          // og image if present
           if (imageUrl != null && imageUrl.isNotEmpty)
             ClipRRect(
               borderRadius:
@@ -148,7 +148,7 @@ class _LinkPreviewCardState extends State<LinkPreviewCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Site name with favicon.
+                // site name with favicon
                 Row(
                   children: [
                     if (faviconUrl != null)
@@ -198,7 +198,7 @@ class _LinkPreviewCardState extends State<LinkPreviewCard> {
                   ),
                 ],
                 const SizedBox(height: AppSpacing.sm),
-                // Action row: attach / dismiss / open.
+                // action row: attach / dismiss / open
                 Row(
                   children: [
                     Container(
@@ -220,7 +220,7 @@ class _LinkPreviewCardState extends State<LinkPreviewCard> {
                       ),
                     ),
                     const Spacer(),
-                    // Open link options.
+                    // open link options
                     GestureDetector(
                       onTap: () => _showOpenOptions(context),
                       child: const Icon(
@@ -230,7 +230,7 @@ class _LinkPreviewCardState extends State<LinkPreviewCard> {
                       ),
                     ),
                     const SizedBox(width: AppSpacing.sm),
-                    // Dismiss preview entirely.
+                    // dismiss preview entirely
                     GestureDetector(
                       onTap: widget.onDismiss,
                       child: const Icon(

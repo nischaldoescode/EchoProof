@@ -1,6 +1,6 @@
 // echoproof app theme
 // single source of truth for all theme configuration
-// uses material 3 with custom color scheme — no default blue anywhere
+// uses material 3 with custom color scheme no default blue anywhere
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,8 +8,8 @@ import 'colors.dart';
 import 'typography.dart';
 import 'spacing.dart';
 
-/// builds the main app theme.
-/// only light mode is specified — dark mode is not in v1 scope.
+/// builds the main app theme
+/// only light mode is specified dark mode is not in v1 scope
 ThemeData buildAppTheme() {
   return ThemeData(
     useMaterial3: true,

@@ -1,6 +1,6 @@
 // echo detail screen
 // full view of a single echo with proofs, realtime score updates, interaction bar
-// uses plain StatefulWidget with supabase realtime — no riverpod
+// uses plain statefulwidget with supabase realtime no riverpod
 
 import 'dart:async';
 

@@ -1,3 +1,6 @@
+// admin formatters helper
+// @params none
+
 export function formatTimeAgo(dateString: string): string {
   const diff = Date.now() - new Date(dateString).getTime();
   const minutes = Math.floor(diff / 60000);

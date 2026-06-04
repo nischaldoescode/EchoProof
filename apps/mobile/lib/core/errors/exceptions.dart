@@ -1,5 +1,5 @@
 // typed exceptions thrown by data sources
-// mapped to Failure types by repository implementations
+// mapped to failure types by repository implementations
 
 class NetworkException implements Exception {
   const NetworkException([this.message = 'network error']);

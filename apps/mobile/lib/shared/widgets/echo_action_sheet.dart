@@ -1,6 +1,6 @@
-// echo action sheet — report, share, copy link
+// echo action sheet report, share, copy link
 // themed to match echoproof design system
-// no riverpod — uses supabase instance directly
+// no riverpod uses supabase instance directly
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';

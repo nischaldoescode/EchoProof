@@ -1,3 +1,6 @@
+// safe circle avatar
+// @params none
+
 import 'package:flutter/material.dart';
 
 import '../../app/theme/colors.dart';

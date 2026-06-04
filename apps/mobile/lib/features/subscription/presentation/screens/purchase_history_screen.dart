@@ -1,7 +1,7 @@
 // purchase_history_screen.dart
-// Shows all purchase attempts with status, error codes, and invoice download.
-// Only accessible to users who have at least attempted a purchase.
-// Pro-only for full history; all users see their own failed attempts.
+// shows all purchase attempts with status, error codes, and invoice download
+// only accessible to users who have at least attempted a purchase
+// pro-only for full history; all users see their own failed attempts
 
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -124,15 +124,15 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen>
       final expiryDate = expiresTimeMs != null
           ? DateTime.fromMillisecondsSinceEpoch(expiresTimeMs)
           : null;
-final amount = amountMicros != null
-    ? (amountMicros / 1000000).toStringAsFixed(2)
-    : 'N/A';
+      final amount = amountMicros != null
+          ? (amountMicros / 1000000).toStringAsFixed(2)
+          : 'N/A';
       final fmt = DateFormat('dd MMM yyyy');
 
-      // Build PDF
+      // build pdf
       final pdf = pw.Document();
 
-      // Brand colors as PDF colors
+      // brand colors as pdf colors
       const brandGreen = PdfColor.fromInt(0xFF4CAF6E);
       const brandDark = PdfColor.fromInt(0xFF1A1A1A);
       const brandLight = PdfColor.fromInt(0xFFE8F5EE);
@@ -147,7 +147,7 @@ final amount = amountMicros != null
             return pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                // Header
+                // header
                 pw.Container(
                   padding: const pw.EdgeInsets.all(24),
                   decoration: pw.BoxDecoration(
@@ -204,7 +204,7 @@ final amount = amountMicros != null
 
                 pw.SizedBox(height: 32),
 
-                // Invoice details table
+                // invoice details table
                 pw.Container(
                   padding: const pw.EdgeInsets.all(20),
                   decoration: pw.BoxDecoration(
@@ -247,7 +247,7 @@ final amount = amountMicros != null
 
                 pw.SizedBox(height: 24),
 
-                // Note
+                // note
                 pw.Container(
                   padding: const pw.EdgeInsets.all(16),
                   decoration: pw.BoxDecoration(
@@ -268,7 +268,7 @@ final amount = amountMicros != null
 
                 pw.Spacer(),
 
-                // Footer
+                // footer
                 pw.Divider(color: borderColor),
                 pw.SizedBox(height: 8),
                 pw.Row(
@@ -290,7 +290,7 @@ final amount = amountMicros != null
         ),
       );
 
-      // Save to downloads/Echoproof Invoices/
+      // save to downloads/echoproof invoices
       final bytes = await pdf.save();
       final dir = await getDownloadsDirectory() ??
           await getApplicationDocumentsDirectory();
@@ -314,7 +314,7 @@ final amount = amountMicros != null
     }
   }
 
-  // PDF helper rows
+  // pdf helper rows
   pw.Widget _pdfRow(
       String label, String value, PdfColor valueColor, PdfColor labelColor) {
     return pw.Padding(
@@ -377,7 +377,7 @@ class _PurchaseCard extends StatelessWidget {
     };
   }
 
-  // Translates billing error codes to human-readable explanations
+  // translates billing error codes to human-readable explanations
   String? get _errorExplanation {
     final code = record['error_code'] as int?;
     if (code == null) return null;
@@ -425,7 +425,7 @@ class _PurchaseCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // Header
+          // header
           Padding(
             padding: const EdgeInsets.all(AppSpacing.lg),
             child: Row(
@@ -490,7 +490,7 @@ class _PurchaseCard extends StatelessWidget {
             ),
           ),
 
-          // Details
+          // details
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
             child: Column(
@@ -514,7 +514,7 @@ class _PurchaseCard extends StatelessWidget {
                       ((record['order_id'] as String? ?? '').length)
                           .clamp(0, 24)),
                 ),
-                // Error explanation for declined purchases
+                // error explanation for declined purchases
                 if (_errorExplanation != null)
                   Container(
                     margin: const EdgeInsets.only(
@@ -552,7 +552,7 @@ class _PurchaseCard extends StatelessWidget {
             ),
           ),
 
-          // Invoice download button (only for successful purchases)
+          // invoice download button (only for successful purchases)
           if (record['status'] == 'acknowledged' ||
               record['status'] == 'active')
             Padding(

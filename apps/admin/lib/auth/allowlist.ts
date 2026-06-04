@@ -1,3 +1,6 @@
+// admin auth allowlist helper
+// @params none
+
 export function getAdminAllowlist() {
   return (
     process.env.ADMIN_ALLOWED_EMAILS ||

@@ -1,6 +1,6 @@
-// echo card widget
-// the main content unit shown in the feed
-// plain StatelessWidget — no riverpod
+// echo card
+// @params echo supplies the feed item model
+// @params ontap opens the detail screen when provided
 
 import 'package:flutter/material.dart';
 import '../../../../app/theme/colors.dart';
@@ -112,7 +112,7 @@ class _EchoCardState extends State<EchoCard> {
 
     setState(() => _isTranslating = true);
     try {
-      // Using Supabase edge function to proxy translation (keeps API keys server-side).
+      // use edge translation so api keys stay server-side
       final client = Supabase.instance.client;
       final session = client.auth.currentSession;
       if (session == null) return;
@@ -159,7 +159,7 @@ class _EchoCardState extends State<EchoCard> {
       final client = Supabase.instance.client;
       final userId = client.auth.currentUser?.id;
       if (userId == null) return;
-      // Fire and forget — never block the UI for analytics.
+      // fire and forget so analytics never blocks the ui
       unawaited(client.rpc('record_dwell_signal', params: {
         'p_user_id': userId,
         'p_echo_id': echo.id,
@@ -252,17 +252,29 @@ class _EchoCardState extends State<EchoCard> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOut,
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.lg,
+          margin: const EdgeInsets.fromLTRB(
+            AppSpacing.md,
+            AppSpacing.xs,
             AppSpacing.md,
             AppSpacing.sm,
+          ),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.md,
+            AppSpacing.md,
+            AppSpacing.md,
             AppSpacing.sm,
           ),
           decoration: BoxDecoration(
             color: cardColor,
-            border: Border(
-              bottom: BorderSide(color: dividerColor),
-            ),
+            borderRadius: BorderRadius.circular(AppSpacing.echoCardRadius),
+            border: Border.all(color: dividerColor),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.026),
+                blurRadius: 14,
+                offset: const Offset(0, 6),
+              ),
+            ],
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -459,9 +471,9 @@ class _PublicVerdictPill extends StatelessWidget {
       curve: Curves.easeOutCubic,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
+        color: color.withValues(alpha: 0.055),
         borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-        border: Border.all(color: color.withValues(alpha: 0.22)),
+        border: Border.all(color: color.withValues(alpha: 0.16)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -483,7 +495,7 @@ class _PublicVerdictPill extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: GoogleFonts.josefinSans(
                 fontSize: 11,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
                 color: color,
               ),
             ),
@@ -515,7 +527,7 @@ class _ContextMiniBar extends StatelessWidget {
         ClipRRect(
           borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
           child: SizedBox(
-            height: 7,
+            height: 5,
             child: Row(
               children: [
                 Expanded(
@@ -524,7 +536,7 @@ class _ContextMiniBar extends StatelessWidget {
                     duration: const Duration(milliseconds: 220),
                     color: total == 0
                         ? AppColors.borderSubtle
-                        : AppColors.fernGreen,
+                        : AppColors.fernGreen.withValues(alpha: 0.78),
                   ),
                 ),
                 Expanded(
@@ -547,7 +559,7 @@ class _ContextMiniBar extends StatelessWidget {
               '$support support',
               style: GoogleFonts.josefinSans(
                 fontSize: 10.5,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
                 color: AppColors.fernGreenDark,
               ),
             ),
@@ -1413,11 +1425,11 @@ class _AvatarWithRing extends StatelessWidget {
     const double radius = AppSpacing.avatarSizeSm / 2;
     const double ringWidth = 1.5;
     const double gap = 1.5;
-    // Total size = diameter + ring on each side + gap on each side.
+    // total size includes diameter ring and gap
     const double totalSize = radius * 2 + (ringWidth + gap) * 2;
 
     if (!userIsVerified) {
-      // No ring — simple avatar.
+      // simple avatar without a ring
       return CircleAvatar(
         radius: radius,
         backgroundColor: AppColors.softSand,
@@ -1455,7 +1467,7 @@ class _AvatarWithRing extends StatelessWidget {
               color: ringColor,
             ),
           ),
-          // Avatar inset.
+          // avatar inset
           Positioned(
             left: ringWidth + gap,
             top: ringWidth + gap,
@@ -1469,7 +1481,7 @@ class _AvatarWithRing extends StatelessWidget {
                   : null,
             ),
           ),
-          // Tiny verified dot — bottom right.
+          // tiny verified dot
           Positioned(
             right: 0,
             bottom: 0,

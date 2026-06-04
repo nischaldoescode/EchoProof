@@ -1,3 +1,6 @@
+// otp screen
+// @params none
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -152,7 +155,7 @@ class _OtpScreenState extends State<OtpScreen>
       if (auth.hasUsername) {
         context.go('/feed');
       } else {
-        // context.read<OnboardingService>().reset();
+        // context.read<onboardingservice>().reset();
         // context.go('/onboarding');
         context.go('/age-gender');
       }

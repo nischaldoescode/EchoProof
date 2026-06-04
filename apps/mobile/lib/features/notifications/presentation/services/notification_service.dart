@@ -56,6 +56,10 @@ class NotificationService extends ChangeNotifier {
 
   int get unreadCount => _notifications.where((n) => !n.read).length;
 
+  bool get hasUnreadFollowerEcho => _notifications.any(
+        (n) => !n.read && n.type == 'new_follower_echo',
+      );
+
   Future<void> loadNotifications() async {
     final client = Supabase.instance.client;
     final userId = client.auth.currentUser?.id;
@@ -99,6 +103,29 @@ class NotificationService extends ChangeNotifier {
 
     _notifications = _notifications.map((n) => n.copyWith(read: true)).toList();
     notifyListeners();
+  }
+
+  Future<void> markFollowerEchoesRead() async {
+    final ids = _notifications
+        .where((n) => !n.read && n.type == 'new_follower_echo')
+        .map((n) => n.id)
+        .toList();
+    if (ids.isEmpty) return;
+
+    _notifications = _notifications
+        .map((n) => ids.contains(n.id) ? n.copyWith(read: true) : n)
+        .toList();
+    notifyListeners();
+
+    try {
+      await Supabase.instance.client
+          .from('notifications')
+          .update({'read': true})
+          .filter('id', 'in', '(${ids.join(',')})')
+          .eq('type', 'new_follower_echo');
+    } catch (e) {
+      AppLogger.warn('notifications: follower echo dot clear failed $e');
+    }
   }
 
   Future<void> acceptFollowRequest(NotificationItem item) async {

@@ -1,3 +1,6 @@
+// rooms screen
+// @params none
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -27,7 +30,7 @@ class RoomsScreen extends StatefulWidget {
   State<RoomsScreen> createState() => _RoomsScreenState();
 }
 
-class _RoomsScreenState extends State<RoomsScreen> {
+class _RoomsScreenState extends State<RoomsScreen> with WidgetsBindingObserver {
   final _service = SecureRoomService.instance;
   final _codeCtrl = TextEditingController();
   final _keyCtrl = TextEditingController();
@@ -43,6 +46,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _codeCtrl.text = widget.initialInviteCode?.trim().toUpperCase() ?? '';
     _keyCtrl.text = widget.initialRoomKey?.trim() ?? '';
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -67,9 +71,17 @@ class _RoomsScreenState extends State<RoomsScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _codeCtrl.dispose();
     _keyCtrl.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_service.loadRooms());
+    }
   }
 
   Future<void> _maybeAutoJoin() async {
@@ -174,6 +186,20 @@ class _RoomsScreenState extends State<RoomsScreen> {
       if (mounted) showErrorSnack(context, _friendlyError(e));
     } finally {
       if (mounted) setState(() => _joining = false);
+    }
+  }
+
+  Future<void> _openRoom(SecureRoomSummary room) async {
+    try {
+      await _service.loadRoom(room.id);
+      if (!mounted) return;
+      await context.push('/rooms/${room.id}');
+    } catch (e) {
+      await _service.markRoomUnavailable(room.id, forgetKey: true);
+      if (!mounted) return;
+      showInfoSnack(context, _friendlyError(e));
+    } finally {
+      if (mounted) unawaited(_service.loadRooms());
     }
   }
 
@@ -404,7 +430,7 @@ class _RoomsScreenState extends State<RoomsScreen> {
                 _RoomsList(
                   rooms: _service.rooms,
                   loading: _service.isLoading,
-                  onOpen: (room) => context.push('/rooms/${room.id}'),
+                  onOpen: (room) => unawaited(_openRoom(room)),
                   onRefresh: _service.loadRooms,
                 ),
               ];

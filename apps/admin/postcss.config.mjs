@@ -1,3 +1,6 @@
+// admin postcss config
+// @params none
+
 const config = {
   plugins: {
     tailwindcss: {},

@@ -1,3 +1,6 @@
+// sanitizer
+// @params none
+
 abstract final class Sanitizer {
   // internal helpers
 

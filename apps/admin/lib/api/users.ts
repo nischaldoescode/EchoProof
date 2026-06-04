@@ -1,3 +1,6 @@
+// admin users api
+// @params none
+
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { PublicUser } from "@/types/user";
 

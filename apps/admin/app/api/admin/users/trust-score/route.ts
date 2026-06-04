@@ -1,3 +1,6 @@
+// admin users trust score api
+// @params none
+
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";

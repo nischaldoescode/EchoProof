@@ -1,3 +1,6 @@
+// echo math engine
+// @params none
+
 class EchoMathEngine {
   static int trustScore({
     required int supportWeight,
@@ -19,10 +22,12 @@ class EchoMathEngine {
     required int supportCount,
     required int challengeCount,
   }) {
-    final maxVal = supportCount > challengeCount ? supportCount : challengeCount;
+    final maxVal =
+        supportCount > challengeCount ? supportCount : challengeCount;
     if (maxVal == 0) return 0.0;
 
-    final minVal = supportCount < challengeCount ? supportCount : challengeCount;
+    final minVal =
+        supportCount < challengeCount ? supportCount : challengeCount;
     return minVal / maxVal;
   }
 }

@@ -1,3 +1,6 @@
+// admin supabase helper
+// @params none
+
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseProjectUrl } from "@/lib/supabase-env";
 

@@ -1,3 +1,6 @@
+// web trust badge component
+// @params none
+
 interface TrustBadgeProps {
   tier: string;
   size?: "sm" | "md";

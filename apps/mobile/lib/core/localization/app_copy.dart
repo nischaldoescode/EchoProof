@@ -1,3 +1,6 @@
+// app copy
+// @params none
+
 import 'package:flutter/widgets.dart';
 import 'package:provider/provider.dart';
 
@@ -17,8 +20,8 @@ extension AppCopyX on BuildContext {
   String _appLanguage() {
     try {
       // `context.l(...)` is used from builds, callbacks, async catches, and
-      // snack helpers. Always read without subscribing; EchoProofApp already
-      // watches the language and rebuilds MaterialApp when it changes.
+      // snack helpers. always read without subscribing; echoproofapp already
+      // watches the language and rebuilds materialapp when it changes
       return Provider.of<OnboardingService>(this, listen: false).language;
     } on ProviderNotFoundException {
       return 'en';
@@ -146,6 +149,7 @@ abstract final class AppCopy {
       'Refresh feed': 'फीड रीफ्रेश करें',
       'Loading feed': 'फीड लोड हो रही है',
       'Loading profile': 'प्रोफाइल लोड हो रही है',
+      'Pull down and try again.': 'नीचे खींचकर फिर कोशिश करें.',
       'Nothing yet': 'अभी कुछ नहीं',
       'Be the first to create an echo.': 'पहला echo आप बनाएं.',
       'No echoes match your filters': 'आपके फिल्टर से कोई echo नहीं मिला',
@@ -390,6 +394,7 @@ abstract final class AppCopy {
           'Username और date of birth changes के लिए email verification चाहिए.',
       'Your display name': 'आपका display name',
       'Could not load profile': 'Profile load नहीं हुई',
+      'Could not load list.': 'List load नहीं हुई.',
       'Replies': 'जवाब',
       'Media': 'मीडिया',
       'Analytics': 'Analytics',
@@ -397,6 +402,7 @@ abstract final class AppCopy {
           'Name, username, birthday और gender',
       'Public profile': 'Public profile',
       'Private profile': 'Private profile',
+      'Profile blocked': 'Profile blocked',
       'Anyone can view your profile': 'कोई भी आपकी profile देख सकता है',
       'Only accepted followers can view it':
           'केवल accepted followers इसे देख सकते हैं',
@@ -425,6 +431,12 @@ abstract final class AppCopy {
       'Visible on your public profile.': 'आपकी public profile पर दिखेगा.',
       'Save bio': 'Bio सेव करें',
       'No {kind} yet.': 'अभी कोई {kind} नहीं.',
+      'No matching accounts.': 'कोई matching account नहीं मिला.',
+      'Try another name or username.': 'दूसरा name या username खोजकर देखें.',
+      'Follower lists are visible only on public profiles.':
+          'Follower lists सिर्फ public profiles पर दिखती हैं.',
+      '{followers} followers · {following} following':
+          '{followers} followers · {following} following',
       'No blocked users': 'कोई blocked users नहीं',
       'Blocked accounts will appear here.':
           'Blocked accounts यहां दिखाई देंगे.',

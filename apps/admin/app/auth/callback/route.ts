@@ -1,3 +1,6 @@
+// admin auth callback api
+// @params none
+
 import { NextRequest, NextResponse } from "next/server";
 import { adminUrl } from "@/lib/public-url";
 import { createServer } from "@/lib/supabase/server";

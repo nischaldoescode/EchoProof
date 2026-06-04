@@ -1,6 +1,6 @@
 // solana service
 // handles on-chain interactions for echoproof
-// uses http directly — no solana package to avoid version conflicts
+// uses http directly no solana package to avoid version conflicts
 
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
