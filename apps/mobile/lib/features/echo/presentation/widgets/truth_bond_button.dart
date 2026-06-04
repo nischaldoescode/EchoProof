@@ -1,5 +1,5 @@
-// truth bond button — shown on verified echoes only
-// plain StatefulWidget — no riverpod
+// truth bond button shown on verified echoes only
+// plain statefulwidget no riverpod
 
 import 'package:echoproof/core/utils/snack.dart';
 import 'package:flutter/material.dart';

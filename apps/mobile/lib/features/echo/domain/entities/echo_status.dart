@@ -1,30 +1,30 @@
 // canonical echo status enum for echoproof
-// single source of truth — imported by engine, widgets, and db layer
+// single source of truth imported by engine, widgets, and db layer
 // never redefine this enum anywhere else in the codebase
 
-/// represents every possible lifecycle state of an echo.
-/// the trust engine transitions echoes between these states automatically.
-/// admin overrides can force verified or rejected regardless of engine output.
+/// represents every possible lifecycle state of an echo
+/// the trust engine transitions echoes between these states automatically
+/// admin overrides can force verified or rejected regardless of engine output
 enum EchoStatus {
-  /// newly created — no community signals yet
+  /// newly created no community signals yet
   pendingVerification,
 
   /// has some signals, not yet verified
   active,
 
-  /// report score crossed 20 — reduced visibility
+  /// report score crossed 20 reduced visibility
   underReview,
 
-  /// trust score >= 50, confidence >= 70% — community approved
+  /// trust score >= 50, confidence >= 70% community approved
   verified,
 
-  /// high support AND high challenge — genuinely contested
+  /// high support and high challenge genuinely contested
   controversial,
 
-  /// net negative trust score — more challenges than support
+  /// net negative trust score more challenges than support
   disputed,
 
-  /// report score >= 70 — blurred in feed, viewable on tap
+  /// report score >= 70 blurred in feed, viewable on tap
   hidden,
 
   /// admin-forced rejection

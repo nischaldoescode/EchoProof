@@ -1,3 +1,6 @@
+// verified badges
+// @params none
+
 import 'package:flutter/material.dart';
 import '../../app/theme/colors.dart';
 import 'safe_circle_avatar.dart';
@@ -36,7 +39,7 @@ class AvatarWithBadge extends StatelessWidget {
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // Verified ring
+          // verified ring
           if (badgeType != BadgeType.none)
             Container(
               width: size,
@@ -61,7 +64,7 @@ class AvatarWithBadge extends StatelessWidget {
               avatarUrl: avatarUrl,
             ),
           ),
-          // Badge dot
+          // badge dot
           if (badgeType != BadgeType.none)
             Positioned(
               right: 0,

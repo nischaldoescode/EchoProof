@@ -1,5 +1,8 @@
 "use client";
 
+// admin subscription grant form component
+// @params none
+
 import { useState } from "react";
 import { Box, Button, Flex, Text } from "@radix-ui/themes";
 import { adminPath } from "@/lib/routes";

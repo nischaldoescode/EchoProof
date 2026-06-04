@@ -1,4 +1,4 @@
-// protects all admin routes — redirects to login if no supabase session
+// protects all admin routes redirects to login if no supabase session
 
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";

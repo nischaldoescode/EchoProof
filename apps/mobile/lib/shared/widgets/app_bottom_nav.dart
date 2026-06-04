@@ -1,47 +1,51 @@
+// app bottom navigation
+// @params currentlocation selects the active root destination
+
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
-import '../../app/theme/colors.dart';
-import 'bottom_ad_banner.dart';
-import 'app_banner_ad.dart';
 import 'package:provider/provider.dart';
-import '../../core/localization/app_copy.dart';
+import '../../app/theme/colors.dart';
+import '../../features/echo/presentation/services/echo_feed_service.dart';
 import '../../features/notifications/presentation/services/notification_service.dart';
+import 'app_banner_ad.dart';
+import 'bottom_ad_banner.dart';
 
 class AppBottomNav extends StatelessWidget {
-  const AppBottomNav({super.key, required this.currentLocation});
+  const AppBottomNav({
+    super.key,
+    required this.currentLocation,
+    this.onFeedTap,
+  });
 
   final String currentLocation;
+  final FutureOr<void> Function()? onFeedTap;
 
   static const _items = [
     _NavItem(
       icon: Icons.home_outlined,
       activeIcon: Icons.home_rounded,
-      labelKey: 'nav.feed',
       path: '/feed',
     ),
     _NavItem(
       icon: Icons.explore_outlined,
       activeIcon: Icons.explore_rounded,
-      labelKey: 'nav.discover',
       path: '/discover',
     ),
     _NavItem(
       icon: Icons.lock_outline_rounded,
       activeIcon: Icons.lock_rounded,
-      labelKey: 'nav.rooms',
       path: '/rooms',
     ),
     _NavItem(
       icon: Icons.notifications_outlined,
       activeIcon: Icons.notifications_rounded,
-      labelKey: 'nav.alerts',
       path: '/notifications',
     ),
     _NavItem(
       icon: Icons.person_outline,
       activeIcon: Icons.person_rounded,
-      labelKey: 'nav.profile',
       path: '/profile',
     ),
   ];
@@ -67,7 +71,7 @@ class AppBottomNav extends StatelessWidget {
       right: false,
       bottom: true,
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        // Interstitial prompt banner — above nav, dismissible
+        // ad prompt stays above root navigation
         const BottomAdBanner(),
 
         Container(
@@ -88,6 +92,19 @@ class AppBottomNav extends StatelessWidget {
                       child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: () {
+                      if (item.path == '/feed') {
+                        if (activePath == '/feed' && onFeedTap != null) {
+                          unawaited(Future<void>.sync(onFeedTap!));
+                          return;
+                        }
+                        final notifications =
+                            context.read<NotificationService>();
+                        unawaited(
+                          context.read<EchoFeedService>().refresh().then(
+                                (_) => notifications.markFollowerEchoesRead(),
+                              ),
+                        );
+                      }
                       if (currentLocation != item.path) {
                         context.go(item.path);
                       }
@@ -122,7 +139,32 @@ class AppBottomNav extends StatelessWidget {
                                       : AppColors.textTertiary,
                                 ),
                               ),
-                              // Unread badge for notifications tab.
+                              // unread dot for followed-user posts
+                              if (item.path == '/feed')
+                                Consumer<NotificationService>(
+                                  builder: (_, notif, __) {
+                                    if (!notif.hasUnreadFollowerEcho) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    return Positioned(
+                                      top: -3,
+                                      right: -4,
+                                      child: Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: BoxDecoration(
+                                          color: AppColors.fernGreen,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: Colors.white,
+                                            width: 1.4,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              // unread badge for notifications tab
                               if (item.path == '/notifications')
                                 Consumer<NotificationService>(
                                   builder: (_, notif, __) {
@@ -165,10 +207,6 @@ class AppBottomNav extends StatelessWidget {
             ),
           ),
         ),
-        // const SizedBox(
-        //   width: double.infinity,
-        //   child: AppBannerAd(),
-        // ),
         const SizedBox(height: 5),
         const AppBannerAd(),
       ]),
@@ -200,15 +238,15 @@ class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
     '/profile',
   ];
 
-  // Live drag progress: -1.0 (going right→left) to +1.0 (going left→right)
+  // drag progress uses positive for previous tab and negative for next tab
   double _drag = 0.0;
   bool _dragging = false;
   double _dragStartX = 0.0;
 
-  // Exit animation state
+  // exit animation finishes the slide before routing
   late final AnimationController _exitCtrl;
   late Animation<double> _exitProgress;
-  int _exitDirection = 0; // -1 or +1
+  int _exitDirection = 0;
   bool _exiting = false;
 
   @override
@@ -259,7 +297,7 @@ class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
     final shouldNavigate = _drag.abs() > 0.3 || velocity.abs() > 500;
 
     if (shouldNavigate && _drag != 0) {
-      final dir = _drag > 0 ? 1 : -1; // +1=going back, -1=going forward
+      final dir = _drag > 0 ? 1 : -1;
       final targetIdx = _idx - dir;
       if (targetIdx >= 0 && targetIdx < _routes.length) {
         _triggerExit(dir, _routes[targetIdx]);
@@ -267,7 +305,6 @@ class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
       }
     }
 
-    // Snap back with spring.
     _snapBack();
   }
 
@@ -296,97 +333,41 @@ class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
     }
   }
 
-  Matrix4 _buildMatrix(double p) {
-    if (p == 0.0) return Matrix4.identity();
-
-    final m = Matrix4.identity();
-    m.setEntry(3, 2, 0.0014);
-    final angle = p * (3.14159 / 3.4);
-    m.translateByDouble(p * MediaQuery.sizeOf(context).width * 0.08, 0, 0, 1);
-    m.rotateY(-angle);
-    final scale = 1.0 - p.abs() * 0.10;
-    m.scaleByDouble(scale, scale, 1.0, 1.0);
-
-    return m;
-  }
-
-  Matrix4 _buildPreviewMatrix(double p) {
-    final m = Matrix4.identity();
-    final abs = p.abs().clamp(0.0, 1.0).toDouble();
-    final direction = p.sign;
-    m.setEntry(3, 2, 0.0012);
-    m.translateByDouble(-direction * (1 - abs) * 90, 0, -80 + abs * 80, 1);
-    m.rotateY(direction * (1 - abs) * (3.14159 / 5.5));
-    m.scaleByDouble(0.90 + abs * 0.07, 0.90 + abs * 0.07, 1, 1);
-    return m;
-  }
-
-  _NavItem? _previewItemFor(double p) {
-    if (p < 0 && _canGoForward) {
-      return AppBottomNav._items[_idx + 1];
-    }
-    if (p > 0 && _canGoBack) {
-      return AppBottomNav._items[_idx - 1];
-    }
-    return null;
-  }
-
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _exitCtrl,
       builder: (context, _) {
         final p = _exiting ? _exitDirection * _exitProgress.value : _drag;
-
-        final align = p >= 0 ? Alignment.centerLeft : Alignment.centerRight;
-        final previewItem = _previewItemFor(p);
+        final width = MediaQuery.sizeOf(context).width;
         final progress = p.abs().clamp(0.0, 1.0).toDouble();
 
         return GestureDetector(
           onHorizontalDragStart: _onDragStart,
           onHorizontalDragUpdate: _onDragUpdate,
           onHorizontalDragEnd: _onDragEnd,
-          // ColoredBox fills the window with app background — prevents
-          // the Android black window from showing through the 3D gap.
           child: ColoredBox(
-            color: const Color(0xFFF5FAF7), // AppColors.softGreen background
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (previewItem != null && progress > 0)
-                  Opacity(
-                    opacity: (progress * 1.35).clamp(0.0, 0.92).toDouble(),
-                    child: Transform(
-                      alignment:
-                          p < 0 ? Alignment.centerRight : Alignment.centerLeft,
-                      transform: _buildPreviewMatrix(p),
-                      child: _RoutePreviewCard(item: previewItem),
-                    ),
-                  ),
-                Transform(
-                  alignment: align,
-                  transform: _buildMatrix(p),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      boxShadow: progress == 0
-                          ? const []
-                          : [
-                              BoxShadow(
-                                color: Colors.black
-                                    .withValues(alpha: 0.10 * progress),
-                                blurRadius: 30 * progress,
-                                offset: Offset(0, 12 * progress),
-                              ),
-                            ],
-                    ),
-                    child: Opacity(
-                      opacity:
-                          (1.0 - progress * 0.08).clamp(0.0, 1.0).toDouble(),
-                      child: widget.child,
-                    ),
-                  ),
+            color: const Color(0xFFF5FAF7),
+            child: Transform.translate(
+              offset: Offset(p * width, 0),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  boxShadow: progress == 0
+                      ? const []
+                      : [
+                          BoxShadow(
+                            color:
+                                Colors.black.withValues(alpha: 0.07 * progress),
+                            blurRadius: 22 * progress,
+                            offset: Offset(0, 8 * progress),
+                          ),
+                        ],
                 ),
-              ],
+                child: Opacity(
+                  opacity: (1.0 - progress * 0.04).clamp(0.0, 1.0).toDouble(),
+                  child: widget.child,
+                ),
+              ),
             ),
           ),
         );
@@ -399,56 +380,10 @@ class _NavItem {
   const _NavItem({
     required this.icon,
     required this.activeIcon,
-    required this.labelKey,
     required this.path,
   });
 
   final IconData icon;
   final IconData activeIcon;
-  final String labelKey;
   final String path;
-}
-
-class _RoutePreviewCard extends StatelessWidget {
-  const _RoutePreviewCard({required this.item});
-
-  final _NavItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(22, 62, 22, 96),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: AppColors.borderSubtle),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 28,
-              offset: const Offset(0, 16),
-            ),
-          ],
-        ),
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(item.activeIcon, color: AppColors.fernGreen, size: 34),
-              const SizedBox(height: 10),
-              Text(
-                context.tx(item.labelKey),
-                style: GoogleFonts.josefinSans(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.charcoal,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }

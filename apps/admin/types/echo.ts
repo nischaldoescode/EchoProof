@@ -1,5 +1,5 @@
-// shared echo types — used by admin panel and edge functions
-// flutter uses its own echo_entity.dart — keep these in sync manually
+// shared echo types used by admin panel and edge functions
+// flutter uses its own echo_entity.dart keep these in sync manually
 
 export type EchoStatus =
   | "pending_verification"

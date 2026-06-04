@@ -1,4 +1,4 @@
-// echo model — maps raw supabase rows to domain entities
+// echo model maps raw supabase rows to domain entities
 
 import '../../domain/entities/echo_entity.dart';
 import '../../domain/entities/echo_status.dart';

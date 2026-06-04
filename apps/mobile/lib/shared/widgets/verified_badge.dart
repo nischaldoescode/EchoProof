@@ -1,6 +1,6 @@
 // verified identity badge
 // shown next to usernames when is_identity_verified = true
-// subtle — not flashy — matches the trust-first design ethos
+// subtle not flashy matches the trust-first design ethos
 
 import 'package:flutter/material.dart';
 import '../../app/theme/colors.dart';

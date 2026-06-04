@@ -1,6 +1,6 @@
-// onboarding step 1 — identity intro
+// onboarding step 1 identity intro
 // explains anonymous but verified model
-// uses OnboardingService via provider
+// uses onboardingservice via provider
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';

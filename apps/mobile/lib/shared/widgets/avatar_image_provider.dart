@@ -1,3 +1,6 @@
+// avatar image provider
+// @params none
+
 import 'package:flutter/widgets.dart';
 
 const echoProofLogoAsset = 'assets/images/logo.png';

@@ -1,3 +1,6 @@
+// permission helper
+// @params none
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -64,9 +67,10 @@ abstract final class PermissionHelper {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 56, height: 56,
+              width: 56,
+              height: 56,
               decoration: BoxDecoration(
-                color:        const Color(0xFFD4F0E2),
+                color: const Color(0xFFD4F0E2),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Icon(icon, size: 28, color: const Color(0xFF4CAF6E)),
@@ -75,9 +79,9 @@ abstract final class PermissionHelper {
             Text(
               '$permissionName access needed',
               style: GoogleFonts.josefinSans(
-                fontSize:   17,
+                fontSize: 17,
                 fontWeight: FontWeight.w700,
-                color:      const Color(0xFF1A1A1A),
+                color: const Color(0xFF1A1A1A),
               ),
               textAlign: TextAlign.center,
             ),
@@ -86,8 +90,8 @@ abstract final class PermissionHelper {
               reason,
               style: GoogleFonts.josefinSans(
                 fontSize: 13,
-                color:    const Color(0xFF6B7280),
-                height:   1.5,
+                color: const Color(0xFF6B7280),
+                height: 1.5,
               ),
               textAlign: TextAlign.center,
             ),
@@ -95,10 +99,10 @@ abstract final class PermissionHelper {
             Text(
               'You previously denied this permission. Please enable it in your device settings.',
               style: GoogleFonts.josefinSans(
-                fontSize:   12,
-                color:      const Color(0xFF9CA3AF),
-                fontStyle:  FontStyle.italic,
-                height:     1.5,
+                fontSize: 12,
+                color: const Color(0xFF9CA3AF),
+                fontStyle: FontStyle.italic,
+                height: 1.5,
               ),
               textAlign: TextAlign.center,
             ),
@@ -135,7 +139,7 @@ abstract final class PermissionHelper {
             child: Text(
               'Open settings',
               style: GoogleFonts.josefinSans(
-                fontSize:   13,
+                fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -146,17 +150,17 @@ abstract final class PermissionHelper {
   }
 
   static (String, IconData) _reasonFor(String name) => switch (name) {
-    'Photo library' => (
-        'Echoproof needs access to your photos so you can attach evidence to your echoes. We never access your library without you choosing a photo.',
-        Icons.photo_library_outlined,
-      ),
-    'Camera' => (
-        'Echoproof needs your camera to take photos as evidence for echoes or during identity verification.',
-        Icons.camera_alt_outlined,
-      ),
-    _ => (
-        'This permission is needed for Echoproof to work correctly.',
-        Icons.lock_outlined,
-      ),
-  };
+        'Photo library' => (
+            'Echoproof needs access to your photos so you can attach evidence to your echoes. We never access your library without you choosing a photo.',
+            Icons.photo_library_outlined,
+          ),
+        'Camera' => (
+            'Echoproof needs your camera to take photos as evidence for echoes or during identity verification.',
+            Icons.camera_alt_outlined,
+          ),
+        _ => (
+            'This permission is needed for Echoproof to work correctly.',
+            Icons.lock_outlined,
+          ),
+      };
 }

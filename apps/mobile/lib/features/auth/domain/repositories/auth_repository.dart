@@ -1,3 +1,6 @@
+// auth repository
+// @params none
+
 import 'package:dartz/dartz.dart';
 import '../../../../core/errors/failures.dart';
 import '../entities/user_entity.dart';

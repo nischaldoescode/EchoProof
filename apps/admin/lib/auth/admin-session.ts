@@ -1,3 +1,6 @@
+// admin auth session helper
+// @params none
+
 import type { NextRequest } from "next/server";
 import { isAllowedAdminEmail } from "@/lib/auth/allowlist";
 

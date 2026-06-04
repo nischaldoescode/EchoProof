@@ -1,5 +1,5 @@
-// Analytics tab — Pro users only.
-// Shows real-time post and account stats with animated cards.
+// analytics tab pro users only
+// shows real-time post and account stats with animated cards
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -32,7 +32,7 @@ class _AnalyticsTabState extends State<AnalyticsTab>
   void initState() {
     super.initState();
     _loadStats();
-    // Refresh every 30 seconds.
+    // refresh every 30 seconds
     _refreshTimer =
         Timer.periodic(const Duration(seconds: 30), (_) => _loadStats());
     _subscribeRealtime();

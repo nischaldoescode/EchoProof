@@ -1,6 +1,6 @@
-// onboarding step 0 — language selector
+// onboarding step 0 language selector
 // shown first in onboarding, before identity intro
-// persists selected locale code to Hive via OnboardingService.setLanguage()
+// persists selected locale code to hive via onboardingservice.setlanguage()
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -114,7 +114,7 @@ class _StepLanguageState extends State<StepLanguage>
                             duration: const Duration(milliseconds: 180),
                             curve: Curves.easeInOut,
                             decoration: BoxDecoration(
-                              // use softSand (already in AppColors) for unselected
+                              // use softsand (already in appcolors) for unselected
                               color: isSelected
                                   ? AppColors.fernGreenLight
                                   : AppColors.softSand,
@@ -170,9 +170,9 @@ class _StepLanguageState extends State<StepLanguage>
                       HapticFeedback.mediumImpact();
                       final svc = context.read<OnboardingService>();
                       svc.setLanguage(_selected);
-                      // Brief delay so the locale rebuild animates before
-                      // advancing the step — gives the user visual feedback
-                      // that the language actually changed.
+                      // brief delay so the locale rebuild animates before
+                      // advancing the step gives the user visual feedback
+                      // that the language actually changed
                       Future.delayed(const Duration(milliseconds: 350), () {
                         if (mounted) svc.nextStep();
                       });

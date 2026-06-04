@@ -1,7 +1,7 @@
-// Minimal rich text toolbar for Pro users.
-// Inserts markdown-style markers into text:
-// **bold**, _italic_, ~~strike~~, [large], and [small].
-// The feed card renders these using a simple inline parser.
+// minimal rich text toolbar for pro users
+// inserts markdown-style markers into text:
+// bold**, _italic_, ~~strike~~, [large], and [small]
+// the feed card renders these using a simple inline parser
 
 import 'package:flutter/material.dart';
 import '../../../../app/theme/colors.dart';

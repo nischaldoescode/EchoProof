@@ -137,7 +137,7 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
     return false;
   }
 
-  // opens the platform date picker — restricts to valid birth date range
+  // opens the platform date picker restricts to valid birth date range
   Future<void> _pickDob() async {
     AppLogger.info('age-gender: dob tap received submitting=$_isSubmitting');
     if (_isSubmitting) {
@@ -333,7 +333,7 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
 
     final age = _calculatedAge!;
 
-    // redundant safety check — date picker enforces lastDate already,
+    // redundant safety check date picker enforces lastdate already,
     // but we guard here in case of edge case clock skew
     if (age < 13) {
       _showUnderageDialog();
@@ -436,7 +436,7 @@ class _AgeGenderScreenState extends State<AgeGenderScreen>
                         children: [
                           const SizedBox(height: AppSpacing.xl),
 
-                          // step progress dots — step 1 of 3
+                          // step progress dots step 1 of 3
                           Row(
                             children: List.generate(3, (i) {
                               return AnimatedContainer(

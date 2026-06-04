@@ -1,4 +1,4 @@
-// 404 page — shown for any unmatched route
+// 404 page shown for any unmatched route
 // consistent with the design system, links back to home and the android app
 
 import Link from "next/link";

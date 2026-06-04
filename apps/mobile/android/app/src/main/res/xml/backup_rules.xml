@@ -1,18 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- backup rules -->
 <!--
     backup_rules.xml
-    Controls Auto Backup for Android 11 and below (API 30 and earlier).
-    For Android 12+ see data_extraction_rules.xml instead.
-
-    To reference this in AndroidManifest.xml add to <application>:
-      android:fullBackupContent="@xml/backup_rules"
-
-    But since your manifest already has android:fullBackupContent="false"
-    this file is a safety net — you can add it anyway and switch to
-    android:fullBackupContent="@xml/backup_rules" if needed.
+    controls auto backup for android 11 and below (api 30 and earlier)
+    for android 12+ see data_extraction_rules.xml instead
+    to reference this in androidmanifest.xml add to <application>:
+    android:fullbackupcontent="@xml/backup_rules"
+    but since your manifest already has android:fullbackupcontent="false"
+    this file is a safety net you can add it anyway and switch to
+    android:fullbackupcontent="@xml/backup_rules" if needed
 -->
 <full-backup-content>
-    <!-- Exclude everything — auth tokens and sessions must not be backed up -->
+    <!-- exclude everything auth tokens and sessions must not be backed up -->
     <exclude domain="file"      path="." />
     <exclude domain="database"  path="." />
     <exclude domain="sharedpref" path="." />

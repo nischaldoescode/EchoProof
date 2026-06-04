@@ -1,3 +1,6 @@
+// login screen
+// @params none
+
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -101,7 +104,7 @@ class _LoginScreenState extends State<LoginScreen>
     }
     final auth = context.read<AuthService>();
     await auth.signInWithGoogle();
-    // Router redirect handles navigation after the auth state updates.
+    // router redirect handles navigation after the auth state updates
   }
 
   @override

@@ -1,6 +1,6 @@
-// onboarding step 4 — trust tier explanation
+// onboarding step 4 trust tier explanation
 // animated tier ladder reveals
-// uses OnboardingService via provider — no riverpod
+// uses onboardingservice via provider no riverpod
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';

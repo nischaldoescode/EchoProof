@@ -1,5 +1,5 @@
 // echo remote data source
-// direct supabase queries — no business logic here
+// direct supabase queries no business logic here
 
 import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';

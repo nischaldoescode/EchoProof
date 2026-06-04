@@ -1,3 +1,6 @@
+// video playback coordinator
+// @params none
+
 import 'package:flutter/foundation.dart';
 
 class VideoPlaybackCoordinator {

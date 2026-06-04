@@ -1,3 +1,6 @@
+// report echo
+// @params none
+
 import 'package:dartz/dartz.dart';
 import '../../../../core/errors/failures.dart';
 import '../repositories/echo_repository.dart';
@@ -12,8 +15,8 @@ class ReportEchoUseCase {
     String? description,
   }) {
     return _repository.reportEcho(
-      echoId:      echoId,
-      reason:      reason,
+      echoId: echoId,
+      reason: reason,
       description: description,
     );
   }

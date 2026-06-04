@@ -1,12 +1,12 @@
 "use client";
 
-// landing page — full parallax storytelling layout
-// page loader lives here — purely client-side, no ssr complications
+// landing page full parallax storytelling layout
+// page loader lives here purely client-side, no ssr complications
 // smooth scroll, scroll reveal, parallax, horizontal ticker
 
 import { useEffect, useRef, useState } from "react";
 
-// ─── LOADER ──────────────────────────────────────────────────────────────────
+// loader
 
 function PageLoader() {
   // three states: "in" (fading in), "hold" (fully visible), "out" (fading out), "gone"
@@ -178,7 +178,7 @@ function PageLoader() {
   );
 }
 
-// ─── DATA ─────────────────────────────────────────────────────────────────────
+// data
 
 const tickerEchoes = [
   {
@@ -332,7 +332,7 @@ const chainFeatures = [
   },
 ];
 
-// ─── HOOKS ────────────────────────────────────────────────────────────────────
+// hooks
 
 function useParallax(speed = 0.3) {
   const ref = useRef<HTMLDivElement>(null);
@@ -384,7 +384,7 @@ function useScrollReveal(threshold = 0.12) {
   return { ref, visible };
 }
 
-// ─── COMPONENTS ───────────────────────────────────────────────────────────────
+// components
 
 function Reveal({
   children,
@@ -700,7 +700,7 @@ function EchoTicker() {
   );
 }
 
-// ─── MAIN ─────────────────────────────────────────────────────────────────────
+// main
 
 export default function LandingClient() {
   const heroMeshRef = useParallax(0.55);
@@ -717,7 +717,7 @@ export default function LandingClient() {
 
   return (
     <>
-      {/* loader renders here — purely client side, no ssr involvement */}
+      {/* loader renders here purely client side, no ssr involvement */}
       <PageLoader />
 
       <main
@@ -778,7 +778,7 @@ export default function LandingClient() {
           }
         `}</style>
 
-        {/* ── HERO ──────────────────────────────────────────────────────────── */}
+        {/* hero */}
         <section
           style={{
             position: "relative",
@@ -1014,7 +1014,7 @@ export default function LandingClient() {
           </div>
         </section>
 
-        {/* ── TICKER ────────────────────────────────────────────────────────── */}
+        {/* ticker */}
         <section
           style={{
             position: "relative",
@@ -1090,7 +1090,7 @@ export default function LandingClient() {
           </div>
         </section>
 
-        {/* ── HOW IT WORKS ──────────────────────────────────────────────────── */}
+        {/* how it works */}
         <section
           id="how-it-works"
           style={{
@@ -1258,7 +1258,7 @@ export default function LandingClient() {
           ))}
         </section>
 
-        {/* ── TRUST ENGINE ──────────────────────────────────────────────────── */}
+        {/* trust engine */}
         <section
           id="trust"
           style={{
@@ -1429,7 +1429,7 @@ export default function LandingClient() {
           </div>
         </section>
 
-        {/* ── ON-CHAIN ──────────────────────────────────────────────────────── */}
+        {/* on-chain */}
         <section
           style={{
             position: "relative",
@@ -1561,7 +1561,7 @@ export default function LandingClient() {
           </div>
         </section>
 
-        {/* ── REPUTATION ────────────────────────────────────────────────────── */}
+        {/* reputation */}
         <section
           style={{
             position: "relative",
@@ -1629,7 +1629,7 @@ export default function LandingClient() {
           </div>
         </section>
 
-        {/* ── FINAL CTA ─────────────────────────────────────────────────────── */}
+        {/* final cta */}
         <section
           style={{
             position: "relative",

@@ -1,3 +1,6 @@
+// admin auth magic link api
+// @params none
+
 import { NextRequest, NextResponse } from "next/server";
 import { isAllowedAdminEmail } from "@/lib/auth/allowlist";
 import { publicOrigin } from "@/lib/public-url";

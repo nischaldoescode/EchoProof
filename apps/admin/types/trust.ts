@@ -1,4 +1,4 @@
-// trust engine thresholds — keep in sync with 003_trust_engine.sql
+// trust engine thresholds keep in sync with 003_trust_engine.sql
 
 export const TrustThresholds = {
   verified_trust:        50,

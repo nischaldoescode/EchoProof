@@ -1,9 +1,9 @@
 // rating_prompt.dart
 // shows an animated in-app rating popup after the user has been active for
-// ~1 hour total across sessions (tracked via Hive).
-// uses in_app_review package for real store prompt on confirm.
-// import this and call RatingPrompt.maybeShow(context) from feed_screen
-// after the feed loads.
+// ~1 hour total across sessions (tracked via hive)
+// uses in_app_review package for real store prompt on confirm
+// import this and call ratingprompt.maybeshow(context) from feed_screen
+// after the feed loads
 
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -14,10 +14,10 @@ import '../../../app/theme/typography.dart';
 class RatingPrompt {
   static const _kFirstLaunch = 'rating_first_launch_ms';
 
-// Prompt thresholds in minutes of cumulative active time.
-  // 60 = first prompt after 1 hour.
-  // 180 = second prompt after 3 hours total.
-  // 10080 = weekly thereafter (7 days * 60 * 24).
+// prompt thresholds in minutes of cumulative active time
+  // 60 = first prompt after 1 hour
+  // 180 = second prompt after 3 hours total
+  // 10080 = weekly thereafter (7 days * 60 * 24)
   static const _kThresholds = [60, 180, 10080];
   static const _kDismissCount = 'rating_dismiss_count';
   static const _kLastDismissMs = 'rating_last_dismiss_ms';
@@ -26,7 +26,7 @@ class RatingPrompt {
   static Future<void> maybeShow(BuildContext context) async {
     final box = Hive.box('app_settings');
 
-    // Never show again if user already rated.
+    // never show again if user already rated
     final rated = box.get(_kRated, defaultValue: false) as bool;
     if (rated) return;
 
@@ -42,13 +42,13 @@ class RatingPrompt {
     final dismissCount = box.get(_kDismissCount, defaultValue: 0) as int;
     final lastDismissMs = box.get(_kLastDismissMs) as int?;
 
-    // Determine which threshold to use based on dismiss count.
+    // determine which threshold to use based on dismiss count
     final thresholdIndex = dismissCount.clamp(0, _kThresholds.length - 1);
     final thresholdMinutes = _kThresholds[thresholdIndex];
 
     if (elapsedMinutes < thresholdMinutes) return;
 
-    // If dismissed before, ensure minimum gap of 2 hours since last dismiss.
+    // if dismissed before, ensure minimum gap of 2 hours since last dismiss
     if (lastDismissMs != null) {
       final minutesSinceDismiss = (now - lastDismissMs) / 60000;
       if (minutesSinceDismiss < 120) return;

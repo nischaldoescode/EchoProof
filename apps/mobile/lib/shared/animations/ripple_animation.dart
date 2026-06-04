@@ -1,5 +1,5 @@
 // ripple animation widget
-// shows expanding concentric circles — used on pending/awaiting echoes
+// shows expanding concentric circles used on pending/awaiting echoes
 // matches the echo wave brand motif
 
 import 'package:flutter/material.dart';
@@ -13,9 +13,9 @@ class RippleAnimation extends StatefulWidget {
     this.ringCount = 3,
   });
 
-  final Color  color;
+  final Color color;
   final double size;
-  final int    ringCount;
+  final int ringCount;
 
   @override
   State<RippleAnimation> createState() => _RippleAnimationState();
@@ -23,7 +23,6 @@ class RippleAnimation extends StatefulWidget {
 
 class _RippleAnimationState extends State<RippleAnimation>
     with SingleTickerProviderStateMixin {
-
   late final AnimationController _controller;
 
   @override
@@ -70,8 +69,8 @@ class _RipplePainter extends CustomPainter {
   });
 
   final double progress;
-  final Color  color;
-  final int    ringCount;
+  final Color color;
+  final int ringCount;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -80,7 +79,7 @@ class _RipplePainter extends CustomPainter {
 
     for (int i = 0; i < ringCount; i++) {
       final ringProgress = ((progress + i / ringCount) % 1.0);
-      final radius  = maxRadius * ringProgress;
+      final radius = maxRadius * ringProgress;
       final opacity = (1.0 - ringProgress) * 0.5;
 
       canvas.drawCircle(
@@ -95,7 +94,8 @@ class _RipplePainter extends CustomPainter {
 
     // center dot
     canvas.drawCircle(
-      center, 3,
+      center,
+      3,
       Paint()
         ..color = color.withValues(alpha: 0.7)
         ..style = PaintingStyle.fill,
@@ -103,6 +103,5 @@ class _RipplePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _RipplePainter old) =>
-      old.progress != progress;
+  bool shouldRepaint(covariant _RipplePainter old) => old.progress != progress;
 }

@@ -1,3 +1,6 @@
+// web supabase helper
+// @params none
+
 import * as supabaseJs from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -22,11 +25,11 @@ if (!createSupabaseClient) {
   throw new Error("No compatible Supabase client factory was found.");
 }
 
-// client for browser (anon key — subject to RLS)
+// client for browser (anon key subject to rls)
 export const supabase = createSupabaseClient(supabaseUrl, supabaseAnonKey);
 
-// server-side client (service role — bypasses RLS)
-// only import this in getServerSideProps or API routes
+// server-side client (service role bypasses rls)
+// only import this in getserversideprops or api routes
 export const supabaseAdmin = createSupabaseClient(supabaseUrl, supabaseServiceKey);
 
 // types for echo and profile data

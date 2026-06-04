@@ -1,5 +1,5 @@
 // proof attachment widget
-// shown in echo detail — renders a single proof card
+// shown in echo detail renders a single proof card
 // handles url, image, and document types
 // respects 1mb limit and image-only constraint
 

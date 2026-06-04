@@ -1,3 +1,6 @@
+// main
+// @params none
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -38,7 +41,7 @@ import 'package:hyper_snackbar/hyper_snackbar.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // initialize firebase first — required before any Firebase service
+  // initialize firebase first required before any firebase service
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
@@ -77,9 +80,9 @@ Future<void> main() async {
     authOptions: const FlutterAuthClientOptions(
       authFlowType: AuthFlowType.pkce,
       detectSessionInUri: false,
-      // This app owns deep-link routing below, then hands auth links to Supabase.
-      // Keep echoproof://auth-callback and optional HTTPS fallbacks in
-      // Supabase Auth -> URL Configuration -> Redirect URLs.
+      // this app owns deep-link routing below, then hands auth links to supabase
+      // keep echoproof://auth-callback and optional https fallbacks in
+      // supabase auth -> url configuration -> redirect urls
     ),
   );
 
@@ -157,7 +160,7 @@ Future<void> main() async {
       authService.checkUsername();
     }
 
-    // If account was deleted by admin, sign out immediately.
+    // if account was deleted by admin, sign out immediately
     if (type == 'account_deleted' ||
         message.notification?.title == 'Account deleted') {
       authService.signOut(enforceCooldown: false).then((_) {
@@ -186,7 +189,7 @@ Future<void> main() async {
     final route = message.data['route'] as String?;
     final type = message.data['type'] as String?;
 
-    // Account deleted by admin — sign out on cold start.
+    // account deleted by admin sign out on cold start
     if (type == 'account_deleted') {
       Future.delayed(const Duration(milliseconds: 300), () {
         authService
@@ -203,11 +206,11 @@ Future<void> main() async {
     }
   });
 
-// Handle foreground messages (app is open when deletion notification arrives).
+// handle foreground messages (app is open when deletion notification arrives)
   FirebaseMessaging.onMessage.listen((message) {
     final type = message.data['type'] as String?;
     if (type == 'account_deleted') {
-      // Sign out immediately without waiting for user action.
+      // sign out immediately without waiting for user action
       authService.signOut(enforceCooldown: false).then((_) {
         router.go('/login');
       });

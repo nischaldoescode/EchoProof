@@ -1,3 +1,6 @@
+// web next config
+// @params none
+
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
@@ -11,7 +14,7 @@ const nextConfig: NextConfig = {
     ],
   },
 
-  // Rewrites keep shared handles friendly while the page also normalizes params.
+  // rewrites keep shared handles friendly while the page also normalizes params
   async rewrites() {
     return [
       {

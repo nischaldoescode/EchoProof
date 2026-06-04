@@ -20,7 +20,7 @@ class DeviceService {
     final id = const Uuid().v4();
     await _storage.write(key: _kDeviceId, value: id);
     AppLogger.info('device: generated new device id');
-    
+
     return id;
   }
 

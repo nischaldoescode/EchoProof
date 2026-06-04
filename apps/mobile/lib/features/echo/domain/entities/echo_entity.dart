@@ -1,11 +1,11 @@
-// echo entity — pure domain model, no flutter or supabase dependencies
+// echo entity pure domain model, no flutter or supabase dependencies
 // immutable value object using freezed pattern (manual here, add freezed later)
-// this is what the ui layer works with — never raw db maps
+// this is what the ui layer works with never raw db maps
 
 import 'package:equatable/equatable.dart';
 import 'echo_status.dart';
 
-/// category of an echo — matches the sql echo_category enum exactly
+/// category of an echo matches the sql echo_category enum exactly
 enum EchoCategory {
   tech,
   finance,
@@ -48,7 +48,7 @@ enum EchoCategory {
       };
 }
 
-/// trust tier — matches sql trust_tier enum
+/// trust tier matches sql trust_tier enum
 enum TrustTier {
   unverified,
   low,
@@ -83,7 +83,7 @@ enum TrustTier {
 }
 
 /// the core domain entity representing a single echo (post)
-/// all fields are immutable — use copyWith to produce updated versions
+/// all fields are immutable use copywith to produce updated versions
 class EchoEntity extends Equatable {
   const EchoEntity({
     required this.id,
@@ -145,7 +145,7 @@ class EchoEntity extends Equatable {
   final EchoStatus status;
   final bool userIsPro;
 
-  /// 0.0 to 100.0 — percentage of weighted support
+  /// 0.0 to 100.0 percentage of weighted support
   final double confidenceScore;
   final List<String> mediaUrls;
 
@@ -153,7 +153,7 @@ class EchoEntity extends Equatable {
   final int trustScore;
   final int version;
 
-  /// 0.0 to 100.0 — how balanced the split is
+  /// 0.0 to 100.0 how balanced the split is
   final double controversyScore;
 
   final int supportCount;

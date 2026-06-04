@@ -1,6 +1,6 @@
 // notifications screen
 // shows notification history, marks all as read on open
-// uses NotificationService via provider — no riverpod
+// uses notificationservice via provider no riverpod
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';

@@ -1,11 +1,11 @@
-# Keep Flutter classes
+# keep flutter classes
 -keep class io.flutter.** { *; }
 
-# Keep Firebase
+# keep firebase
 -keep class com.google.firebase.** { *; }
 
-# Keep Gson / JSON (common)
+# keep gson / json (common)
 -keep class com.google.gson.** { *; }
 
-# Don't warn
+# don't warn
 -dontwarn io.flutter.embedding.**

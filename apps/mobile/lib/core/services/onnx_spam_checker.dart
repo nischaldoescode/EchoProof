@@ -1,11 +1,9 @@
-// On-device spam classifier for Echo text.
-//
-// Primary path:
-//   BERT WordPiece tokenizer -> DistilBERT ONNX -> logits -> softmax.
-//
-// Fallback path:
-//   Lightweight rules. This keeps publishing stable if the ONNX runtime,
-//   external model data, or vocab asset is unavailable on a device.
+// on-device spam classifier for echo text
+// primary path:
+// bert wordpiece tokenizer -> distilbert onnx -> logits -> softmax
+// fallback path:
+// lightweight rules. this keeps publishing stable if the onnx runtime,
+// external model data, or vocab asset is unavailable on a device
 
 import 'dart:async';
 import 'dart:convert';
@@ -69,7 +67,7 @@ class OnnxSpamChecker {
   static SpamCheckResult? _lastResult;
   static bool _onnxDisabledForSession = false;
 
-  /// Fast local fallback for UI hints before the async model is ready.
+  /// fast local fallback for ui hints before the async model is ready
   static int quickScore(String title, String content) {
     return _heuristicScore(title, content);
   }

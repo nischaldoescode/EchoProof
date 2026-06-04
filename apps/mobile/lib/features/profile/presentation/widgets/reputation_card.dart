@@ -1,6 +1,6 @@
 // reputation card
 // displays user trust stats on the profile screen
-// takes plain parameters — no dependency on ProfileState
+// takes plain parameters no dependency on profilestate
 
 import 'package:flutter/material.dart';
 import '../../../../app/theme/colors.dart';

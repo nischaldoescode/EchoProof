@@ -1,3 +1,6 @@
+// web delete request api
+// @params none
+
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin as supabase } from "@/lib/supabase";
 import { normalizeEmail, validateDeletionEmail } from "@/lib/email-validation";
@@ -14,9 +17,9 @@ const allowedReasons = new Set([
   "Other",
 ]);
 
-/**
- * sanitizes user input by trimming and removing unsafe characters.
- * prevents basic injection and email/html abuse.
+/*
+ * sanitizes user input by trimming and removing unsafe characters
+ * prevents basic injection and email/html abuse
  */
 function sanitize(input: string, maxLength = 500) {
   return input
@@ -95,11 +98,11 @@ async function verifyTurnstile(token: string, ip?: string | null) {
   }
 }
 
-/**
- * basic rate limiting using database.
+/*
+ * basic rate limiting using database
  * limits:
- * - max 3 requests per IP per hour
- * - max 1 request per email per 24h (already exists)
+ * max 3 requests per ip per hour
+ * max 1 request per email per 24h (already exists)
  */
 async function checkRateLimit(ip: string | null) {
   if (!ip) return false;
@@ -142,9 +145,9 @@ function getClientIp(req: NextRequest) {
   );
 }
 
-/**
+/*
  * handles deletion request submission with validation, sanitization,
- * deduplication, rate limiting, and bot protection.
+ * deduplication, rate limiting, and bot protection
  */
 export async function POST(req: NextRequest) {
   try {
@@ -191,7 +194,7 @@ export async function POST(req: NextRequest) {
 
     const ip = getClientIp(req);
 
-    // rate limit by IP before the external verification call.
+    // rate limit by ip before the external verification call
     const limited = await checkRateLimit(ip);
     if (limited) {
       return NextResponse.json(

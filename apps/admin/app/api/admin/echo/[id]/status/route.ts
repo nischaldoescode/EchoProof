@@ -1,5 +1,5 @@
-// admin API: update echo status and notify the author
-// requires service role — never expose to users
+// admin api: update echo status and notify the author
+// requires service role never expose to users
 
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -176,7 +176,7 @@ async function notifyEchoAuthor({
       },
     })
     .catch(() => {
-      // Push is best-effort; the in-app notification above is the source of truth.
+      // push is best-effort; the in-app notification above is the source of truth
     });
 }
 

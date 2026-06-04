@@ -1,7 +1,7 @@
 // app_banner_ad.dart
-// Adaptive banner ad shown below the bottom navigation bar.
-// Pro users and ad-free sessions never see this.
-// Loads automatically and animates in when ready.
+// adaptive banner ad shown below the bottom navigation bar
+// pro users and ad-free sessions never see this
+// loads automatically and animates in when ready
 
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -69,7 +69,7 @@ class _AppBannerAdState extends State<AppBannerAd>
     final adService = context.watch<AdService>();
     final subService = context.watch<SubscriptionService>();
 
-    // Never show to pro users or during ad-free window
+    // never show to pro users or during ad-free window
     if (subService.isPro || adService.isAdFreeActive) {
       return const SizedBox.shrink();
     }

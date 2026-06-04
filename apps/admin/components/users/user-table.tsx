@@ -1,5 +1,8 @@
 "use client";
 
+// admin users user table component
+// @params none
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PublicUser } from "@/types/user";
@@ -14,7 +17,7 @@ const TIER_COLORS: Record<string, string> = {
   elite: "bg-green-100 text-green-800 font-bold",
 };
 
-// Extended user type including new columns from migration 030+.
+// extended user type including new columns from migration 030+
 interface ExtendedUser extends PublicUser {
   display_name?: string | null;
   is_pro?: boolean;

@@ -1,3 +1,6 @@
+// bottom ad banner
+// @params none
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -5,9 +8,9 @@ import '../../app/theme/colors.dart';
 import '../../core/services/ad_service.dart';
 import '../../features/subscription/presentation/services/subscription_service.dart';
 
-/// Interstitial bottom banner shown on all logged-in screens.
-/// Pro users and ad-free sessions never see this.
-/// Respects the 3-per-30min frequency cap from AdService.
+/// interstitial bottom banner shown on all logged-in screens
+/// pro users and ad-free sessions never see this
+/// respects the 3-per-30min frequency cap from adservice
 class BottomAdBanner extends StatefulWidget {
   const BottomAdBanner({super.key});
 
@@ -49,12 +52,12 @@ class _BottomAdBannerState extends State<BottomAdBanner>
     final adService = context.watch<AdService>();
     final subService = context.watch<SubscriptionService>();
 
-    // Never show to pro users or during ad-free window.
+    // never show to pro users or during ad-free window
     if (subService.isPro || adService.isAdFreeActive) {
       return const SizedBox.shrink();
     }
 
-    // Only show when logged in and interstitial is ready.
+    // only show when logged in and interstitial is ready
     if (!adService.canShowInterstitial) return const SizedBox.shrink();
 
     return FadeTransition(

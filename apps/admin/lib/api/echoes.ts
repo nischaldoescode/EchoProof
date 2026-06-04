@@ -1,3 +1,6 @@
+// admin echoes api
+// @params none
+
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Echo } from "@/types/echo";
 
