@@ -9,7 +9,7 @@
 A trust-layer social platform where community members support or challenge claims.
 High-signal echoes get verified on-chain. Built with Flutter + Supabase.
 
-[![Android](https://img.shields.io/badge/Android-coming--soon-3DDC84?style=flat-square&logo=android&logoColor=white)](https://play.google.com/store/apps/details?id=com.echoproof.app)
+[![Android](https://img.shields.io/badge/Get%20it%20on-Google%20Play-3DDC84?style=flat-square&logo=google-play&logoColor=white)](https://play.google.com/store/apps/details?id=com.echoproof.app)
 [![Flutter](https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter&logoColor=white)](https://flutter.dev)
 [![Supabase](https://img.shields.io/badge/Supabase-backend-3ECF8E?style=flat-square&logo=supabase&logoColor=white)](https://supabase.com)
 [![Solana](https://img.shields.io/badge/Solana-on--chain-9945FF?style=flat-square&logo=solana&logoColor=white)](https://solana.com)
