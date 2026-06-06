@@ -1212,6 +1212,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.5"
+  ip_hunter:
+    dependency: "direct main"
+    description:
+      name: ip_hunter
+      sha256: "27bd26c1057a0721db7348f5c9b65794f41e68665d136ef4886ffa0822552dc5"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.1.0"
   jni:
     dependency: transitive
     description:
