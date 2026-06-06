@@ -169,7 +169,7 @@ class _StepGuideState extends State<StepGuide> with TickerProviderStateMixin {
                       decoration: BoxDecoration(
                         color: _page == i
                             ? AppColors.fernGreen
-                            : AppColors.fernGreen.withOpacity(0.25),
+                            : AppColors.fernGreen.withValues(alpha: 0.25),
                         borderRadius: BorderRadius.circular(3),
                       ),
                     );
@@ -258,7 +258,7 @@ class _GuideCardWidget extends StatelessWidget {
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
-                  color: card.iconColor.withOpacity(0.15),
+                  color: card.iconColor.withValues(alpha: 0.15),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
