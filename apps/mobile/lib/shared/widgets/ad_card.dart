@@ -7,7 +7,6 @@ import 'package:echoproof/core/utils/snack.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'dart:math' as math;
 import '../../app/theme/colors.dart';
 import '../../app/theme/spacing.dart';
 import '../../core/services/ad_service.dart';

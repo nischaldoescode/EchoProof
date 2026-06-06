@@ -6,7 +6,6 @@
 // which is the correct behavior for identity data
 
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../utils/logger.dart';
@@ -21,6 +20,7 @@ class EncryptionService {
   // derives a 256-bit encryption key from the user's session and device id
   // the key is stored in secure storage after first derivation
   // never transmitted never leaves the device
+  // ignore: unused_element
   Future<List<int>> _getOrCreateKey(String userId) async {
     final stored = await _storage.read(key: '${_keyStorageKey}_$userId');
 

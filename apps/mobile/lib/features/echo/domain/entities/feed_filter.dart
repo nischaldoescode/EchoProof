@@ -57,8 +57,9 @@ class FeedFilter {
       if (showVerifiedOnly && e.status != EchoStatus.verified) return false;
       if (showUnverifiedOnly && e.status == EchoStatus.verified) return false;
       if (statuses.isNotEmpty && !statuses.contains(e.status)) return false;
-      if (categories.isNotEmpty && !categories.contains(e.category))
+      if (categories.isNotEmpty && !categories.contains(e.category)) {
         return false;
+      }
       if (minTrustScore != null && e.trustScore < minTrustScore!) return false;
       return true;
     }).toList();
