@@ -6,7 +6,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:provider/provider.dart';
-import '../../app/theme/colors.dart';
 import '../../core/services/ad_service.dart';
 import '../../core/constants/ad_constants.dart';
 import '../../features/subscription/presentation/services/subscription_service.dart';
