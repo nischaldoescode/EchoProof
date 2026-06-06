@@ -1,13 +1,15 @@
-// app_banner_ad.dart
-// adaptive banner ad shown below the bottom navigation bar
-// pro users and ad-free sessions never see this
-// loads automatically and animates in when ready
+// app banner ad
+// shows the production admob banner below the bottom navigation
+// waits for mobile ads initialization before the first request
+// hides itself for pro users and temporary ad-free sessions
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/ad_service.dart';
 import '../../core/constants/ad_constants.dart';
+import '../../core/utils/logger.dart';
 import '../../features/subscription/presentation/services/subscription_service.dart';
 
 class AppBannerAd extends StatefulWidget {
@@ -21,6 +23,10 @@ class _AppBannerAdState extends State<AppBannerAd>
     with SingleTickerProviderStateMixin {
   BannerAd? _bannerAd;
   bool _isLoaded = false;
+  bool _isLoading = false;
+  bool _loadQueued = false;
+  bool _blockedByConfig = false;
+  Timer? _retryTimer;
   late final AnimationController _fadeCtrl;
   late final Animation<double> _fade;
 
@@ -32,17 +38,44 @@ class _AppBannerAdState extends State<AppBannerAd>
       duration: const Duration(milliseconds: 400),
     );
     _fade = CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut);
-    _loadBanner();
   }
 
   @override
   void dispose() {
+    _retryTimer?.cancel();
     _bannerAd?.dispose();
     _fadeCtrl.dispose();
     super.dispose();
   }
 
+  // queues a post-frame load so build stays pure while providers settle
+  void _queueBannerLoad(AdService adService) {
+    if (_isLoaded ||
+        _isLoading ||
+        _loadQueued ||
+        _blockedByConfig ||
+        _bannerAd != null) {
+      return;
+    }
+    if (!adService.mobileAdsReady || adService.mobileAdsFailed) return;
+
+    _loadQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadQueued = false;
+      if (!mounted) return;
+      _loadBanner();
+    });
+  }
+
   void _loadBanner() {
+    if (_isLoading || _isLoaded || _blockedByConfig) return;
+    if (!AdService.canRequestProductionUnit('banner', AdConstants.banner)) {
+      setState(() => _blockedByConfig = true);
+      return;
+    }
+
+    _retryTimer?.cancel();
+    _isLoading = true;
     _bannerAd = BannerAd(
       adUnitId: AdConstants.banner,
       size: AdSize.banner,
@@ -50,13 +83,23 @@ class _AppBannerAdState extends State<AppBannerAd>
       listener: BannerAdListener(
         onAdLoaded: (_) {
           if (mounted) {
-            setState(() => _isLoaded = true);
+            setState(() {
+              _isLoaded = true;
+              _isLoading = false;
+            });
             _fadeCtrl.forward();
           }
         },
         onAdFailedToLoad: (ad, error) {
           ad.dispose();
           _bannerAd = null;
+          _isLoaded = false;
+          _isLoading = false;
+          AppLogger.warn('admob: banner failed to load ${error.message}');
+          _retryTimer?.cancel();
+          _retryTimer = Timer(const Duration(seconds: 60), () {
+            if (mounted) _loadBanner();
+          });
         },
       ),
     );
@@ -68,10 +111,12 @@ class _AppBannerAdState extends State<AppBannerAd>
     final adService = context.watch<AdService>();
     final subService = context.watch<SubscriptionService>();
 
-    // never show to pro users or during ad-free window
+    // never show to pro users or during an earned ad-free window
     if (subService.isPro || adService.isAdFreeActive) {
       return const SizedBox.shrink();
     }
+
+    _queueBannerLoad(adService);
 
     if (!_isLoaded || _bannerAd == null) {
       return const SizedBox.shrink();
