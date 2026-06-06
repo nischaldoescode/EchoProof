@@ -127,6 +127,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                           const SizedBox(height: AppSpacing.sm),
                                           _FollowRequestActions(item: n),
                                         ],
+                                        if (n.type == 'new_follower') ...[
+                                          const SizedBox(height: AppSpacing.sm),
+                                          _NewFollowerActions(item: n),
+                                        ],
                                       ],
                                     ),
                                   ),
@@ -237,6 +241,149 @@ class _FollowRequestActions extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _NewFollowerActions extends StatefulWidget {
+  const _NewFollowerActions({required this.item});
+  final NotificationItem item;
+
+  @override
+  State<_NewFollowerActions> createState() => _NewFollowerActionsState();
+}
+
+class _NewFollowerActionsState extends State<_NewFollowerActions> {
+  late Future<bool> _isFollowingFuture;
+  bool _isBusy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _isFollowingFuture = _loadState();
+  }
+
+  @override
+  void didUpdateWidget(covariant _NewFollowerActions oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.item.id != widget.item.id ||
+        oldWidget.item.data != widget.item.data) {
+      _isFollowingFuture = _loadState();
+    }
+  }
+
+  Future<bool> _loadState() {
+    return context.read<NotificationService>().isFollowingActor(widget.item);
+  }
+
+  Future<void> _followBack() async {
+    if (_isBusy) return;
+
+    setState(() => _isBusy = true);
+    try {
+      final result =
+          await context.read<NotificationService>().followBack(widget.item);
+      if (!mounted) return;
+      final message =
+          result == 'requested' ? 'Follow request sent' : 'Followed back';
+      showSuccessSnack(context, context.l(message));
+      setState(() => _isFollowingFuture = Future.value(true));
+    } catch (_) {
+      if (mounted) {
+        showErrorSnack(context, context.l('Could not follow back'));
+      }
+    } finally {
+      if (mounted) setState(() => _isBusy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = widget.item.data?['follow_back_status'] as String?;
+    if (status == 'following') {
+      return _NotificationStatusChip(
+        icon: Icons.check_rounded,
+        label: context.l('Following'),
+      );
+    }
+    if (status == 'requested') {
+      return _NotificationStatusChip(
+        icon: Icons.schedule_rounded,
+        label: context.l('Requested'),
+      );
+    }
+
+    return FutureBuilder<bool>(
+      future: _isFollowingFuture,
+      builder: (context, snapshot) {
+        final isFollowing = snapshot.data ?? false;
+        if (isFollowing) {
+          return _NotificationStatusChip(
+            icon: Icons.check_rounded,
+            label: context.l('Following'),
+          );
+        }
+
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: _isBusy ? null : _followBack,
+            icon: _isBusy
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.fernGreen,
+                    ),
+                  )
+                : const Icon(Icons.person_add_alt_1_rounded, size: 16),
+            label: Text(context.l('Follow back')),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.fernGreenDark,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _NotificationStatusChip extends StatelessWidget {
+  const _NotificationStatusChip({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceSecondary,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: AppColors.borderSubtle),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: AppColors.textSecondary),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: AppTypography.textTheme.labelMedium?.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

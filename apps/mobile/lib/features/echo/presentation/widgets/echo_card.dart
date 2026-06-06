@@ -214,15 +214,15 @@ class _EchoCardState extends State<EchoCard> {
     final isWindowEndedOpen = _isContextWindowEndedOpen(echo);
     final challengeHeavy = _isChallengeHeavy(echo);
     final cardColor = isWindowEndedOpen
-        ? const Color(0xFFFAF8F2)
+        ? const Color(0xFFFCFAF6)
         : challengeHeavy
-            ? const Color(0xFFFFFBF8)
-            : AppColors.white;
+            ? const Color(0xFFFFFCFA)
+            : const Color(0xFFFFFEFC);
     final dividerColor = isWindowEndedOpen
-        ? const Color(0xFFD8D0C4)
+        ? const Color(0xFFE2DAD0)
         : challengeHeavy
-            ? AppColors.sunsetCoral.withValues(alpha: 0.22)
-            : AppColors.borderSubtle;
+            ? AppColors.sunsetCoral.withValues(alpha: 0.16)
+            : AppColors.borderSubtle.withValues(alpha: 0.82);
     final solanaStatus = _solanaStatusOverride ?? echo.solanaStatus;
     final createdRecordTx = _createdRecordTxOverride ?? echo.createdRecordTx;
     final canRetrySolana = _canRetrySolanaRecord(
@@ -545,7 +545,7 @@ class _ContextMiniBar extends StatelessWidget {
                     duration: const Duration(milliseconds: 220),
                     color: total == 0
                         ? AppColors.borderSubtle
-                        : const Color(0xFFE08A76),
+                        : const Color(0xFFD78976).withValues(alpha: 0.76),
                   ),
                 ),
               ],
@@ -577,8 +577,8 @@ class _ContextMiniBar extends StatelessWidget {
               '$challenge challenge',
               style: GoogleFonts.josefinSans(
                 fontSize: 10.5,
-                fontWeight: FontWeight.w800,
-                color: const Color(0xFF9E4A38),
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF9E5A4D),
               ),
             ),
           ],

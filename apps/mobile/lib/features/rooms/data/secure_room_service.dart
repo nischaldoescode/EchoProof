@@ -233,7 +233,7 @@ class SecureRoomService extends ChangeNotifier {
         );
         rooms = await _fetchActiveRooms(userId);
       }
-      _rooms = rooms;
+      _rooms = await _filterDecryptableRooms(rooms);
     } catch (e) {
       _error = 'Could not load rooms.';
       AppLogger.error('rooms: load failed', e);
@@ -258,6 +258,22 @@ class SecureRoomService extends ChangeNotifier {
         .map((row) => _mapRoom((row as Map<String, dynamic>)['secure_rooms']))
         .where((room) => room.isActive)
         .toList();
+  }
+
+  Future<List<SecureRoomSummary>> _filterDecryptableRooms(
+    List<SecureRoomSummary> rooms,
+  ) async {
+    final visible = <SecureRoomSummary>[];
+    for (final room in rooms) {
+      if (await hasRoomKey(room.id)) {
+        visible.add(room);
+      } else {
+        AppLogger.info(
+          'rooms: hiding active room ${room.id} because local key is missing',
+        );
+      }
+    }
+    return visible;
   }
 
   Future<void> markRoomUnavailable(
@@ -368,6 +384,13 @@ class SecureRoomService extends ChangeNotifier {
     return _storage.delete(key: _keyName(roomId));
   }
 
+  Future<bool> hasRoomKey(String roomId) async {
+    final key = await _storage.read(key: _keyName(roomId));
+    return key != null &&
+        key.isNotEmpty &&
+        SecureRoomCrypto.isValidRoomKey(key);
+  }
+
   Future<SecureRoomSummary> updateRoomTimer({
     required String roomId,
     required int ttlSeconds,
@@ -385,6 +408,13 @@ class SecureRoomService extends ChangeNotifier {
   }
 
   Future<SecureRoomSummary> loadRoom(String roomId) async {
+    if (!await hasRoomKey(roomId)) {
+      await markRoomUnavailable(roomId);
+      throw Exception(
+        'Secret key missing. This device cannot decrypt the room.',
+      );
+    }
+
     await _client.rpc('refresh_secure_room_state',
         params: {'p_room_id': roomId}).catchError((_) {});
     final row = await _client
@@ -1456,7 +1486,12 @@ class SecureRoomService extends ChangeNotifier {
   static String buildShareLink(String inviteCode, String roomKey) {
     final code = Uri.encodeComponent(inviteCode);
     final key = Uri.encodeComponent(roomKey);
-    return 'https://join.echoproof.online/room?code=$code#key=$key';
+    final baseUrl = const String.fromEnvironment(
+      'ROOM_INVITE_URL',
+      defaultValue: 'https://www.echoproof.online/room',
+    );
+    final separator = baseUrl.contains('?') ? '&' : '?';
+    return '$baseUrl${separator}code=$code#key=$key';
   }
 
   SecureRoomSummary _mapRoom(dynamic raw, {int? activeMemberCount}) {

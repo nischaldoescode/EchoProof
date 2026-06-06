@@ -65,6 +65,14 @@ const _voicePlayerWaveStyle = PlayerWaveStyle(
   backgroundColor: Colors.transparent,
 );
 
+abstract final class _SecureRoomPlaybackBus {
+  static final ValueNotifier<int> stopSignal = ValueNotifier<int>(0);
+
+  static void pauseAll() {
+    stopSignal.value++;
+  }
+}
+
 class SecureRoomChatScreen extends StatefulWidget {
   const SecureRoomChatScreen({super.key, required this.roomId});
 
@@ -192,6 +200,7 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
       _service.setPresence(widget.roomId, SecureRoomPresenceState.active);
       _loadMessagesOnly(refreshRoom: true, refreshMembers: true);
     } else {
+      _SecureRoomPlaybackBus.pauseAll();
       _service.setTyping(widget.roomId, false);
       _service.setPresence(widget.roomId, SecureRoomPresenceState.background);
       if (_recording) {
@@ -3049,7 +3058,9 @@ class _EncryptedVideoViewer extends StatefulWidget {
   State<_EncryptedVideoViewer> createState() => _EncryptedVideoViewerState();
 }
 
-class _EncryptedVideoViewerState extends State<_EncryptedVideoViewer> {
+class _EncryptedVideoViewerState extends State<_EncryptedVideoViewer>
+    with WidgetsBindingObserver {
+  late final VoidCallback _stopPlaybackListener;
   VideoPlayerController? _controller;
   bool _loading = true;
   bool _failed = false;
@@ -3057,13 +3068,25 @@ class _EncryptedVideoViewerState extends State<_EncryptedVideoViewer> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _stopPlaybackListener = () => unawaited(_pauseForGlobalStop());
+    _SecureRoomPlaybackBus.stopSignal.addListener(_stopPlaybackListener);
     _load();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _SecureRoomPlaybackBus.stopSignal.removeListener(_stopPlaybackListener);
     _controller?.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      unawaited(_pauseForGlobalStop());
+    }
   }
 
   Future<void> _load() async {
@@ -3071,6 +3094,7 @@ class _EncryptedVideoViewerState extends State<_EncryptedVideoViewer> {
       final controller = VideoPlayerController.file(widget.file);
       await controller.initialize();
       await controller.setLooping(true);
+      _SecureRoomPlaybackBus.pauseAll();
       await controller.play();
       if (!mounted) {
         await controller.dispose();
@@ -3088,6 +3112,23 @@ class _EncryptedVideoViewerState extends State<_EncryptedVideoViewer> {
         });
       }
     }
+  }
+
+  Future<void> _pauseForGlobalStop() async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isPlaying) return;
+    await controller.pause();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _togglePlayback(VideoPlayerController controller) async {
+    if (controller.value.isPlaying) {
+      await controller.pause();
+    } else {
+      _SecureRoomPlaybackBus.pauseAll();
+      await controller.play();
+    }
+    if (mounted) setState(() {});
   }
 
   @override
@@ -3116,12 +3157,7 @@ class _EncryptedVideoViewerState extends State<_EncryptedVideoViewer> {
                           ),
                         )
                       : GestureDetector(
-                          onTap: () {
-                            controller.value.isPlaying
-                                ? controller.pause()
-                                : controller.play();
-                            setState(() {});
-                          },
+                          onTap: () => unawaited(_togglePlayback(controller)),
                           child: LayoutBuilder(
                             builder: (context, _) {
                               final size = controller.value.size;
@@ -3195,11 +3231,8 @@ class _EncryptedVideoViewerState extends State<_EncryptedVideoViewer> {
                                 IconButton(
                                   visualDensity: VisualDensity.compact,
                                   color: AppColors.white,
-                                  onPressed: () {
-                                    value.isPlaying
-                                        ? controller.pause()
-                                        : controller.play();
-                                  },
+                                  onPressed: () =>
+                                      unawaited(_togglePlayback(controller)),
                                   icon: Icon(
                                     value.isPlaying
                                         ? Icons.pause_rounded
@@ -3540,6 +3573,7 @@ class _VoiceMessagePlayer extends StatefulWidget {
 
 class _VoiceMessagePlayerState extends State<_VoiceMessagePlayer> {
   late PlayerController _playerController;
+  late final VoidCallback _stopPlaybackListener;
   StreamSubscription<PlayerState>? _stateSub;
   StreamSubscription<int>? _durationSub;
   StreamSubscription<void>? _completionSub;
@@ -3553,6 +3587,8 @@ class _VoiceMessagePlayerState extends State<_VoiceMessagePlayer> {
   void initState() {
     super.initState();
     _durationMs = widget.durationMs ?? 0;
+    _stopPlaybackListener = () => unawaited(_pauseForGlobalStop());
+    _SecureRoomPlaybackBus.stopSignal.addListener(_stopPlaybackListener);
     _createController();
     unawaited(_prepare());
   }
@@ -3572,6 +3608,7 @@ class _VoiceMessagePlayerState extends State<_VoiceMessagePlayer> {
 
   @override
   void dispose() {
+    _SecureRoomPlaybackBus.stopSignal.removeListener(_stopPlaybackListener);
     _stateSub?.cancel();
     _durationSub?.cancel();
     _completionSub?.cancel();
@@ -3628,7 +3665,7 @@ class _VoiceMessagePlayerState extends State<_VoiceMessagePlayer> {
       await _playerController.preparePlayer(
         path: widget.localPath,
         shouldExtractWaveform: true,
-        noOfSamples: widget.compact ? 40 : 54,
+        noOfSamples: widget.compact ? 52 : 76,
         volume: 1,
       );
       await _playerController.setFinishMode(finishMode: FinishMode.pause);
@@ -3663,11 +3700,20 @@ class _VoiceMessagePlayerState extends State<_VoiceMessagePlayer> {
         await _playerController.seekTo(0);
         if (mounted) setState(() => _positionMs = 0);
       }
+      _SecureRoomPlaybackBus.pauseAll();
       await _playerController.startPlayer(forceRefresh: false);
     } catch (_) {
       if (!mounted) return;
       setState(() => _failed = true);
     }
+  }
+
+  Future<void> _pauseForGlobalStop() async {
+    if (!_playing) return;
+    try {
+      await _playerController.pausePlayer();
+    } catch (_) {}
+    if (mounted) setState(() => _playing = false);
   }
 
   @override
@@ -3686,6 +3732,10 @@ class _VoiceMessagePlayerState extends State<_VoiceMessagePlayer> {
             constraints.hasBoundedWidth ? constraints.maxWidth : fallbackWidth;
         final width = math.max(156.0, math.min(fallbackWidth, availableWidth));
         final waveformWidth = math.max(78.0, width - 106);
+        final progress = _durationMs <= 0
+            ? 0.0
+            : (_positionMs / _durationMs).clamp(0.0, 1.0).toDouble();
+        final markerLeft = progress * math.max(0, waveformWidth - 3);
 
         return Container(
           width: width,
@@ -3728,6 +3778,21 @@ class _VoiceMessagePlayerState extends State<_VoiceMessagePlayer> {
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 1,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: LinearProgressIndicator(
+                          value: _preparing ? null : progress,
+                          minHeight: 3,
+                          color: AppColors.fernGreenDark,
+                          backgroundColor:
+                              AppColors.white.withValues(alpha: 0.58),
+                        ),
+                      ),
+                    ),
                     AudioFileWaveforms(
                       size: Size(waveformWidth, playerHeight),
                       playerController: _playerController,
@@ -3736,6 +3801,25 @@ class _VoiceMessagePlayerState extends State<_VoiceMessagePlayer> {
                       continuousWaveform: true,
                       playerWaveStyle: _voicePlayerWaveStyle,
                     ),
+                    if (!_preparing && _durationMs > 0)
+                      Positioned(
+                        left: markerLeft,
+                        top: 3,
+                        bottom: 5,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: AppColors.charcoal.withValues(alpha: 0.72),
+                            borderRadius: BorderRadius.circular(999),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.12),
+                                blurRadius: 4,
+                              ),
+                            ],
+                          ),
+                          child: const SizedBox(width: 3),
+                        ),
+                      ),
                     if (_preparing || widget.busy)
                       Positioned.fill(
                         child: DecoratedBox(

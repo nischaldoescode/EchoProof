@@ -402,17 +402,37 @@ void _handleDeepLink(Uri uri, GoRouter router, [AuthService? auth]) {
 }
 
 String _roomInviteLocation(Uri uri) {
-  final fragmentParams = uri.fragment.isEmpty
-      ? const <String, String>{}
-      : Uri.splitQueryString(uri.fragment);
-  final code = uri.queryParameters['code'] ?? fragmentParams['code'] ?? '';
-  final key = uri.queryParameters['key'] ?? fragmentParams['key'] ?? '';
+  final fragmentParams = _safeFragmentParams(uri);
+  final rawCode = uri.queryParameters['code'] ?? fragmentParams['code'] ?? '';
+  final code = _normalizedRoomCode(rawCode);
+  final key =
+      (uri.queryParameters['key'] ?? fragmentParams['key'] ?? '').trim();
   final query = {
-    if (code.isNotEmpty) 'code': code,
+    if (code != null) 'code': code,
     if (key.isNotEmpty) 'key': key,
   };
   return Uri(path: '/rooms', queryParameters: query.isEmpty ? null : query)
       .toString();
+}
+
+Map<String, String> _safeFragmentParams(Uri uri) {
+  if (uri.fragment.trim().isEmpty) return const <String, String>{};
+
+  try {
+    return Uri.splitQueryString(uri.fragment);
+  } catch (e) {
+    AppLogger.warn('deep link: invalid fragment ignored $e');
+    return const <String, String>{};
+  }
+}
+
+String? _normalizedRoomCode(String raw) {
+  final code = raw.trim().toUpperCase();
+  if (RegExp(r'^[A-Z2-9]{8}$').hasMatch(code)) return code;
+  if (code.isNotEmpty) {
+    AppLogger.warn('deep link: invalid room code ignored');
+  }
+  return null;
 }
 
 void _safeGo(GoRouter router, String location, {AuthService? auth}) {
