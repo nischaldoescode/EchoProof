@@ -947,12 +947,12 @@ class _SettingsScreenState extends State<SettingsScreen>
               onTap: () {},
             ),
           ]),
-          // secret developer panel only visible after 5 quick taps on ?
+          // hidden support panel only visible after 5 quick taps on ?
           AnimatedSize(
             duration: const Duration(milliseconds: 350),
             curve: Curves.easeOutCubic,
             child: _secretUnlocked
-                ? _SecretDevPanel(
+                ? _SecretSupportPanel(
                     onClose: () => setState(() {
                       _secretUnlocked = false;
                       _secretTapCount = 0;
@@ -1680,15 +1680,15 @@ class _Section extends StatelessWidget {
   }
 }
 
-class _SecretDevPanel extends StatefulWidget {
-  const _SecretDevPanel({required this.onClose});
+class _SecretSupportPanel extends StatefulWidget {
+  const _SecretSupportPanel({required this.onClose});
   final VoidCallback onClose;
 
   @override
-  State<_SecretDevPanel> createState() => _SecretDevPanelState();
+  State<_SecretSupportPanel> createState() => _SecretSupportPanelState();
 }
 
-class _SecretDevPanelState extends State<_SecretDevPanel>
+class _SecretSupportPanelState extends State<_SecretSupportPanel>
     with SingleTickerProviderStateMixin {
   late final AnimationController _entranceCtrl;
   late final Animation<double> _fade;
@@ -1718,7 +1718,7 @@ class _SecretDevPanelState extends State<_SecretDevPanel>
     super.dispose();
   }
 
-  Future<void> _showDevAd(BuildContext context) async {
+  Future<void> _showSupportAd(BuildContext context) async {
     final adService = context.read<AdService>();
     if (!adService.rewardedReady) return;
 
@@ -1751,7 +1751,7 @@ class _SecretDevPanelState extends State<_SecretDevPanel>
             vertical: AppSpacing.sm,
           ),
           decoration: BoxDecoration(
-            color: const Color(0xFF0D1117), // dark dev feel
+            color: const Color(0xFF0D1117), // hidden support panel background
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: AppColors.fernGreen.withValues(alpha: 0.3),
@@ -1766,7 +1766,7 @@ class _SecretDevPanelState extends State<_SecretDevPanel>
                   const Text('⚙️', style: TextStyle(fontSize: 16)),
                   const SizedBox(width: 8),
                   Text(
-                    'Developer panel',
+                    'Support panel',
                     style: GoogleFonts.josefinSans(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -1801,7 +1801,8 @@ class _SecretDevPanelState extends State<_SecretDevPanel>
                     opacity: isAdReady ? 1.0 : 0.4,
                     duration: const Duration(milliseconds: 200),
                     child: ElevatedButton.icon(
-                      onPressed: isAdReady ? () => _showDevAd(context) : null,
+                      onPressed:
+                          isAdReady ? () => _showSupportAd(context) : null,
                       icon: Icon(
                         isAdReady
                             ? Icons.play_arrow_rounded
