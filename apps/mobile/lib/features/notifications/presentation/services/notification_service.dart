@@ -136,6 +136,89 @@ class NotificationService extends ChangeNotifier {
     await _resolveFollowRequest(item, 'rejected');
   }
 
+  Future<bool> isFollowingActor(NotificationItem item) async {
+    final actorId = _actorIdFor(item);
+    final userId = _currentUserId();
+    if (actorId == null || userId == null || actorId == userId) return true;
+
+    try {
+      final row = await Supabase.instance.client
+          .from('user_follows')
+          .select('follower_id')
+          .eq('follower_id', userId)
+          .eq('following_id', actorId)
+          .maybeSingle();
+      return row != null;
+    } catch (e) {
+      AppLogger.warn('notifications: follow-back state failed $e');
+      return false;
+    }
+  }
+
+  Future<String> followBack(NotificationItem item) async {
+    final actorId = _actorIdFor(item);
+    final userId = _currentUserId();
+    if (actorId == null || userId == null || actorId == userId) {
+      throw Exception('missing follower id');
+    }
+
+    final client = Supabase.instance.client;
+    final alreadyFollowing = await isFollowingActor(item);
+    final nextData = {
+      ...?item.data,
+      'followed_back': true,
+    };
+
+    if (alreadyFollowing) {
+      await client.from('notifications').update({
+        'data': {...nextData, 'follow_back_status': 'following'},
+      }).eq('id', item.id);
+      await loadNotifications();
+      return 'following';
+    }
+
+    final actorProfile = await client
+        .from('users_public')
+        .select('is_public')
+        .eq('id', actorId)
+        .maybeSingle();
+    final isPublic = actorProfile?['is_public'] as bool? ?? true;
+
+    if (isPublic) {
+      await client.from('user_follows').upsert({
+        'follower_id': userId,
+        'following_id': actorId,
+      }, onConflict: 'follower_id,following_id');
+      unawaited(_notifySocialEvent('new_follower', {'target_id': actorId}));
+      await client.from('notifications').update({
+        'data': {...nextData, 'follow_back_status': 'following'},
+      }).eq('id', item.id);
+      await loadNotifications();
+      return 'following';
+    }
+
+    final row = await client
+        .from('follow_requests')
+        .upsert({
+          'requester_id': userId,
+          'target_id': actorId,
+          'status': 'pending',
+        }, onConflict: 'requester_id,target_id')
+        .select('id')
+        .single();
+    final requestId = row['id'] as String?;
+    if (requestId != null) {
+      unawaited(_notifySocialEvent('follow_request', {
+        'request_id': requestId,
+      }));
+    }
+    await client.from('notifications').update({
+      'data': {...nextData, 'follow_back_status': 'requested'},
+    }).eq('id', item.id);
+    await loadNotifications();
+    return 'requested';
+  }
+
   Future<void> _resolveFollowRequest(
     NotificationItem item,
     String status,
@@ -168,6 +251,21 @@ class NotificationService extends ChangeNotifier {
     }
 
     await loadNotifications();
+  }
+
+  String? _actorIdFor(NotificationItem item) {
+    final actorId = item.data?['actor_id'];
+    if (actorId is String && actorId.isNotEmpty) return actorId;
+
+    final requesterId = item.data?['requester_id'];
+    if (requesterId is String && requesterId.isNotEmpty) return requesterId;
+
+    return null;
+  }
+
+  String? _currentUserId() {
+    final client = Supabase.instance.client;
+    return client.auth.currentSession?.user.id ?? client.auth.currentUser?.id;
   }
 
   void startRealtime() {

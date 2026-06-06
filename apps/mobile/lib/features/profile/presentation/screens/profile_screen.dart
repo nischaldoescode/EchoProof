@@ -1539,6 +1539,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             color: AppColors.fernGreen,
             onRefresh: _loadProfile,
             child: NestedScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
                 headerSliverBuilder: (context, innerBoxIsScrolled) => [
                       SliverToBoxAdapter(
                         child: Padding(
@@ -1550,10 +1551,12 @@ class _ProfileScreenState extends State<ProfileScreen>
                                 isIdentityVerified: _isIdentityVerified,
                                 isOwnProfile: _isOwnProfile,
                                 showStats: _canViewProfileContent,
-                                onOpenFollowers: () =>
-                                    _openFollowList(mode: 'followers'),
-                                onOpenFollowing: () =>
-                                    _openFollowList(mode: 'following'),
+                                onOpenFollowers: _canOpenFollowLists
+                                    ? () => _openFollowList(mode: 'followers')
+                                    : null,
+                                onOpenFollowing: _canOpenFollowLists
+                                    ? () => _openFollowList(mode: 'following')
+                                    : null,
                                 onEditBio: _showEditBioSheet,
                               ),
                               if (!_isOwnProfile) ...[
@@ -1650,14 +1653,7 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   void _openFollowList({required String mode}) {
     if (_profile == null || !_canViewProfileContent) return;
-
-    if (!_canOpenFollowLists) {
-      showInfoSnack(
-        context,
-        context.l('Follower lists are visible only on public profiles.'),
-      );
-      return;
-    }
+    if (!_canOpenFollowLists) return;
 
     final username = _profile!['username'] as String? ?? '';
     if (username.isEmpty) return;
@@ -2174,6 +2170,33 @@ class _BlockedProfileNotice extends StatelessWidget {
   }
 }
 
+Future<String?> _currentUserId(SupabaseClient client) async {
+  final cached =
+      client.auth.currentSession?.user.id ?? client.auth.currentUser?.id;
+  if (cached != null && cached.isNotEmpty) return cached;
+
+  try {
+    return (await client.auth.getUser()).user?.id;
+  } catch (e) {
+    AppLogger.warn('profile: auth user lookup failed $e');
+    return null;
+  }
+}
+
+Future<void> _notifyProfileSocialEvent(
+  String event,
+  Map<String, dynamic> body,
+) async {
+  try {
+    await Supabase.instance.client.functions.invoke(
+      'notify-social-event',
+      body: {'event': event, ...body},
+    );
+  } catch (e) {
+    AppLogger.warn('profile: social event notify failed $e');
+  }
+}
+
 class ProfileFollowsScreen extends StatefulWidget {
   const ProfileFollowsScreen({
     super.key,
@@ -2199,7 +2222,7 @@ class _ProfileFollowsScreenState extends State<ProfileFollowsScreen> {
 
   Future<_FollowListProfileState> _loadProfileState() async {
     final client = Supabase.instance.client;
-    final myId = client.auth.currentUser?.id;
+    final myId = await _currentUserId(client);
     final profile = await client
         .from('users_public')
         .select(
@@ -2233,6 +2256,7 @@ class _ProfileFollowsScreenState extends State<ProfileFollowsScreen> {
       canView: canView,
       isOwnProfile: isOwnProfile,
       isBlockedByMe: isBlockedByMe,
+      currentUserId: myId,
     );
   }
 
@@ -2301,18 +2325,24 @@ class _ProfileFollowsScreenState extends State<ProfileFollowsScreen> {
               children: [
                 _FollowUsersTab(
                   mode: 'followers',
+                  isOwner: state.isOwnProfile,
+                  ownerId: profile['id'] as String,
                   loadUsers: () => _loadFollowUsers(
                     client: Supabase.instance.client,
                     username: username,
                     mode: 'followers',
+                    currentUserId: state.currentUserId,
                   ),
                 ),
                 _FollowUsersTab(
                   mode: 'following',
+                  isOwner: state.isOwnProfile,
+                  ownerId: profile['id'] as String,
                   loadUsers: () => _loadFollowUsers(
                     client: Supabase.instance.client,
                     username: username,
                     mode: 'following',
+                    currentUserId: state.currentUserId,
                   ),
                 ),
               ],
@@ -2353,18 +2383,21 @@ class _FollowListProfileState {
     required this.canView,
     required this.isOwnProfile,
     required this.isBlockedByMe,
+    required this.currentUserId,
   });
 
   const _FollowListProfileState.notFound()
       : profile = null,
         canView = false,
         isOwnProfile = false,
-        isBlockedByMe = false;
+        isBlockedByMe = false,
+        currentUserId = null;
 
   final Map<String, dynamic>? profile;
   final bool canView;
   final bool isOwnProfile;
   final bool isBlockedByMe;
+  final String? currentUserId;
 }
 
 class _FollowTopTabBar extends StatelessWidget implements PreferredSizeWidget {
@@ -2461,16 +2494,6 @@ class _FollowTopTab extends StatelessWidget {
       ),
     );
   }
-
-  String _compactCount(int value) {
-    if (value >= 1000000) {
-      return '${(value / 1000000).toStringAsFixed(1)}m';
-    }
-    if (value >= 1000) {
-      return '${(value / 1000).toStringAsFixed(1)}k';
-    }
-    return value.toString();
-  }
 }
 
 class _FollowListMessageScaffold extends StatelessWidget {
@@ -2531,6 +2554,7 @@ Future<List<Map<String, dynamic>>> _loadFollowUsers({
   required SupabaseClient client,
   required String username,
   required String mode,
+  required String? currentUserId,
 }) async {
   final response = await client.rpc(
     'get_profile_follow_users',
@@ -2541,7 +2565,47 @@ Future<List<Map<String, dynamic>>> _loadFollowUsers({
       'p_offset': 0,
     },
   );
-  return List<Map<String, dynamic>>.from(response as List);
+  final users = List<Map<String, dynamic>>.from(response as List);
+  if (currentUserId == null || users.isEmpty) return users;
+
+  final ids = users
+      .map((user) => user['id'] as String?)
+      .whereType<String>()
+      .where((id) => id != currentUserId)
+      .toList();
+  if (ids.isEmpty) return users;
+
+  final idFilter = '(${ids.join(',')})';
+  final followingRows = await client
+      .from('user_follows')
+      .select('following_id')
+      .eq('follower_id', currentUserId)
+      .filter('following_id', 'in', idFilter);
+  final publicRows = await client
+      .from('users_public')
+      .select('id, is_public')
+      .filter('id', 'in', idFilter);
+
+  final followingIds = Set<String>.from(
+    (followingRows as List)
+        .map((row) => (row as Map<String, dynamic>)['following_id'])
+        .whereType<String>(),
+  );
+  final publicById = <String, bool>{};
+  for (final row in publicRows as List) {
+    final map = row as Map<String, dynamic>;
+    publicById[map['id'] as String] = map['is_public'] as bool? ?? true;
+  }
+
+  return users
+      .map(
+        (user) => {
+          ...user,
+          'viewer_is_following': followingIds.contains(user['id']),
+          'is_public': publicById[user['id']] ?? true,
+        },
+      )
+      .toList();
 }
 
 class _BlockedUsersSheet extends StatefulWidget {
@@ -2732,8 +2796,8 @@ class _AvatarCard extends StatelessWidget {
   final bool isIdentityVerified;
   final bool isOwnProfile;
   final bool showStats;
-  final VoidCallback onOpenFollowers;
-  final VoidCallback onOpenFollowing;
+  final VoidCallback? onOpenFollowers;
+  final VoidCallback? onOpenFollowing;
   final VoidCallback onEditBio;
 
   @override
@@ -3953,10 +4017,14 @@ class _MediaTabState extends State<_MediaTab>
 class _FollowUsersTab extends StatefulWidget {
   const _FollowUsersTab({
     required this.mode,
+    required this.isOwner,
+    required this.ownerId,
     required this.loadUsers,
   });
 
   final String mode;
+  final bool isOwner;
+  final String ownerId;
   final Future<List<Map<String, dynamic>>> Function() loadUsers;
 
   @override
@@ -3967,6 +4035,7 @@ class _FollowUsersTabState extends State<_FollowUsersTab>
     with AutomaticKeepAliveClientMixin {
   late Future<List<Map<String, dynamic>>> _future;
   final TextEditingController _searchCtrl = TextEditingController();
+  final Set<String> _busyUserIds = {};
   String _query = '';
 
   @override
@@ -3987,6 +4056,230 @@ class _FollowUsersTabState extends State<_FollowUsersTab>
   Future<void> _refresh() async {
     setState(() => _future = widget.loadUsers());
     await _future;
+  }
+
+  Future<bool> _confirmAction({
+    required String title,
+    required String message,
+    required String actionLabel,
+  }) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(context.l(title)),
+            content: Text(context.l(message)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text(context.l('Cancel')),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text(context.l(actionLabel)),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> _removeFollower(Map<String, dynamic> user) async {
+    final userId = user['id'] as String?;
+    if (userId == null || _busyUserIds.contains(userId)) return;
+
+    final confirmed = await _confirmAction(
+      title: 'Remove follower?',
+      message: 'They will no longer see private profile updates.',
+      actionLabel: 'Remove',
+    );
+    if (!confirmed || !mounted) return;
+
+    setState(() => _busyUserIds.add(userId));
+    try {
+      await Supabase.instance.client.rpc(
+        'remove_profile_follower',
+        params: {'p_follower_id': userId},
+      );
+      if (mounted) showInfoSnack(context, context.l('Follower removed'));
+      await _refresh();
+    } catch (e) {
+      if (mounted) {
+        showErrorSnack(context, context.l('Could not remove follower'));
+      }
+    } finally {
+      if (mounted) setState(() => _busyUserIds.remove(userId));
+    }
+  }
+
+  Future<void> _unfollow(Map<String, dynamic> user) async {
+    final userId = user['id'] as String?;
+    if (userId == null || _busyUserIds.contains(userId)) return;
+
+    final confirmed = await _confirmAction(
+      title: 'Unfollow account?',
+      message: 'Their public echoes will no longer be prioritized for you.',
+      actionLabel: 'Unfollow',
+    );
+    if (!confirmed || !mounted) return;
+
+    setState(() => _busyUserIds.add(userId));
+    try {
+      await Supabase.instance.client
+          .from('user_follows')
+          .delete()
+          .eq('follower_id', widget.ownerId)
+          .eq('following_id', userId);
+      if (mounted) showInfoSnack(context, context.l('Unfollowed'));
+      await _refresh();
+    } catch (e) {
+      if (mounted) showErrorSnack(context, context.l('Could not unfollow'));
+    } finally {
+      if (mounted) setState(() => _busyUserIds.remove(userId));
+    }
+  }
+
+  Future<void> _followBack(Map<String, dynamic> user) async {
+    final userId = user['id'] as String?;
+    if (userId == null || _busyUserIds.contains(userId)) return;
+
+    setState(() => _busyUserIds.add(userId));
+    try {
+      final client = Supabase.instance.client;
+      final isPublic = user['is_public'] as bool? ?? true;
+      if (isPublic) {
+        await client.from('user_follows').upsert({
+          'follower_id': widget.ownerId,
+          'following_id': userId,
+        }, onConflict: 'follower_id,following_id');
+        unawaited(_notifyProfileSocialEvent('new_follower', {
+          'target_id': userId,
+        }));
+        if (mounted) showSuccessSnack(context, context.l('Followed back'));
+      } else {
+        final row = await client
+            .from('follow_requests')
+            .upsert({
+              'requester_id': widget.ownerId,
+              'target_id': userId,
+              'status': 'pending',
+            }, onConflict: 'requester_id,target_id')
+            .select('id')
+            .single();
+        final requestId = row['id'] as String?;
+        if (requestId != null) {
+          unawaited(_notifyProfileSocialEvent('follow_request', {
+            'request_id': requestId,
+          }));
+        }
+        if (mounted) showSuccessSnack(context, context.l('Request sent'));
+      }
+      await _refresh();
+    } catch (e) {
+      if (mounted) showErrorSnack(context, context.l('Could not follow back'));
+    } finally {
+      if (mounted) setState(() => _busyUserIds.remove(userId));
+    }
+  }
+
+  bool _canManageUser(Map<String, dynamic> user) {
+    final userId = user['id'] as String?;
+    return widget.isOwner && userId != null && userId != widget.ownerId;
+  }
+
+  List<PopupMenuEntry<_FollowOwnerAction>> _ownerMenuItems(
+    BuildContext context,
+    Map<String, dynamic> user,
+  ) {
+    final userId = user['id'] as String?;
+    final busy = _busyUserIds.contains(userId);
+    final isFollowing = user['viewer_is_following'] as bool? ?? false;
+    final items = <PopupMenuEntry<_FollowOwnerAction>>[];
+
+    if (widget.mode == 'followers') {
+      if (!isFollowing) {
+        items.add(
+          PopupMenuItem<_FollowOwnerAction>(
+            value: _FollowOwnerAction.followBack,
+            enabled: !busy,
+            child: _FollowMenuRow(
+              icon: Icons.person_add_alt_1_rounded,
+              label: context.l('Follow back'),
+            ),
+          ),
+        );
+      }
+      items.add(
+        PopupMenuItem<_FollowOwnerAction>(
+          value: _FollowOwnerAction.removeFollower,
+          enabled: !busy,
+          child: _FollowMenuRow(
+            icon: Icons.person_remove_alt_1_outlined,
+            label: context.l('Remove follower'),
+            muted: true,
+          ),
+        ),
+      );
+    } else {
+      items.add(
+        PopupMenuItem<_FollowOwnerAction>(
+          value: _FollowOwnerAction.unfollow,
+          enabled: !busy,
+          child: _FollowMenuRow(
+            icon: Icons.person_remove_alt_1_outlined,
+            label: context.l('Unfollow'),
+            muted: true,
+          ),
+        ),
+      );
+    }
+
+    return items;
+  }
+
+  Future<void> _handleOwnerAction(
+    _FollowOwnerAction action,
+    Map<String, dynamic> user,
+  ) async {
+    switch (action) {
+      case _FollowOwnerAction.removeFollower:
+        await _removeFollower(user);
+      case _FollowOwnerAction.followBack:
+        await _followBack(user);
+      case _FollowOwnerAction.unfollow:
+        await _unfollow(user);
+    }
+  }
+
+  Widget _trailingFor(Map<String, dynamic> user) {
+    final userId = user['id'] as String?;
+    final busy = userId != null && _busyUserIds.contains(userId);
+    if (!_canManageUser(user)) {
+      return const Icon(
+        Icons.chevron_right_rounded,
+        color: AppColors.textTertiary,
+      );
+    }
+
+    if (busy) {
+      return const SizedBox(
+        width: 22,
+        height: 22,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: AppColors.fernGreen,
+        ),
+      );
+    }
+
+    return PopupMenuButton<_FollowOwnerAction>(
+      tooltip: context.l('Account actions'),
+      icon: const Icon(
+        Icons.more_horiz_rounded,
+        color: AppColors.textSecondary,
+      ),
+      onSelected: (action) => unawaited(_handleOwnerAction(action, user)),
+      itemBuilder: (context) => _ownerMenuItems(context, user),
+    );
   }
 
   @override
@@ -4125,19 +4418,21 @@ class _FollowUsersTabState extends State<_FollowUsersTab>
                     overflow: TextOverflow.ellipsis,
                     style: AppTypography.textTheme.titleSmall,
                   ),
-                  subtitle: Text(
-                    '@$username',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.josefinSans(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '@$username',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.josefinSans(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
                   ),
-                  trailing: const Icon(
-                    Icons.chevron_right_rounded,
-                    color: AppColors.textTertiary,
-                  ),
+                  trailing: _trailingFor(user),
                   onTap: username.isEmpty
                       ? null
                       : () => context.push(
@@ -4149,6 +4444,40 @@ class _FollowUsersTabState extends State<_FollowUsersTab>
           ),
         );
       },
+    );
+  }
+}
+
+enum _FollowOwnerAction {
+  removeFollower,
+  followBack,
+  unfollow,
+}
+
+class _FollowMenuRow extends StatelessWidget {
+  const _FollowMenuRow({
+    required this.icon,
+    required this.label,
+    this.muted = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool muted;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = muted ? AppColors.textSecondary : AppColors.fernGreenDark;
+
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: AppSpacing.sm),
+        Text(
+          label,
+          style: AppTypography.textTheme.bodyMedium?.copyWith(color: color),
+        ),
+      ],
     );
   }
 }
