@@ -116,6 +116,7 @@ Desktop.ini
 google-services.json
 GoogleService-Info.plist
 *.txt
+!app-ads.txt
 adunits.txt
 seed.sql
 config.toml
