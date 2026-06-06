@@ -1722,11 +1722,11 @@ class _SecretDevPanelState extends State<_SecretDevPanel>
     final adService = context.read<AdService>();
     if (!adService.rewardedReady) return;
 
-    // shows the rewarded ad but deliberately does not call onrewarded
-    // with any user-facing reward. developer earns impression revenue
+    // shows a production rewarded ad from the hidden support panel
+    // this path is only for internal support checks and never swaps to test ids
     await adService.showRewarded(
       onRewarded: () {
-        // intentionally empty developer earns, user gets no reward
+        // acknowledge completion without changing account entitlements
         if (context.mounted) {
           showErrorSnack(
               context, 'Ad Completed Thank You For Supporting EchoProof.');
@@ -1809,9 +1809,7 @@ class _SecretDevPanelState extends State<_SecretDevPanel>
                         size: 16,
                       ),
                       label: Text(
-                        isAdReady
-                            ? 'Show rewarded ad (dev revenue)'
-                            : 'Ad not available',
+                        isAdReady ? 'Show support ad' : 'Ad not available',
                         style: GoogleFonts.josefinSans(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
