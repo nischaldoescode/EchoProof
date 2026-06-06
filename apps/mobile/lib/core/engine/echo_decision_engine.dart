@@ -32,8 +32,9 @@ class EchoDecisionEngine {
     if (reportScore >= 70) return EchoStatus.hidden;
     if (reportScore >= 20 && trustScore < 10) return EchoStatus.underReview;
     if (trustScore >= 50 && confidence >= 70) return EchoStatus.verified;
-    if (controversy >= 0.6 && totalInteractions >= 10)
+    if (controversy >= 0.6 && totalInteractions >= 10) {
       return EchoStatus.controversial;
+    }
     if (trustScore < 0) return EchoStatus.disputed;
     if (trustScore >= 10) return EchoStatus.active;
 

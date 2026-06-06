@@ -191,6 +191,7 @@ class _RatingDialogState extends State<_RatingDialog>
               const SizedBox(height: 8),
               TextButton(
                 onPressed: () async {
+                  final navigator = Navigator.of(context);
                   final box = Hive.box('app_settings');
                   final count = box.get(_kDismissCount, defaultValue: 0) as int;
                   await box.put(_kDismissCount, count + 1);
@@ -198,7 +199,7 @@ class _RatingDialogState extends State<_RatingDialog>
                     _kLastDismissMs,
                     DateTime.now().millisecondsSinceEpoch,
                   );
-                  Navigator.of(context).pop();
+                  navigator.pop();
                 },
                 child: Text(
                   'Maybe later',
