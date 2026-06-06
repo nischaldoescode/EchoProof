@@ -1486,7 +1486,12 @@ class SecureRoomService extends ChangeNotifier {
   static String buildShareLink(String inviteCode, String roomKey) {
     final code = Uri.encodeComponent(inviteCode);
     final key = Uri.encodeComponent(roomKey);
-    return 'https://join.echoproof.online/room?code=$code#key=$key';
+    final baseUrl = const String.fromEnvironment(
+      'ROOM_INVITE_URL',
+      defaultValue: 'https://www.echoproof.online/room',
+    );
+    final separator = baseUrl.contains('?') ? '&' : '?';
+    return '$baseUrl${separator}code=$code#key=$key';
   }
 
   SecureRoomSummary _mapRoom(dynamic raw, {int? activeMemberCount}) {
