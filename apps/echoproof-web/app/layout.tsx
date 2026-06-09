@@ -7,6 +7,7 @@ import "./globals.css";
 // advanced seo covers og, twitter, robots, canonical, verification slots
 export const metadata: Metadata = {
   metadataBase: new URL("https://echoproof.online"),
+  applicationName: "Echoproof",
   title: {
     default: "Echoproof — truth, verified by community",
     template: "%s | Echoproof",
@@ -76,6 +77,11 @@ export const metadata: Metadata = {
     canonical: "https://echoproof.online",
   },
   manifest: "/site.webmanifest",
+  other: {
+    "google-play-app": "app-id=com.echoproof.app",
+    "al:android:app_name": "Echoproof",
+    "al:android:package": "com.echoproof.app",
+  },
   icons: {
     icon: [
       { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },

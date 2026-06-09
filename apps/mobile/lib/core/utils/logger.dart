@@ -6,15 +6,25 @@ import 'dart:developer' as dev;
 import 'package:flutter/foundation.dart';
 
 abstract final class AppLogger {
+  static void audit(String message) {
+    debugPrint('echoproof audit: $message');
+    dev.log('[AUDIT] $message', name: 'echoproof');
+  }
+
   static void info(String message) {
-    if (kDebugMode) dev.log('[INFO] $message', name: 'echoproof');
+    if (!kDebugMode) return;
+    debugPrint('echoproof info: $message');
+    dev.log('[INFO] $message', name: 'echoproof');
   }
 
   static void warn(String message) {
-    if (kDebugMode) dev.log('[WARN] $message', name: 'echoproof');
+    if (!kDebugMode) return;
+    debugPrint('echoproof warn: $message');
+    dev.log('[WARN] $message', name: 'echoproof');
   }
 
   static void error(String message, [Object? error, StackTrace? stack]) {
+    if (kDebugMode) debugPrint('echoproof error: $message');
     dev.log(
       '[ERROR] $message',
       name: 'echoproof',
@@ -24,6 +34,8 @@ abstract final class AppLogger {
   }
 
   static void debug(String message) {
-    if (kDebugMode) dev.log('[DEBUG] $message', name: 'echoproof');
+    if (!kDebugMode) return;
+    debugPrint('echoproof debug: $message');
+    dev.log('[DEBUG] $message', name: 'echoproof');
   }
 }

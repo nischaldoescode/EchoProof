@@ -1,7 +1,6 @@
 // permission sheet
 // @params none
 
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -26,7 +25,6 @@ class PermissionsSheet extends StatefulWidget {
     final statuses = await Future.wait([
       Permission.notification.status,
       Permission.camera.status,
-      Permission.photos.status,
     ]);
     return statuses.every(isAllowed);
   }
@@ -42,7 +40,6 @@ class PermissionsSheet extends StatefulWidget {
 class _PermissionsSheetState extends State<PermissionsSheet> {
   bool _notificationsGranted = false;
   bool _cameraGranted = false;
-  bool _photosGranted = false;
   bool _isRequesting = false;
 
   @override
@@ -54,13 +51,9 @@ class _PermissionsSheetState extends State<PermissionsSheet> {
   Future<void> _checkExisting() async {
     final notif = await Permission.notification.status;
     final cam = await Permission.camera.status;
-    final photos =
-        await (Platform.isAndroid ? Permission.photos : Permission.photos)
-            .status;
     final allGranted = [
       notif,
       cam,
-      photos,
     ].every(PermissionsSheet.isAllowed);
 
     if (allGranted) {
@@ -71,7 +64,6 @@ class _PermissionsSheetState extends State<PermissionsSheet> {
     setState(() {
       _notificationsGranted = PermissionsSheet.isAllowed(notif);
       _cameraGranted = PermissionsSheet.isAllowed(cam);
-      _photosGranted = PermissionsSheet.isAllowed(photos);
     });
   }
 
@@ -88,10 +80,6 @@ class _PermissionsSheetState extends State<PermissionsSheet> {
     final camStatus = await Permission.camera.request();
     if (camStatus.isPermanentlyDenied) await openAppSettings();
 
-    // request photos
-    final photoStatus = await Permission.photos.request();
-    if (photoStatus.isPermanentlyDenied) await openAppSettings();
-
     await PushNotificationService.instance.initialize();
     await PermissionsSheet.markPromptSeen();
 
@@ -100,11 +88,10 @@ class _PermissionsSheetState extends State<PermissionsSheet> {
     setState(() {
       _notificationsGranted = PermissionsSheet.isAllowed(notifStatus);
       _cameraGranted = PermissionsSheet.isAllowed(camStatus);
-      _photosGranted = PermissionsSheet.isAllowed(photoStatus);
       _isRequesting = false;
     });
 
-    if (_notificationsGranted && _cameraGranted && _photosGranted) {
+    if (_notificationsGranted && _cameraGranted) {
       Navigator.pop(context);
     }
   }
@@ -165,13 +152,6 @@ class _PermissionsSheetState extends State<PermissionsSheet> {
               desc:
                   context.l('Take photos to attach as evidence to your echoes'),
               granted: _cameraGranted,
-            ),
-            const SizedBox(height: 12),
-            _PermRow(
-              icon: Icons.photo_library_outlined,
-              title: context.l('Photos'),
-              desc: context.l('Attach images from your gallery'),
-              granted: _photosGranted,
             ),
             const SizedBox(height: 24),
             SizedBox(

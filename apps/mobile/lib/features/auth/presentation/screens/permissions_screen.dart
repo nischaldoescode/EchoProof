@@ -38,15 +38,6 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
           'Without notifications, you will miss real-time trust updates on your echoes.',
     ),
     _PermissionInfo(
-      permission: Permission.photos,
-      icon: Icons.photo_outlined,
-      title: 'Photo library',
-      reason:
-          'When you attach evidence to an echo, you can pick an image from your gallery. We never read your photos without you explicitly choosing one.',
-      deniedHint:
-          'Without this, you can only attach proof by taking a new photo — not from your gallery.',
-    ),
-    _PermissionInfo(
       permission: Permission.camera,
       icon: Icons.camera_alt_outlined,
       title: 'Camera',
@@ -143,7 +134,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
 
               Text(
                 context.l(
-                  'We only ask for what we actually need. Tap each one to learn why.',
+                  'We only ask for live permissions here. Gallery media is chosen later with your phone picker.',
                 ),
                 style: GoogleFonts.josefinSans(
                   fontSize: 14,

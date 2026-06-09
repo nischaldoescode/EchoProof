@@ -8,6 +8,8 @@ import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 
 const ANDROID_PACKAGE = "com.echoproof.app";
+const PLAY_STORE_URL =
+  "https://play.google.com/store/apps/details?id=com.echoproof.app";
 const ROOM_CODE_RE = /^[A-Z2-9]{8}$/;
 
 type DeviceInfo = {
@@ -34,9 +36,7 @@ function encodeAppQuery(code: string, key: string) {
 
 function buildAndroidIntent(code: string, key: string, fallbackUrl: string) {
   const query = encodeAppQuery(code, key);
-  const fallback = encodeURIComponent(
-    fallbackUrl || "https://echoproof.online/room",
-  );
+  const fallback = encodeURIComponent(fallbackUrl || PLAY_STORE_URL);
   return `intent://room/join?${query}#Intent;scheme=echoproof;package=${ANDROID_PACKAGE};S.browser_fallback_url=${fallback};end`;
 }
 
@@ -50,6 +50,7 @@ export default function RoomInvitePage() {
   });
   const [currentUrl, setCurrentUrl] = useState("");
   const [copied, setCopied] = useState(false);
+  const [opening, setOpening] = useState(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -76,10 +77,22 @@ export default function RoomInvitePage() {
 
   const androidIntent = useMemo(() => {
     if (!hasFullInvite) return "";
-    return buildAndroidIntent(code, key, currentUrl);
-  }, [code, currentUrl, hasFullInvite, key]);
+    return buildAndroidIntent(code, key, PLAY_STORE_URL);
+  }, [code, hasFullInvite, key]);
 
   const openHref = device.isAndroid && androidIntent ? androidIntent : appLink;
+  const primaryHref = !hasFullInvite
+    ? "#"
+    : device.isMobile
+      ? openHref
+      : PLAY_STORE_URL;
+  const primaryLabel = !hasFullInvite
+    ? "Invite incomplete"
+    : opening
+      ? "Opening EchoProof"
+      : device.isMobile
+        ? "Open EchoProof"
+        : "Get it on Google Play";
   const status = useMemo(() => {
     if (hasFullInvite) {
       return {
@@ -123,10 +136,17 @@ export default function RoomInvitePage() {
   useEffect(() => {
     if (!hasFullInvite || !device.isAndroid || !androidIntent) return;
     const timer = window.setTimeout(() => {
+      setOpening(true);
       window.location.href = androidIntent;
     }, 650);
     return () => window.clearTimeout(timer);
   }, [androidIntent, device.isAndroid, hasFullInvite]);
+
+  useEffect(() => {
+    if (!opening) return;
+    const timer = window.setTimeout(() => setOpening(false), 2800);
+    return () => window.clearTimeout(timer);
+  }, [opening]);
 
   async function copyInvite() {
     if (!currentUrl || !navigator.clipboard) return;
@@ -162,22 +182,23 @@ export default function RoomInvitePage() {
                 {device.isAndroid
                   ? "Android detected. The button uses an app intent first."
                   : device.isIos
-                    ? "iPhone or iPad detected. Use the app link if EchoProof is installed."
-                    : "Desktop browser detected. Open this link on your phone."}
+                    ? "EchoProof is Android-only for now. Keep this invite for an Android phone."
+                    : "Desktop browser detected. EchoProof is on Android for now."}
               </p>
               <p className="mt-2 text-sm leading-6 text-neutral-600">
-                If the app does not open, make sure EchoProof is installed and
-                the invite was copied without losing the secret key after the
-                hash symbol.
+                If the app does not open on Android, Google Play will be the
+                fallback. Keep the full invite because the secret key is part of
+                the link.
               </p>
             </div>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <a
-                href={hasFullInvite ? openHref : "#"}
+                href={primaryHref}
                 aria-disabled={!hasFullInvite}
                 onClick={(event) => {
                   if (!hasFullInvite) event.preventDefault();
+                  if (hasFullInvite && device.isMobile) setOpening(true);
                 }}
                 className={`rounded-full px-6 py-3 text-center font-semibold transition ${
                   hasFullInvite
@@ -185,7 +206,12 @@ export default function RoomInvitePage() {
                     : "cursor-not-allowed bg-neutral-200 text-neutral-500"
                 }`}
               >
-                {hasFullInvite ? "Open EchoProof" : "Invite incomplete"}
+                <span className="inline-flex items-center justify-center gap-2">
+                  {opening && (
+                    <span className="h-2.5 w-2.5 animate-ping rounded-full bg-fern-green" />
+                  )}
+                  {primaryLabel}
+                </span>
               </a>
               <button
                 type="button"
@@ -196,10 +222,10 @@ export default function RoomInvitePage() {
                 {copied ? "Copied" : "Copy invite link"}
               </button>
               <a
-                href="https://echoproof.online"
+                href={device.isMobile ? PLAY_STORE_URL : "https://echoproof.online"}
                 className="rounded-full border border-border-subtle px-6 py-3 text-center font-semibold text-charcoal transition hover:border-fern-green"
               >
-                Learn about EchoProof
+                {device.isMobile ? "Google Play" : "Learn about EchoProof"}
               </a>
             </div>
           </div>

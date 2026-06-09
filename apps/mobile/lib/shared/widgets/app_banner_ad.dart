@@ -76,12 +76,20 @@ class _AppBannerAdState extends State<AppBannerAd>
 
     _retryTimer?.cancel();
     _isLoading = true;
+    AppLogger.audit(
+      'admob: banner request unit=${AdConstants.banner} size=${AdSize.banner.width}x${AdSize.banner.height}',
+    );
     _bannerAd = BannerAd(
       adUnitId: AdConstants.banner,
       size: AdSize.banner,
       request: const AdRequest(),
       listener: BannerAdListener(
-        onAdLoaded: (_) {
+        onAdLoaded: (ad) {
+          final responseInfo = ad.responseInfo;
+          final loadedAdapter = responseInfo?.loadedAdapterResponseInfo;
+          AppLogger.audit(
+            'admob: banner loaded unit=${ad.adUnitId} response_id=${responseInfo?.responseId} mediation=${responseInfo?.mediationAdapterClassName} source=${loadedAdapter?.adSourceName} adapter=${loadedAdapter?.adapterClassName} extras=${responseInfo?.responseExtras}',
+          );
           if (mounted) {
             setState(() {
               _isLoaded = true;
@@ -95,7 +103,11 @@ class _AppBannerAdState extends State<AppBannerAd>
           _bannerAd = null;
           _isLoaded = false;
           _isLoading = false;
-          AppLogger.warn('admob: banner failed to load ${error.message}');
+          final responseInfo = error.responseInfo;
+          final loadedAdapter = responseInfo?.loadedAdapterResponseInfo;
+          AppLogger.audit(
+            'admob: banner failed unit=${AdConstants.banner} code=${error.code} domain=${error.domain} message=${error.message} response_id=${responseInfo?.responseId} source=${loadedAdapter?.adSourceName} extras=${responseInfo?.responseExtras}',
+          );
           _retryTimer?.cancel();
           _retryTimer = Timer(const Duration(seconds: 60), () {
             if (mounted) _loadBanner();

@@ -10,7 +10,7 @@ export function proxy(request: NextRequest) {
     .split(":")[0]
     .toLowerCase();
 
-  if (JOIN_HOSTS.has(host) && request.nextUrl.pathname === "/") {
+  if (JOIN_HOSTS.has(host)) {
     const url = request.nextUrl.clone();
     url.pathname = "/room";
     return NextResponse.rewrite(url);

@@ -4,7 +4,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
@@ -56,16 +55,6 @@ Future<void> main() async {
     runApp(const SecurityWarningApp());
     return;
   }
-
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
-
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.dark,
-  ));
 
   await Hive.initFlutter();
   await Hive.openBox('app_settings');
@@ -170,7 +159,7 @@ Future<void> main() async {
     }
 
     if (route != null && route.isNotEmpty) {
-      router.push(route);
+      _safeGo(router, route, auth: authService);
     }
   });
   // handle app links for echo, profile, and auth callbacks
@@ -201,7 +190,7 @@ Future<void> main() async {
 
     if (route != null && route.isNotEmpty) {
       Future.delayed(const Duration(milliseconds: 500), () {
-        router.push(route);
+        _safeGo(router, route, auth: authService);
       });
     }
   });
@@ -340,6 +329,12 @@ void _handleDeepLink(Uri uri, GoRouter router, [AuthService? auth]) {
     return;
   }
 
+  final location = _internalLocationForUri(uri);
+  if (location != null) {
+    _safeGo(router, location, auth: auth);
+    return;
+  }
+
   final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
 
   if (uri.scheme == 'echoproof') {
@@ -401,6 +396,99 @@ void _handleDeepLink(Uri uri, GoRouter router, [AuthService? auth]) {
   }
 }
 
+String? _internalLocationForUri(Uri uri) {
+  final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+
+  if (uri.scheme == 'echoproof') {
+    if (uri.host == 'room' && (segments.isEmpty || segments.first == 'join')) {
+      return _roomInviteLocation(uri);
+    }
+    if (uri.host == 'echo') {
+      final id =
+          segments.isNotEmpty ? segments.first : uri.queryParameters['id'];
+      if (id != null && id.trim().isNotEmpty) {
+        return _withOriginalQuery(
+          '/feed/echo/${Uri.encodeComponent(id.trim())}',
+          uri,
+        );
+      }
+    }
+    if (uri.host == 'user') {
+      final username = segments.isNotEmpty
+          ? segments.first
+          : uri.queryParameters['username'];
+      if (username != null && username.trim().isNotEmpty) {
+        return _withOriginalQuery(
+          '/profile/${Uri.encodeComponent(username.trim())}',
+          uri,
+        );
+      }
+    }
+  }
+
+  final host = uri.host.toLowerCase();
+  final isMainHost = uri.scheme == 'https' &&
+      (host == 'echoproof.online' || host == 'www.echoproof.online');
+  final isJoinHost = uri.scheme == 'https' &&
+      (host == 'join.echoproof.online' || host == 'www.join.echoproof.online');
+
+  if (isJoinHost && (segments.isEmpty || segments.first == 'room')) {
+    return _roomInviteLocation(uri);
+  }
+
+  if (isMainHost || uri.scheme.isEmpty) {
+    if (segments.isNotEmpty && segments.first == 'room') {
+      return _roomInviteLocation(uri);
+    }
+    if (segments.length >= 2 && (segments[0] == 'echo' || segments[0] == 'e')) {
+      return _withOriginalQuery(
+        '/feed/echo/${Uri.encodeComponent(segments[1])}',
+        uri,
+      );
+    }
+    if (segments.length >= 2 && (segments[0] == 'user' || segments[0] == 'u')) {
+      return _withOriginalQuery(
+        '/profile/${Uri.encodeComponent(segments[1])}',
+        uri,
+      );
+    }
+  }
+
+  return null;
+}
+
+String _withOriginalQuery(String path, Uri uri) {
+  return uri.hasQuery ? '$path?${uri.query}' : path;
+}
+
+String _normalizedRouteLocation(String rawLocation) {
+  final location = rawLocation.trim();
+  if (location.isEmpty) return '/feed';
+
+  try {
+    final uri = Uri.parse(location);
+    final internal = _internalLocationForUri(uri);
+    if (internal != null) return internal;
+  } catch (e) {
+    AppLogger.warn('deep link: could not parse route $e');
+  }
+
+  if (!location.startsWith('/')) return '/feed';
+
+  final uri = Uri.parse(location);
+  final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+  if (segments.length == 2 && (segments[0] == 'echo' || segments[0] == 'e')) {
+    return Uri(
+      path: '/feed/echo/${segments[1]}',
+      queryParameters: uri.queryParameters.isEmpty ? null : uri.queryParameters,
+    ).toString();
+  }
+  if (segments.length == 1 && segments.first == 'room') {
+    return _roomInviteLocation(uri);
+  }
+  return location;
+}
+
 String _roomInviteLocation(Uri uri) {
   final fragmentParams = _safeFragmentParams(uri);
   final rawCode = uri.queryParameters['code'] ?? fragmentParams['code'] ?? '';
@@ -436,19 +524,20 @@ String? _normalizedRoomCode(String raw) {
 }
 
 void _safeGo(GoRouter router, String location, {AuthService? auth}) {
+  final normalized = _normalizedRouteLocation(location);
   if (auth != null && !auth.isLoggedIn) {
-    _pendingDeepLinkLocation = location;
+    _pendingDeepLinkLocation = normalized;
     router.go('/login');
     return;
   }
 
   try {
-    router.go(location);
+    router.go(normalized);
   } on GoException catch (e) {
-    AppLogger.warn('deep link: route failed for $location: $e');
+    AppLogger.warn('deep link: route failed for $normalized: $e');
     router.go('/feed');
   } catch (e) {
-    AppLogger.warn('deep link: route failed for $location: $e');
+    AppLogger.warn('deep link: route failed for $normalized: $e');
     router.go('/feed');
   }
 }
@@ -504,7 +593,8 @@ class _AppLifecycleObserver extends WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _sub.checkSubscriptionStatus();
+      AppLogger.info('subscription: app resumed, checking checkout state');
+      unawaited(_sub.recoverCheckoutAfterResume());
     }
   }
 }

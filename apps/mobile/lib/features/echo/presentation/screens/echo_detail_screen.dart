@@ -577,17 +577,25 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
         extractFirstUrl('${displayed.title}\n${displayed.content}');
     final hideUrlText = previewUrl != null && !_previewUnavailable;
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    final isOwnEcho =
+        currentUserId != null && currentUserId == displayed.userId;
+    final showPostSolanaDetails =
+        isOwnEcho && displayed.publicVerdict != 'open';
+    final showVerifiedSolanaDetails =
+        isOwnEcho && displayed.publicVerdict == 'supported';
     final canRetryPostRecord = _canRetrySolanaRecord(
       currentUserId: currentUserId,
       authorId: displayed.userId,
       status: displayed.solanaStatus,
       signature: displayed.createdRecordTx,
+      canShowRecord: showPostSolanaDetails,
     );
     final canRetryVerificationRecord = _canRetrySolanaRecord(
       currentUserId: currentUserId,
       authorId: displayed.userId,
       status: displayed.verifiedRecordStatus,
       signature: displayed.verifiedRecordTx,
+      canShowRecord: showVerifiedSolanaDetails,
     );
 
     return Scaffold(
@@ -765,33 +773,36 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                         },
                       ),
                       const SizedBox(height: AppSpacing.md),
-                      Wrap(
-                        spacing: AppSpacing.sm,
-                        runSpacing: AppSpacing.sm,
-                        children: [
-                          SolanaStatusChip(
-                            status: displayed.solanaStatus,
-                            signature: displayed.createdRecordTx,
-                            label: context.l('Solana post'),
-                            compact: false,
-                            isRetrying: _isRetryingPostRecord,
-                            onRetry: canRetryPostRecord
-                                ? () => _retryPostRecord(displayed)
-                                : null,
-                          ),
-                          if (displayed.status == EchoStatus.verified)
-                            SolanaStatusChip(
-                              status: displayed.verifiedRecordStatus,
-                              signature: displayed.verifiedRecordTx,
-                              label: context.l('Solana verification'),
-                              compact: false,
-                              isRetrying: _isRetryingVerificationRecord,
-                              onRetry: canRetryVerificationRecord
-                                  ? () => _retryVerificationRecord(displayed)
-                                  : null,
-                            ),
-                        ],
-                      ),
+                      if (showPostSolanaDetails || showVerifiedSolanaDetails)
+                        Wrap(
+                          spacing: AppSpacing.sm,
+                          runSpacing: AppSpacing.sm,
+                          children: [
+                            if (showPostSolanaDetails)
+                              SolanaStatusChip(
+                                status: displayed.solanaStatus,
+                                signature: displayed.createdRecordTx,
+                                label: context.l('Solana post'),
+                                compact: false,
+                                isRetrying: _isRetryingPostRecord,
+                                onRetry: canRetryPostRecord
+                                    ? () => _retryPostRecord(displayed)
+                                    : null,
+                              ),
+                            if (showVerifiedSolanaDetails &&
+                                displayed.status == EchoStatus.verified)
+                              SolanaStatusChip(
+                                status: displayed.verifiedRecordStatus,
+                                signature: displayed.verifiedRecordTx,
+                                label: context.l('Solana verification'),
+                                compact: false,
+                                isRetrying: _isRetryingVerificationRecord,
+                                onRetry: canRetryVerificationRecord
+                                    ? () => _retryVerificationRecord(displayed)
+                                    : null,
+                              ),
+                          ],
+                        ),
 
                       const SizedBox(height: AppSpacing.xl),
                       const Divider(),
@@ -813,7 +824,8 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                       const SizedBox(height: AppSpacing.lg),
 
                       // verified record
-                      if (displayed.status == EchoStatus.verified) ...[
+                      if (showVerifiedSolanaDetails &&
+                          displayed.status == EchoStatus.verified) ...[
                         if (displayed.verifiedRecordTx != null &&
                             displayed.verifiedRecordTx!.isNotEmpty) ...[
                           VerifiedEchoRecord(
@@ -2039,7 +2051,9 @@ bool _canRetrySolanaRecord({
   required String authorId,
   required String status,
   required String? signature,
+  required bool canShowRecord,
 }) {
+  if (!canShowRecord) return false;
   if (currentUserId == null || currentUserId != authorId) return false;
   if (signature != null && signature.isNotEmpty) return false;
   return status == 'failed' || status == 'pending';
