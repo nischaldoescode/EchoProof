@@ -3,10 +3,10 @@
 
 import java.util.Properties
 import java.io.FileInputStream
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
-    id("kotlin-android")
     // the flutter gradle plugin must be applied after the android and kotlin gradle plugins
     id("dev.flutter.flutter-gradle-plugin")
     id("com.google.gms.google-services")
@@ -38,10 +38,6 @@ signingConfigs {
         storePassword = keystoreProperties["storePassword"] as String
     }
 }
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
-    }
-
     defaultConfig {
         // todo: specify your own unique application id (https://developer.android.com/studio/build/application-id.html)
         applicationId = "com.echoproof.app"
@@ -72,6 +68,12 @@ signingConfigs {
         resources {
             pickFirsts += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = JvmTarget.JVM_17
     }
 }
 

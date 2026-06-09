@@ -92,7 +92,7 @@ const sections = [
   },
   {
     title: "Data retention",
-    body: "Your account data is retained as long as your account exists. Echoes and interactions are retained indefinitely as part of the platform's public record. If you delete your account, your personal information is removed within 30 days. Some data may be retained longer if required by law.",
+    body: "Your account data is retained as long as your account exists. If you request deletion, your account enters a 7-day recovery window before permanent removal. Some records may be retained longer when required by law, abuse prevention, billing, or public blockchain records that Echoproof cannot remove.",
   },
   {
     title: "Your rights",

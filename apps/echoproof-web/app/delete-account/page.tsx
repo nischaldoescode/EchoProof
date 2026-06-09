@@ -236,8 +236,8 @@ export default function DeleteAccountPage() {
                 </h2>
                 <p className="mx-auto max-w-sm text-sm leading-6 text-neutral-500">
                   We saved the deletion request for{" "}
-                  <strong>{normalizedEmail}</strong>. Support will process it
-                  within 30 days and confirm by email.
+                  <strong>{normalizedEmail}</strong>. After support processes
+                  it, you will receive an email with a 7-day recovery window.
                 </p>
               </div>
             ) : (
@@ -248,7 +248,7 @@ export default function DeleteAccountPage() {
                   </h2>
                   <p className="mt-1 text-sm text-neutral-500">
                     This form only creates the request. The actual deletion is
-                    reviewed in the admin panel.
+                    reviewed first, then your 7-day recovery window starts.
                   </p>
                 </div>
 

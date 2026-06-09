@@ -41,9 +41,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // initialize firebase first required before any firebase service
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   // suppress all debug prints in release
   if (kReleaseMode) {
@@ -64,7 +62,7 @@ Future<void> main() async {
 
   await Supabase.initialize(
     url: const String.fromEnvironment('SUPABASE_URL'),
-    anonKey: const String.fromEnvironment('SUPABASE_ANON_KEY'),
+    publishableKey: const String.fromEnvironment('SUPABASE_ANON_KEY'),
     httpClient: createPinnedClient(),
     authOptions: const FlutterAuthClientOptions(
       authFlowType: AuthFlowType.pkce,
@@ -104,11 +102,9 @@ Future<void> main() async {
   var wasLoggedIn = authService.isLoggedIn;
   if (wasLoggedIn) {
     adService.onUserLoggedIn();
-    unawaited(_registerAccountDevice(
-      accountDeviceService,
-      authService,
-      router,
-    ));
+    unawaited(
+      _registerAccountDevice(accountDeviceService, authService, router),
+    );
   }
 
   // notify ad service when user logs in or out
@@ -119,11 +115,10 @@ Future<void> main() async {
       notificationService.loadNotifications();
       notificationService.startRealtime();
       unawaited(_startPushIfEnabled());
-      unawaited(_registerAccountDevice(
-        accountDeviceService,
-        authService,
-        router,
-      ));
+      unawaited(
+        _registerAccountDevice(accountDeviceService, authService, router),
+      );
+      unawaited(_maybeShowAccountRecoveryDialog(authService, router));
       final pending = _pendingDeepLinkLocation;
       if (pending != null && authService.hasUsername) {
         _pendingDeepLinkLocation = null;
@@ -151,7 +146,8 @@ Future<void> main() async {
 
     // if account was deleted by admin, sign out immediately
     if (type == 'account_deleted' ||
-        message.notification?.title == 'Account deleted') {
+        message.notification?.title == 'Account deleted' ||
+        message.notification?.title == 'Account scheduled for deletion') {
       authService.signOut(enforceCooldown: false).then((_) {
         router.go('/login');
       });
@@ -195,7 +191,7 @@ Future<void> main() async {
     }
   });
 
-// handle foreground messages (app is open when deletion notification arrives)
+  // handle foreground messages (app is open when deletion notification arrives)
   FirebaseMessaging.onMessage.listen((message) {
     final type = message.data['type'] as String?;
     if (type == 'account_deleted') {
@@ -205,7 +201,12 @@ Future<void> main() async {
       });
     }
   });
-  final lifecycleObserver = _AppLifecycleObserver(subscriptionService);
+  final lifecycleObserver = _AppLifecycleObserver(
+    subscriptionService,
+    authService,
+    accountDeviceService,
+    router,
+  );
   WidgetsBinding.instance.addObserver(lifecycleObserver);
 
   runApp(
@@ -214,22 +215,24 @@ Future<void> main() async {
         providers: [
           ChangeNotifierProvider<AuthService>.value(value: authService),
           ChangeNotifierProvider<OnboardingService>.value(
-              value: onboardingService),
+            value: onboardingService,
+          ),
           ChangeNotifierProvider<EchoFeedService>.value(value: echoFeedService),
           ChangeNotifierProvider<CreateEchoService>.value(
-              value: createEchoService),
+            value: createEchoService,
+          ),
           ChangeNotifierProvider<NotificationService>.value(
-              value: notificationService),
+            value: notificationService,
+          ),
           ChangeNotifierProvider<SubscriptionService>.value(
-              value: subscriptionService),
+            value: subscriptionService,
+          ),
           ChangeNotifierProvider<AdService>.value(value: adService),
           ChangeNotifierProvider<AccountDeviceService>.value(
             value: accountDeviceService,
           ),
         ],
-        child: DeviceSecurityGate(
-          child: EchoProofApp(router: router),
-        ),
+        child: DeviceSecurityGate(child: EchoProofApp(router: router)),
       ),
     ),
   );
@@ -241,11 +244,18 @@ Future<void> main() async {
       });
     });
   }
+
+  if (authService.isLoggedIn) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_maybeShowAccountRecoveryDialog(authService, router));
+    });
+  }
 }
 
 String? _lastHandledLink;
 DateTime? _lastHandledLinkAt;
 String? _pendingDeepLinkLocation;
+bool _accountRecoveryDialogOpen = false;
 
 Future<void> _startPushIfEnabled() async {
   try {
@@ -306,6 +316,122 @@ Future<void> _registerAccountDevice(
   } catch (e) {
     AppLogger.warn('device-session: registration skipped $e');
   }
+}
+
+Future<void> _maybeShowAccountRecoveryDialog(
+  AuthService authService,
+  GoRouter router,
+) async {
+  if (_accountRecoveryDialogOpen || !authService.isLoggedIn) return;
+
+  await Future<void>.delayed(const Duration(milliseconds: 350));
+  if (!authService.isLoggedIn) return;
+
+  await authService.checkUsername();
+  if (!authService.hasPendingAccountDeletion || _accountRecoveryDialogOpen) {
+    return;
+  }
+
+  final context = HyperSnackbar.navigatorKey.currentContext;
+  if (context == null || !context.mounted) return;
+
+  _accountRecoveryDialogOpen = true;
+  final keepAccount = await showGeneralDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    barrierLabel: 'Account recovery',
+    barrierColor: Colors.black.withValues(alpha: 0.35),
+    transitionDuration: const Duration(milliseconds: 220),
+    pageBuilder: (dialogContext, _, _) {
+      final restoreUntil = authService.accountDeletionRestoreUntil;
+      final deadline = restoreUntil == null
+          ? 'within 7 days'
+          : _formatRecoveryDeadline(restoreUntil);
+
+      return SafeArea(
+        child: Center(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final maxWidth = constraints.maxWidth > 520
+                  ? 440.0
+                  : constraints.maxWidth - 32;
+              return ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxWidth),
+                child: AlertDialog(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  title: const Text('Keep your account?'),
+                  content: Text(
+                    'This account is scheduled for deletion. You can keep it before $deadline and restore your profile, echoes, and trust history.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialogContext, false),
+                      child: const Text('Do not keep'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(dialogContext, true),
+                      child: const Text('Keep account'),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    },
+    transitionBuilder: (context, animation, _, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      );
+      return FadeTransition(
+        opacity: curved,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
+          child: child,
+        ),
+      );
+    },
+  );
+  _accountRecoveryDialogOpen = false;
+
+  if (!authService.isLoggedIn) return;
+
+  if (keepAccount == true) {
+    final restored = await authService.restorePendingAccountDeletion();
+    if (restored) {
+      router.go('/feed');
+      final snackContext = HyperSnackbar.navigatorKey.currentContext;
+      if (snackContext != null && snackContext.mounted) {
+        showInfoSnack(snackContext, 'Your account is active again.');
+      }
+    } else {
+      final snackContext = HyperSnackbar.navigatorKey.currentContext;
+      if (snackContext != null && snackContext.mounted) {
+        showErrorSnack(
+          snackContext,
+          authService.error ?? 'Could not restore this account.',
+        );
+      }
+    }
+    return;
+  }
+
+  await authService.signOut(enforceCooldown: false);
+  router.go('/login');
+}
+
+String _formatRecoveryDeadline(DateTime deadline) {
+  final local = deadline.toLocal();
+  final day = local.day.toString().padLeft(2, '0');
+  final month = local.month.toString().padLeft(2, '0');
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '$day/$month/${local.year} at $hour:$minute';
 }
 
 // maps supported app links to internal routes
@@ -404,8 +530,9 @@ String? _internalLocationForUri(Uri uri) {
       return _roomInviteLocation(uri);
     }
     if (uri.host == 'echo') {
-      final id =
-          segments.isNotEmpty ? segments.first : uri.queryParameters['id'];
+      final id = segments.isNotEmpty
+          ? segments.first
+          : uri.queryParameters['id'];
       if (id != null && id.trim().isNotEmpty) {
         return _withOriginalQuery(
           '/feed/echo/${Uri.encodeComponent(id.trim())}',
@@ -427,9 +554,11 @@ String? _internalLocationForUri(Uri uri) {
   }
 
   final host = uri.host.toLowerCase();
-  final isMainHost = uri.scheme == 'https' &&
+  final isMainHost =
+      uri.scheme == 'https' &&
       (host == 'echoproof.online' || host == 'www.echoproof.online');
-  final isJoinHost = uri.scheme == 'https' &&
+  final isJoinHost =
+      uri.scheme == 'https' &&
       (host == 'join.echoproof.online' || host == 'www.join.echoproof.online');
 
   if (isJoinHost && (segments.isEmpty || segments.first == 'room')) {
@@ -493,14 +622,16 @@ String _roomInviteLocation(Uri uri) {
   final fragmentParams = _safeFragmentParams(uri);
   final rawCode = uri.queryParameters['code'] ?? fragmentParams['code'] ?? '';
   final code = _normalizedRoomCode(rawCode);
-  final key =
-      (uri.queryParameters['key'] ?? fragmentParams['key'] ?? '').trim();
+  final key = (uri.queryParameters['key'] ?? fragmentParams['key'] ?? '')
+      .trim();
   final query = {
     if (code != null) 'code': code,
     if (key.isNotEmpty) 'key': key,
   };
-  return Uri(path: '/rooms', queryParameters: query.isEmpty ? null : query)
-      .toString();
+  return Uri(
+    path: '/rooms',
+    queryParameters: query.isEmpty ? null : query,
+  ).toString();
 }
 
 Map<String, String> _safeFragmentParams(Uri uri) {
@@ -570,14 +701,16 @@ Future<void> _completeAuthCallback(
 
 bool _isSupabaseAuthLink(Uri uri) {
   final isCustomAuth = uri.scheme == 'echoproof' && uri.host == 'auth-callback';
-  final isHttpsAuth = uri.scheme == 'https' &&
+  final isHttpsAuth =
+      uri.scheme == 'https' &&
       (uri.host == 'echoproof.online' || uri.host == 'www.echoproof.online') &&
       ((uri.pathSegments.length == 1 &&
               uri.pathSegments[0] == 'auth-callback') ||
           (uri.pathSegments.length >= 2 &&
               uri.pathSegments[0] == 'auth' &&
               uri.pathSegments[1] == 'callback'));
-  final hasAuthPayload = uri.queryParameters.containsKey('code') ||
+  final hasAuthPayload =
+      uri.queryParameters.containsKey('code') ||
       uri.queryParameters.containsKey('token_hash') ||
       uri.queryParameters.containsKey('error_description') ||
       uri.fragment.contains('access_token') ||
@@ -587,15 +720,32 @@ bool _isSupabaseAuthLink(Uri uri) {
 }
 
 class _AppLifecycleObserver extends WidgetsBindingObserver {
-  _AppLifecycleObserver(this._sub);
+  _AppLifecycleObserver(this._sub, this._auth, this._devices, this._router);
   final SubscriptionService _sub;
+  final AuthService _auth;
+  final AccountDeviceService _devices;
+  final GoRouter _router;
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       AppLogger.info('subscription: app resumed, checking checkout state');
       unawaited(_sub.recoverCheckoutAfterResume());
+      unawaited(_verifyAccountAfterResume());
     }
+  }
+
+  Future<void> _verifyAccountAfterResume() async {
+    if (!_auth.isLoggedIn) return;
+
+    await _auth.checkUsername();
+    if (!_auth.isLoggedIn) {
+      _router.go('/login');
+      return;
+    }
+
+    await _devices.startRealtime(_auth, _router);
+    unawaited(_maybeShowAccountRecoveryDialog(_auth, _router));
   }
 }
 

@@ -47,7 +47,7 @@ export function DeletionRequestQueue({ requests }: DeletionRequestQueueProps) {
 
   async function deleteAccount(request: DeletionRequest) {
     const confirmed = window.confirm(
-      `Permanently delete account for ${request.email}?\n\nThis cannot be undone.`,
+      `Schedule account deletion for ${request.email}?\n\nThe user will be signed out and can restore the account for 7 days.`,
     );
     if (!confirmed) return;
 
@@ -159,8 +159,8 @@ export function DeletionRequestQueue({ requests }: DeletionRequestQueueProps) {
                       className="rounded-lg bg-[#FF7759] px-3 py-2 text-xs font-semibold text-white transition-all duration-200 hover:scale-95 hover:bg-[#e05e40] disabled:opacity-40"
                     >
                       {deleting === request.id
-                        ? "Deleting..."
-                        : "Delete account"}
+                        ? "Scheduling..."
+                        : "Schedule deletion"}
                     </button>
                     <button
                       onClick={(e) => {
@@ -206,9 +206,10 @@ export function DeletionRequestQueue({ requests }: DeletionRequestQueueProps) {
                       Server-side deletion
                     </p>
                     <p className="text-xs text-[#7A5200] mt-0.5">
-                      "Delete account" runs through an admin API route with the
-                      service role, removes app data, deletes the auth user, and
-                      then marks this request processed.
+                      "Schedule deletion" runs through an admin API route with
+                      the service role, signs active devices out, starts the
+                      7-day recovery window, sends the recovery email, and then
+                      marks this request processed.
                     </p>
                   </div>
                 </div>

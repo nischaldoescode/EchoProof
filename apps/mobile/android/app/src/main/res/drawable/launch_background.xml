@@ -9,10 +9,10 @@
     <item>
         <color android:color="#E8F5EE"/>
     </item>
-    <!-- logo size matches the flutter splash mark -->
+    <!-- android launch mask makes this read closer to the flutter mark -->
     <item
-        android:width="110dp"
-        android:height="110dp"
+        android:width="96dp"
+        android:height="96dp"
         android:gravity="center">
         <bitmap
             android:gravity="fill"
