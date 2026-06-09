@@ -289,8 +289,9 @@ export async function POST(req: NextRequest) {
               </tr>
             </table>
             <p style="color: #6b7280; font-size: 13px;">
-              Please process this deletion request within 30 days.
-              Look up the user in Supabase by email and delete their account data.
+              Process this from the admin deletion queue. If approved, the account
+              is scheduled for deletion, active devices are signed out, and the
+              user receives a 7-day recovery email before permanent purge.
             </p>
           </div>
         `,
