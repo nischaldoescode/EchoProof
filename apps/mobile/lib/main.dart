@@ -654,6 +654,26 @@ String? _normalizedRoomCode(String raw) {
   return null;
 }
 
+Map<String, String> _safeFragmentParams(Uri uri) {
+  if (uri.fragment.trim().isEmpty) return const <String, String>{};
+
+  try {
+    return Uri.splitQueryString(uri.fragment);
+  } catch (e) {
+    AppLogger.warn('deep link: invalid fragment ignored $e');
+    return const <String, String>{};
+  }
+}
+
+String? _normalizedRoomCode(String raw) {
+  final code = raw.trim().toUpperCase();
+  if (RegExp(r'^[A-Z2-9]{8}$').hasMatch(code)) return code;
+  if (code.isNotEmpty) {
+    AppLogger.warn('deep link: invalid room code ignored');
+  }
+  return null;
+}
+
 void _safeGo(GoRouter router, String location, {AuthService? auth}) {
   final normalized = _normalizedRouteLocation(location);
   if (auth != null && !auth.isLoggedIn) {
