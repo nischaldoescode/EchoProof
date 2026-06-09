@@ -83,14 +83,19 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _runSequence() async {
-    await Future.delayed(const Duration(milliseconds: 100));
+    if (!await _waitWhileMounted(const Duration(milliseconds: 100))) return;
     await _logoController.forward();
-    await Future.delayed(const Duration(milliseconds: 100));
+    if (!await _waitWhileMounted(const Duration(milliseconds: 100))) return;
     _ringsController.forward();
-    await Future.delayed(const Duration(milliseconds: 600));
+    if (!await _waitWhileMounted(const Duration(milliseconds: 600))) return;
     await _glowController.forward();
-    await Future.delayed(const Duration(milliseconds: 400));
-    if (mounted) await _exitController.forward();
+    if (!await _waitWhileMounted(const Duration(milliseconds: 400))) return;
+    await _exitController.forward();
+  }
+
+  Future<bool> _waitWhileMounted(Duration duration) async {
+    await Future.delayed(duration);
+    return mounted;
   }
 
   void _scheduleNavigation() {

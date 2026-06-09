@@ -1201,7 +1201,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             children: [
               Text(
                 context.l(
-                  'This permanently deletes your account, echoes, and trust history. This cannot be undone.',
+                  'This schedules your account for deletion. You can sign back in within 7 days and choose Keep account to restore your profile, echoes, and trust history. After that, deletion is permanent.',
                 ),
                 style: GoogleFonts.josefinSans(fontSize: 14, height: 1.5),
               ),
@@ -1245,7 +1245,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                     }
                   : null,
               child: Text(
-                context.l('Delete permanently'),
+                context.l('Schedule deletion'),
                 style: GoogleFonts.josefinSans(
                   color: emailCtrl.text.trim() == currentEmail
                       ? AppColors.sunsetCoral
@@ -1510,23 +1510,27 @@ class _SettingsScreenState extends State<SettingsScreen>
     final userId = client.auth.currentUser?.id;
     if (userId == null) return;
 
-    AppLogger.info('settings: deleting account for $userId');
+    AppLogger.info('settings: scheduling account deletion for $userId');
 
     try {
-      await client.rpc('delete_own_account_data');
+      final response = await client.functions.invoke('request-account-deletion');
+      final data = response.data;
+      if (data is Map && data['error'] != null) {
+        throw Exception(data['message'] ?? data['error']);
+      }
 
-      AppLogger.info('settings: user data deleted, signing out');
+      AppLogger.info('settings: account deletion scheduled, signing out');
       await auth.signOut(enforceCooldown: false);
 
       if (context.mounted) {
         context.go('/login');
       }
     } catch (e) {
-      AppLogger.error('settings: delete account failed: $e');
+      AppLogger.error('settings: schedule account deletion failed: $e');
       if (context.mounted) {
         showErrorSnack(
           context,
-          context.l('Failed to delete account. Please try again.'),
+          context.l('Could not schedule account deletion. Please try again.'),
         );
       }
     }
