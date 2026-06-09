@@ -6,29 +6,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 abstract final class PermissionHelper {
-  // requests photo permission
-  // if denied, shows a dialog explaining why and offers to open settings
-  static Future<bool> requestPhotos(BuildContext context) async {
-    final status = await Permission.photos.status;
-
-    if (status.isGranted || status.isLimited) return true;
-
-    if (status.isPermanentlyDenied) {
-      if (context.mounted) await _showSettingsDialog(context, 'Photo library');
-      return false;
-    }
-
-    final result = await Permission.photos.request();
-
-    if (result.isGranted || result.isLimited) return true;
-
-    if (result.isPermanentlyDenied && context.mounted) {
-      await _showSettingsDialog(context, 'Photo library');
-    }
-
-    return false;
-  }
-
   // requests camera permission
   static Future<bool> requestCamera(BuildContext context) async {
     final status = await Permission.camera.status;
@@ -150,10 +127,6 @@ abstract final class PermissionHelper {
   }
 
   static (String, IconData) _reasonFor(String name) => switch (name) {
-        'Photo library' => (
-            'Echoproof needs access to your photos so you can attach evidence to your echoes. We never access your library without you choosing a photo.',
-            Icons.photo_library_outlined,
-          ),
         'Camera' => (
             'Echoproof needs your camera to take photos as evidence for echoes or during identity verification.',
             Icons.camera_alt_outlined,

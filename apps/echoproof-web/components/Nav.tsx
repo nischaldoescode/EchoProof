@@ -6,6 +6,9 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 
+const PLAY_STORE_URL =
+  "https://play.google.com/store/apps/details?id=com.echoproof.app";
+
 export default function Nav() {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -55,11 +58,14 @@ export default function Nav() {
           >
             Trust engine
           </Link>
-          <span
+          <a
+            href={PLAY_STORE_URL}
+            target="_blank"
+            rel="noreferrer"
             className="text-sm bg-charcoal text-white px-4 py-2 rounded-full hover:bg-neutral-800 transition-colors font-medium"
           >
-            App coming soon
-          </span>
+            Google Play
+          </a>
         </div>
 
         {/* mobile menu button */}
@@ -102,11 +108,14 @@ export default function Nav() {
           >
             Trust engine
           </Link>
-          <span
+          <a
+            href={PLAY_STORE_URL}
+            target="_blank"
+            rel="noreferrer"
             className="text-sm bg-charcoal text-white px-4 py-2.5 rounded-full text-center font-medium"
           >
-            App coming soon
-          </span>
+            Google Play
+          </a>
         </div>
       </div>
     </nav>

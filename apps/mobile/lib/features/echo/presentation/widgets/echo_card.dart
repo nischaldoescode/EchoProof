@@ -225,11 +225,16 @@ class _EchoCardState extends State<EchoCard> {
             : AppColors.borderSubtle.withValues(alpha: 0.82);
     final solanaStatus = _solanaStatusOverride ?? echo.solanaStatus;
     final createdRecordTx = _createdRecordTxOverride ?? echo.createdRecordTx;
-    final canRetrySolana = _canRetrySolanaRecord(
+    final showSolanaRecord = _shouldShowSolanaRecord(
       echo: echo,
-      status: solanaStatus,
       signature: createdRecordTx,
     );
+    final canRetrySolana = showSolanaRecord &&
+        _canRetrySolanaRecord(
+          echo: echo,
+          status: solanaStatus,
+          signature: createdRecordTx,
+        );
 
     return VisibilityDetector(
       key: Key('echo_card_${echo.id}'),
@@ -347,12 +352,13 @@ class _EchoCardState extends State<EchoCard> {
                           detail: echo.categoryDetail,
                         ),
                         _StatusLabel(status: echo.status),
-                        SolanaStatusChip(
-                          status: solanaStatus,
-                          signature: createdRecordTx,
-                          isRetrying: _isRetryingSolanaRecord,
-                          onRetry: canRetrySolana ? _retrySolanaRecord : null,
-                        ),
+                        if (showSolanaRecord)
+                          SolanaStatusChip(
+                            status: solanaStatus,
+                            signature: createdRecordTx,
+                            isRetrying: _isRetryingSolanaRecord,
+                            onRetry: canRetrySolana ? _retrySolanaRecord : null,
+                          ),
                         _TranslateButton(
                           isTranslating: _isTranslating,
                           showTranslated: _showTranslated,
@@ -611,6 +617,19 @@ bool _isContextWindowEndedOpen(EchoEntity echo) {
       !closesAt.isAfter(DateTime.now());
 }
 
+bool _shouldShowSolanaRecord({
+  required EchoEntity echo,
+  required String? signature,
+}) {
+  if (echo.publicVerdict == 'open') return false;
+  final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+  final isOwnEcho = currentUserId != null && currentUserId == echo.userId;
+  if (signature != null && signature.isNotEmpty) {
+    return echo.publicVerdict == 'supported' || isOwnEcho;
+  }
+  return isOwnEcho;
+}
+
 bool _isChallengeHeavy(EchoEntity echo) {
   if (echo.publicVerdict == 'not_supported') return true;
   final total = echo.supportCount + echo.challengeCount;
@@ -624,6 +643,7 @@ bool _canRetrySolanaRecord({
   required String status,
   required String? signature,
 }) {
+  if (echo.publicVerdict == 'open') return false;
   final currentUserId = Supabase.instance.client.auth.currentUser?.id;
   if (currentUserId == null || currentUserId != echo.userId) return false;
   if (signature != null && signature.isNotEmpty) return false;

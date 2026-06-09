@@ -5,17 +5,17 @@
     must match the flutter splashscreen layout exactly
 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- background color matches appcolors.softgreen / #f5faf7 -->
+    <!-- background color matches the flutter splash -->
     <item>
-        <color android:color="#F5FAF7"/>
+        <color android:color="#E8F5EE"/>
     </item>
-    <!--
-    app icon centered replace @drawable/splash with your actual
-    logo drawable. the gravity="center" matches flutter's centered layout
--->
-    <item>
+    <!-- logo size matches the flutter splash mark -->
+    <item
+        android:width="110dp"
+        android:height="110dp"
+        android:gravity="center">
         <bitmap
-            android:gravity="center"
+            android:gravity="fill"
             android:src="@drawable/splash"
             android:tileMode="disabled"/>
     </item>

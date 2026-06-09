@@ -8,13 +8,13 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:open_filex/open_filex.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../services/subscription_service.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import '../../../../core/utils/snack.dart';
 
 class PurchaseHistoryScreen extends StatefulWidget {
@@ -300,7 +300,10 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen>
       final safeOrderId = orderId.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
       final file = File('${invoiceDir.path}/invoice_$safeOrderId.pdf');
       await file.writeAsBytes(bytes);
-      await OpenFilex.open(file.path);
+      await Printing.layoutPdf(
+        name: 'invoice_$safeOrderId.pdf',
+        onLayout: (_) async => bytes,
+      );
 
       if (context.mounted) {
         showSuccessSnack(
@@ -571,7 +574,7 @@ class _PurchaseCard extends StatelessWidget {
                     size: 16,
                   ),
                   label: Text(
-                    'Download invoice',
+                    'Download and open invoice',
                     style: GoogleFonts.josefinSans(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,

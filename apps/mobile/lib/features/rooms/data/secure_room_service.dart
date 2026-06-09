@@ -1488,7 +1488,7 @@ class SecureRoomService extends ChangeNotifier {
     final key = Uri.encodeComponent(roomKey);
     final baseUrl = const String.fromEnvironment(
       'ROOM_INVITE_URL',
-      defaultValue: 'https://www.echoproof.online/room',
+      defaultValue: 'https://echoproof.online/room',
     );
     final separator = baseUrl.contains('?') ? '&' : '?';
     return '$baseUrl${separator}code=$code#key=$key';

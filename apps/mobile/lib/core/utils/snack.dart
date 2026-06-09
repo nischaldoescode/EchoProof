@@ -10,6 +10,50 @@ import '../services/connectivity_service.dart';
 
 enum SnackType { success, error, warning, info }
 
+class RouteScopedSnackObserver extends NavigatorObserver {
+  void _clear(String reason) {
+    try {
+      HyperSnackbar.clearAll(animated: false);
+      final context =
+          HyperSnackbar.navigatorKey.currentContext ?? navigator?.context;
+      if (context != null) {
+        ScaffoldMessenger.maybeOf(context)?.clearSnackBars();
+      }
+      AppLogger.info('snack: cleared on route change reason=$reason');
+    } catch (error, stack) {
+      AppLogger.error('snack: route clear failed reason=$reason', error, stack);
+    }
+  }
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPush(route, previousRoute);
+    _clear('push');
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPop(route, previousRoute);
+    _clear('pop');
+  }
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didRemove(route, previousRoute);
+    _clear('remove');
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
+    _clear('replace');
+  }
+}
+
+void clearAppSnacks({bool animated = false}) {
+  HyperSnackbar.clearAll(animated: animated);
+}
+
 void showAppSnack(
   BuildContext context,
   String message, {

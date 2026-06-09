@@ -6,6 +6,9 @@
 
 import { useEffect, useRef, useState } from "react";
 
+const PLAY_STORE_URL =
+  "https://play.google.com/store/apps/details?id=com.echoproof.app";
+
 // loader
 
 function PageLoader() {
@@ -420,7 +423,10 @@ function Reveal({
 function PlayStoreBadge({ light = false }: { light?: boolean }) {
   const [hovered, setHovered] = useState(false);
   return (
-    <div
+    <a
+      href={PLAY_STORE_URL}
+      target="_blank"
+      rel="noreferrer"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -447,6 +453,7 @@ function PlayStoreBadge({ light = false }: { light?: boolean }) {
         transform: hovered ? "translateY(-2px)" : "none",
         fontFamily: "'Josefin Sans', sans-serif",
         flexShrink: 0,
+        textDecoration: "none",
       }}
     >
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -476,7 +483,7 @@ function PlayStoreBadge({ light = false }: { light?: boolean }) {
             textTransform: "uppercase",
           }}
         >
-          Coming soon on
+          Get it on
         </span>
         <span
           style={{
@@ -489,7 +496,7 @@ function PlayStoreBadge({ light = false }: { light?: boolean }) {
           Google Play
         </span>
       </div>
-    </div>
+    </a>
   );
 }
 
@@ -1710,7 +1717,7 @@ export default function LandingClient() {
                   marginBottom: 36,
                 }}
               >
-                Coming soon on Android. Post echoes, earn trust, stake claims,
+                Available on Android. Post echoes, earn trust, stake claims,
                 and help the community establish what is actually true.
               </p>
               <PlayStoreBadge light />
