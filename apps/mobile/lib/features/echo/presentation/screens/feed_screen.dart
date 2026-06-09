@@ -322,6 +322,18 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
                 )
               : const SizedBox.shrink(),
         ),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 260),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          child: filtered.isEmpty
+              ? const SizedBox.shrink()
+              : _FeedPulseBar(
+                  key: ValueKey('${filtered.length}_${_filter.hashCode}'),
+                  echoes: filtered,
+                  onTap: _refreshFeed,
+                ),
+        ),
         Expanded(
           child: RefreshIndicator(
             color: AppColors.fernGreen,
@@ -351,6 +363,140 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _FeedPulseBar extends StatelessWidget {
+  const _FeedPulseBar({
+    super.key,
+    required this.echoes,
+    required this.onTap,
+  });
+
+  final List<EchoEntity> echoes;
+  final Future<void> Function() onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final supported =
+        echoes.where((echo) => echo.publicVerdict == 'supported').length;
+    final open = echoes.where((echo) => echo.publicVerdict == 'open').length;
+    final challenged = echoes.where((echo) {
+      return echo.publicVerdict == 'not_supported' ||
+          echo.publicVerdict == 'contested' ||
+          echo.challengeCount > echo.supportCount;
+    }).length;
+    final latest = echoes.isEmpty ? '' : echoes.first.timeAgo;
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 10 * (1 - value)),
+            child: child,
+          ),
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          AppSpacing.xs,
+          AppSpacing.md,
+          AppSpacing.xs,
+        ),
+        child: Material(
+          color: AppColors.surfaceSecondary,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+            onTap: () {
+              HapticFeedback.selectionClick();
+              unawaited(onTap());
+            },
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.sm,
+                vertical: 7,
+              ),
+              child: Row(
+                children: [
+                  _PulseChip(
+                    icon: Icons.bolt_rounded,
+                    label: latest.isEmpty ? 'live context' : 'fresh $latest',
+                    color: AppColors.charcoal,
+                  ),
+                  _PulseChip(
+                    icon: Icons.verified_outlined,
+                    label: '$supported supported',
+                    color: AppColors.fernGreenDark,
+                  ),
+                  _PulseChip(
+                    icon: Icons.groups_2_outlined,
+                    label: '$open open',
+                    color: AppColors.textSecondary,
+                  ),
+                  _PulseChip(
+                    icon: Icons.report_problem_outlined,
+                    label: '$challenged challenged',
+                    color: AppColors.sunsetCoralDark,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PulseChip extends StatelessWidget {
+  const _PulseChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: AppSpacing.xs),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+          border: Border.all(color: color.withValues(alpha: 0.11)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: color),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.josefinSans(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -500,7 +646,7 @@ class _AnimatedCardState extends State<_AnimatedCard>
   }
 }
 
-class _FeedAppBar extends StatelessWidget implements PreferredSizeWidget {
+class _FeedAppBar extends StatefulWidget implements PreferredSizeWidget {
   const _FeedAppBar({
     required this.filterActive,
     required this.onFilterTap,
@@ -513,26 +659,75 @@ class _FeedAppBar extends StatelessWidget implements PreferredSizeWidget {
   Size get preferredSize => const Size.fromHeight(56);
 
   @override
+  State<_FeedAppBar> createState() => _FeedAppBarState();
+}
+
+class _FeedAppBarState extends State<_FeedAppBar> {
+  int _gameTapCount = 0;
+  DateTime? _lastGameTapAt;
+  Offset? _lastLogoGlobalPosition;
+
+  void _openSignalDrift([Offset? origin]) {
+    _gameTapCount = 0;
+    _lastGameTapAt = null;
+    HapticFeedback.selectionClick();
+    context.push('/signal-drift', extra: origin ?? _lastLogoGlobalPosition);
+  }
+
+  void _handleLogoTap() {
+    // ten quick taps is the fallback when long press is missed
+    final now = DateTime.now();
+    if (_lastGameTapAt == null ||
+        now.difference(_lastGameTapAt!) > const Duration(seconds: 3)) {
+      _gameTapCount = 0;
+    }
+    _lastGameTapAt = now;
+    _gameTapCount++;
+
+    if (_gameTapCount == 7) {
+      HapticFeedback.selectionClick();
+    }
+    if (_gameTapCount >= 10) {
+      _openSignalDrift();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return AppBar(
       backgroundColor: Colors.white,
       elevation: 0,
       scrolledUnderElevation: 0.5,
       shadowColor: AppColors.borderSubtle,
-      title: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Image.asset(
-              'assets/images/logo.png',
-              width: 28,
-              height: 28,
-              fit: BoxFit.cover,
-            ),
+      title: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (details) {
+          _lastLogoGlobalPosition = details.globalPosition;
+        },
+        onTap: _handleLogoTap,
+        onLongPressStart: (details) {
+          _openSignalDrift(details.globalPosition);
+        },
+        child: Padding(
+          // wider hidden target keeps the easter egg reachable on dense screens
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.asset(
+                  'assets/images/logo.png',
+                  width: 28,
+                  height: 28,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text('Echoproof', style: AppTypography.textTheme.titleLarge),
+            ],
           ),
-          const SizedBox(width: 8),
-          Text('Echoproof', style: AppTypography.textTheme.titleLarge),
-        ],
+        ),
       ),
       actions: [
         Stack(
@@ -540,11 +735,12 @@ class _FeedAppBar extends StatelessWidget implements PreferredSizeWidget {
           children: [
             IconButton(
               icon: const Icon(Icons.tune_rounded, size: 22),
-              onPressed: onFilterTap,
-              color: filterActive ? AppColors.charcoal : AppColors.charcoal,
+              onPressed: widget.onFilterTap,
+              color:
+                  widget.filterActive ? AppColors.charcoal : AppColors.charcoal,
               tooltip: context.l('Filter'),
             ),
-            if (filterActive)
+            if (widget.filterActive)
               Positioned(
                 right: 8,
                 top: 8,

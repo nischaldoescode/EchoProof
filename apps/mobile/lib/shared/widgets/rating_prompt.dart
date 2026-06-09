@@ -7,9 +7,11 @@
 
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:hyper_snackbar/hyper_snackbar.dart';
 import 'package:in_app_review/in_app_review.dart';
 import '../../../app/theme/colors.dart';
 import '../../../app/theme/typography.dart';
+import '../../../core/utils/snack.dart';
 
 class RatingPrompt {
   static const _kFirstLaunch = 'rating_first_launch_ms';
@@ -23,12 +25,32 @@ class RatingPrompt {
   static const _kLastDismissMs = 'rating_last_dismiss_ms';
   static const _kRated = 'rating_completed';
 
+  static Future<bool> hasCompletedReview() async {
+    final box = Hive.box('app_settings');
+    return box.get(_kRated, defaultValue: false) as bool;
+  }
+
+  static Future<void> showNow(BuildContext context) async {
+    if (await hasCompletedReview()) return;
+    if (!context.mounted) return;
+    await showGeneralDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 400),
+      transitionBuilder: (ctx, anim, secondAnim, child) {
+        final curve = CurvedAnimation(parent: anim, curve: Curves.elasticOut);
+        return ScaleTransition(scale: curve, child: child);
+      },
+      pageBuilder: (ctx, _, __) => const _RatingDialog(),
+    );
+  }
+
   static Future<void> maybeShow(BuildContext context) async {
     final box = Hive.box('app_settings');
 
     // never show again if user already rated
-    final rated = box.get(_kRated, defaultValue: false) as bool;
-    if (rated) return;
+    if (await hasCompletedReview()) return;
 
     final firstLaunchMs = box.get(_kFirstLaunch) as int?;
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -55,17 +77,7 @@ class RatingPrompt {
     }
 
     if (!context.mounted) return;
-    await showGeneralDialog(
-      context: context,
-      barrierDismissible: false,
-      barrierColor: Colors.black54,
-      transitionDuration: const Duration(milliseconds: 400),
-      transitionBuilder: (ctx, anim, secondAnim, child) {
-        final curve = CurvedAnimation(parent: anim, curve: Curves.elasticOut);
-        return ScaleTransition(scale: curve, child: child);
-      },
-      pageBuilder: (ctx, _, __) => const _RatingDialog(),
-    );
+    await showNow(context);
   }
 }
 
@@ -101,14 +113,73 @@ class _RatingDialogState extends State<_RatingDialog>
   }
 
   Future<void> _submit() async {
-    Navigator.of(context).pop();
+    final navigator = Navigator.of(context);
+    navigator.pop();
     final box = Hive.box('app_settings');
     await box.put(_kRated, true);
     if (_selected >= 4) {
-      final review = InAppReview.instance;
+      final outcome = await _requestNativeReviewOrStore();
+      _showReviewOutcome(outcome);
+    } else {
+      _showReviewOutcome(_ReviewOutcome.savedFeedback);
+    }
+  }
+
+  Future<_ReviewOutcome> _requestNativeReviewOrStore() async {
+    final review = InAppReview.instance;
+    try {
       if (await review.isAvailable()) {
         await review.requestReview();
+        return _ReviewOutcome.nativeRequested;
       }
+    } catch (_) {
+      // fall through to store listing below
+    }
+    return _safeOpenStoreListing(review);
+  }
+
+  Future<void> _openStoreFromDialog() async {
+    final navigator = Navigator.of(context);
+    navigator.pop();
+    final box = Hive.box('app_settings');
+    await box.put(_kRated, true);
+    final outcome = await _safeOpenStoreListing(InAppReview.instance);
+    _showReviewOutcome(outcome);
+  }
+
+  Future<_ReviewOutcome> _safeOpenStoreListing(InAppReview review) async {
+    try {
+      await review.openStoreListing();
+      return _ReviewOutcome.storeOpened;
+    } catch (_) {
+      // store app may be missing on emulators or unmanaged devices
+      return _ReviewOutcome.storeFailed;
+    }
+  }
+
+  void _showReviewOutcome(_ReviewOutcome outcome) {
+    final context = HyperSnackbar.navigatorKey.currentContext;
+    if (context == null) return;
+    if (!context.mounted) return;
+    switch (outcome) {
+      case _ReviewOutcome.nativeRequested:
+        showInfoSnack(
+          context,
+          'Review request opened. If you already reviewed, Google may hide it.',
+        );
+        break;
+      case _ReviewOutcome.storeOpened:
+        showInfoSnack(context, 'Opening Echoproof on Google Play.');
+        break;
+      case _ReviewOutcome.storeFailed:
+        showWarningSnack(
+          context,
+          'Could not open Google Play right now. Please try again later.',
+        );
+        break;
+      case _ReviewOutcome.savedFeedback:
+        showInfoSnack(context, 'Thanks. We will keep improving Echoproof.');
+        break;
     }
   }
 
@@ -130,7 +201,30 @@ class _RatingDialogState extends State<_RatingDialog>
               // animated emoji
               FadeTransition(
                 opacity: _starAnim,
-                child: const Text('🌟', style: TextStyle(fontSize: 52)),
+                child: ScaleTransition(
+                  scale: Tween<double>(begin: 0.88, end: 1).animate(
+                    CurvedAnimation(
+                      parent: _starAnim,
+                      curve: Curves.easeOutBack,
+                    ),
+                  ),
+                  child: Container(
+                    width: 58,
+                    height: 58,
+                    decoration: BoxDecoration(
+                      color: AppColors.fernGreenLight,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: AppColors.fernGreen.withValues(alpha: 0.18),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.rate_review_rounded,
+                      color: AppColors.fernGreen,
+                      size: 30,
+                    ),
+                  ),
+                ),
               ),
               const SizedBox(height: 16),
               Text(
@@ -190,6 +284,13 @@ class _RatingDialogState extends State<_RatingDialog>
               ),
               const SizedBox(height: 8),
               TextButton(
+                onPressed: _openStoreFromDialog,
+                child: Text(
+                  'Review on Play Store',
+                  style: TextStyle(color: AppColors.fernGreen),
+                ),
+              ),
+              TextButton(
                 onPressed: () async {
                   final navigator = Navigator.of(context);
                   final box = Hive.box('app_settings');
@@ -212,4 +313,11 @@ class _RatingDialogState extends State<_RatingDialog>
       ),
     );
   }
+}
+
+enum _ReviewOutcome {
+  nativeRequested,
+  storeOpened,
+  storeFailed,
+  savedFeedback,
 }

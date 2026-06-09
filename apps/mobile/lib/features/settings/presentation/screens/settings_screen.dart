@@ -478,10 +478,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                     child: ElevatedButton(
                       onPressed: () {
                         Navigator.pop(ctx);
-
-                        showInfoSnack(
-                            context, context.l('Coming soon! Stay tuned.'));
+                        // prod checkout stays hidden until billing is fully patched
                         // context.push('/subscribe');
+                        showInfoSnack(context, 'Coming soon');
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.charcoal,
@@ -784,18 +783,25 @@ class _SettingsScreenState extends State<SettingsScreen>
           ]),
           _Section(title: context.l('Subscription'), tiles: [
             _Tile(
-                icon: Icons.star_outline_rounded,
-                label: context.l('Echoproof Pro'),
-                trailing: const _ProBadge(),
-                onTap: () => {
-                      showInfoSnack(
-                        context,
-                        'Echoproof Pro is coming soon! In the meantime,\n you can support us by sharing the app with friends.',
-                      )
-                    }
-
-                // context.push('/subscribe'),
-                ),
+              icon: subscription.isPro
+                  ? Icons.receipt_long_outlined
+                  : Icons.star_outline_rounded,
+              label: subscription.isPro
+                  ? context.l('Subscription history')
+                  : context.l('Echoproof Pro'),
+              subtitle: subscription.isPro
+                  ? _subscriptionStatusText(subscription)
+                  : context.l('Ad-free feed and pro tools'),
+              trailing: subscription.isPro
+                  ? _SubscriptionStatusBadge(
+                      status: subscription.subscriptionStatus)
+                  : const _ProBadge(),
+              onTap: () => showInfoSnack(
+                context,
+                // prod checkout stays hidden until billing is fully patched
+                context.l('Coming soon'),
+              ),
+            ),
           ]),
           _Section(title: context.l('Notifications'), tiles: [
             _SwitchTile(
@@ -876,11 +882,6 @@ class _SettingsScreenState extends State<SettingsScreen>
               icon: Icons.notifications_outlined,
               label: context.l('Notifications'),
               permission: Permission.notification,
-            ),
-            _PermissionTile(
-              icon: Icons.photo_library_outlined,
-              label: context.l('Photo library'),
-              permission: Permission.photos,
             ),
             _PermissionTile(
               icon: Icons.camera_alt_outlined,
@@ -2267,6 +2268,80 @@ class _TileState extends State<_Tile> {
                       : const SizedBox(width: 16)),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+String _subscriptionStatusText(SubscriptionService subscription) {
+  final plan =
+      subscription.currentPlan == 'pro_yearly' ? 'Yearly Pro' : 'Monthly Pro';
+  final status = _subscriptionStatusLabel(subscription.subscriptionStatus);
+  final expires = subscription.expiresAt;
+  if (expires == null) return '$plan · $status';
+  return '$plan · $status · expires ${_formatSettingsDate(expires)}';
+}
+
+String _subscriptionStatusLabel(String? status) {
+  return switch (status) {
+    'grace_period' => 'grace period',
+    'on_hold' => 'on hold',
+    'paused' => 'paused',
+    'cancelled' || 'canceled' => 'cancelled',
+    'expired' => 'expired',
+    _ => 'active',
+  };
+}
+
+String _formatSettingsDate(DateTime date) {
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return '${date.day} ${months[date.month - 1]} ${date.year}';
+}
+
+class _SubscriptionStatusBadge extends StatelessWidget {
+  const _SubscriptionStatusBadge({required this.status});
+
+  final String? status;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _subscriptionStatusLabel(status).toUpperCase();
+    final color = switch (status) {
+      'grace_period' => AppColors.statusControversial,
+      'on_hold' || 'paused' => AppColors.statusUnderReview,
+      'expired' || 'cancelled' || 'canceled' => AppColors.sunsetCoral,
+      _ => AppColors.fernGreen,
+    };
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.josefinSans(
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          color: color,
+          letterSpacing: 0.4,
         ),
       ),
     );

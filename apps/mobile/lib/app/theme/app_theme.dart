@@ -3,7 +3,6 @@
 // uses material 3 with custom color scheme no default blue anywhere
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'colors.dart';
 import 'typography.dart';
 import 'spacing.dart';
@@ -41,10 +40,6 @@ ThemeData buildAppTheme() {
         fontWeight: FontWeight.w600,
         color: AppColors.charcoal,
         letterSpacing: -0.3,
-      ),
-      systemOverlayStyle: SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
       ),
     ),
     cardTheme: CardThemeData(

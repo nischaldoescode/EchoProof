@@ -232,11 +232,8 @@ class _ProofTrailScreenState extends State<ProofTrailScreen>
     final events = _buildEvents(echo);
     final hasCommunityTrail = _proofs.isNotEmpty ||
         _contexts.isNotEmpty ||
-        _hasMeaningfulRecord(echo.solanaStatus, echo.createdRecordTx) ||
-        _hasMeaningfulRecord(
-          echo.verifiedRecordStatus,
-          echo.verifiedRecordTx,
-        ) ||
+        _shouldShowEchoRecord(echo) ||
+        _shouldShowVerifiedRecord(echo) ||
         echo.publicVerdict != 'open' ||
         echo.bondCount > 0 ||
         _ownBond != null;
@@ -324,6 +321,39 @@ class _ProofTrailScreenState extends State<ProofTrailScreen>
         status == 'failed';
   }
 
+  bool _shouldShowEchoRecord(EchoEntity echo) {
+    if (echo.publicVerdict == 'open') return false;
+    if (_hasAnchoredRecord(echo.solanaStatus, echo.createdRecordTx)) {
+      return echo.publicVerdict == 'supported' || _isOwnEcho(echo);
+    }
+    return _isOwnEcho(echo) &&
+        _hasMeaningfulRecord(echo.solanaStatus, echo.createdRecordTx);
+  }
+
+  bool _shouldShowVerifiedRecord(EchoEntity echo) {
+    if (echo.publicVerdict != 'supported') return false;
+    if (_hasAnchoredRecord(
+      echo.verifiedRecordStatus,
+      echo.verifiedRecordTx,
+    )) {
+      return true;
+    }
+    return _isOwnEcho(echo) &&
+        _hasMeaningfulRecord(
+          echo.verifiedRecordStatus,
+          echo.verifiedRecordTx,
+        );
+  }
+
+  bool _hasAnchoredRecord(String status, String? signature) {
+    return signature?.trim().isNotEmpty == true || status == 'anchored';
+  }
+
+  bool _isOwnEcho(EchoEntity echo) {
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    return currentUserId != null && currentUserId == echo.userId;
+  }
+
   List<_ProofTrailEvent> _buildEvents(EchoEntity echo) {
     final events = <_ProofTrailEvent>[
       _ProofTrailEvent(
@@ -346,7 +376,7 @@ class _ProofTrailScreenState extends State<ProofTrailScreen>
       ),
     ];
 
-    if (_hasMeaningfulRecord(echo.solanaStatus, echo.createdRecordTx)) {
+    if (_shouldShowEchoRecord(echo)) {
       events.add(
         _ProofTrailEvent(
           title: _recordTitle(
@@ -463,10 +493,7 @@ class _ProofTrailScreenState extends State<ProofTrailScreen>
       );
     }
 
-    if (_hasMeaningfulRecord(
-      echo.verifiedRecordStatus,
-      echo.verifiedRecordTx,
-    )) {
+    if (_shouldShowVerifiedRecord(echo)) {
       events.add(
         _ProofTrailEvent(
           title: _recordTitle(

@@ -1,6 +1,7 @@
 // app router
 // @params child supplies the page widget for custom transitions
 
+import 'dart:math' as math;
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
 import '../features/auth/presentation/screens/splash_screen.dart'
@@ -15,6 +16,7 @@ import '../features/onboarding/presentation/screens/onboarding_root.dart';
 import '../features/echo/presentation/screens/feed_screen.dart';
 import '../features/echo/presentation/screens/create_echo_screen.dart';
 import '../features/echo/presentation/screens/echo_detail_screen.dart';
+import '../features/echo/presentation/screens/echo_signal_game_screen.dart';
 import '../features/echo/presentation/screens/proof_trail_screen.dart';
 import '../features/echo/presentation/screens/echo_video_screen.dart';
 import '../features/echo/presentation/screens/discover_screen.dart';
@@ -30,6 +32,7 @@ import '../features/subscription/presentation/services/subscription_service.dart
 import '../features/search/presentation/screens/search_screen.dart';
 import '../features/echo/presentation/screens/echo_replies_screen.dart';
 import '../core/utils/logger.dart';
+import '../core/utils/snack.dart';
 import '../features/subscription/presentation/screens/purchase_history_screen.dart';
 import 'package:hyper_snackbar/hyper_snackbar.dart';
 
@@ -79,6 +82,89 @@ CustomTransitionPage<void> _profilePage(Widget child) {
   return _slidePage(child);
 }
 
+CustomTransitionPage<void> _signalDriftPage(GoRouterState state) {
+  final origin = state.extra is Offset ? state.extra as Offset : null;
+  return CustomTransitionPage<void>(
+    child: const EchoSignalGameScreen(),
+    transitionDuration: const Duration(milliseconds: 430),
+    reverseTransitionDuration: const Duration(milliseconds: 330),
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final reduceMotion = MediaQuery.disableAnimationsOf(context);
+      if (reduceMotion) {
+        return FadeTransition(opacity: animation, child: child);
+      }
+
+      final screen = MediaQuery.sizeOf(context);
+      final fallback = Offset(screen.width * 0.18, 28);
+      final revealOrigin = origin ?? fallback;
+      final curve = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutQuart,
+        reverseCurve: Curves.easeInQuart,
+      );
+
+      return AnimatedBuilder(
+        animation: curve,
+        builder: (context, _) {
+          final value = curve.value;
+          return ClipPath(
+            clipper: _SignalDriftRevealClipper(
+              origin: revealOrigin,
+              progress: value,
+            ),
+            child: FadeTransition(
+              opacity: Tween<double>(begin: 0.94, end: 1).animate(curve),
+              child: Transform.scale(
+                scale: 0.992 + value * 0.008,
+                child: child,
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+}
+
+class _SignalDriftRevealClipper extends CustomClipper<Path> {
+  const _SignalDriftRevealClipper({
+    required this.origin,
+    required this.progress,
+  });
+
+  final Offset origin;
+  final double progress;
+
+  @override
+  Path getClip(Size size) {
+    final safeOrigin = Offset(
+      origin.dx.clamp(0, size.width).toDouble(),
+      origin.dy.clamp(0, size.height).toDouble(),
+    );
+    final maxRadius = _maxRadiusFor(size, safeOrigin);
+    final eased = Curves.easeOutCubic.transform(progress.clamp(0, 1));
+    final radius = 42 + maxRadius * eased;
+    return Path()..addOval(Rect.fromCircle(center: safeOrigin, radius: radius));
+  }
+
+  double _maxRadiusFor(Size size, Offset point) {
+    final corners = [
+      Offset.zero,
+      Offset(size.width, 0),
+      Offset(0, size.height),
+      Offset(size.width, size.height),
+    ];
+    return corners
+        .map((corner) => (corner - point).distance)
+        .fold<double>(0, math.max);
+  }
+
+  @override
+  bool shouldReclip(covariant _SignalDriftRevealClipper oldClipper) {
+    return origin != oldClipper.origin || progress != oldClipper.progress;
+  }
+}
+
 class _RouterRefreshStream extends ChangeNotifier {
   bool _pending = false;
 
@@ -118,6 +204,7 @@ GoRouter createRouter({
     navigatorKey: HyperSnackbar.navigatorKey,
     initialLocation: '/splash',
     refreshListenable: _RouterRefreshStream([authService, onboardingService]),
+    observers: [RouteScopedSnackObserver()],
     redirect: (context, state) async {
       final isLoggedIn = authService.isLoggedIn;
       final location = state.matchedLocation;
@@ -261,8 +348,28 @@ GoRouter createRouter({
         ],
       ),
       GoRoute(
+        path: '/echo/:id',
+        redirect: (_, s) {
+          final id = s.pathParameters['id']!;
+          final query = s.uri.hasQuery ? '?${s.uri.query}' : '';
+          return '/feed/echo/${Uri.encodeComponent(id)}$query';
+        },
+      ),
+      GoRoute(
+        path: '/e/:id',
+        redirect: (_, s) {
+          final id = s.pathParameters['id']!;
+          final query = s.uri.hasQuery ? '?${s.uri.query}' : '';
+          return '/feed/echo/${Uri.encodeComponent(id)}$query';
+        },
+      ),
+      GoRoute(
         path: '/create',
         pageBuilder: (_, __) => _slidePage(const CreateEchoScreen()),
+      ),
+      GoRoute(
+        path: '/signal-drift',
+        pageBuilder: (_, s) => _signalDriftPage(s),
       ),
       GoRoute(
         path: '/echo/:id/replies',

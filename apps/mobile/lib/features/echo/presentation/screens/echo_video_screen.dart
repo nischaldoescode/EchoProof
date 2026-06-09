@@ -1,6 +1,9 @@
 // echo video screen
-// @params none
+// @params echoid id used to coordinate fullscreen playback
+// @params videourl remote video url passed from feed or detail
+// keeps portrait-style video framed inside any android window size
 
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../app/theme/colors.dart';
@@ -58,16 +61,22 @@ class _EchoVideoScreenState extends State<EchoVideoScreen> {
                       color: Colors.white70,
                       size: 48,
                     )
-                  : AspectRatio(
-                      aspectRatio: 9 / 16,
-                      child: EchoVideoPlayer(
-                        url: widget.videoUrl,
-                        playbackId: 'video_full_${widget.echoId}',
-                        initiallyMuted: false,
-                        borderRadius: 0,
-                        fit: BoxFit.contain,
-                        compact: false,
-                      ),
+                  : LayoutBuilder(
+                      builder: (context, constraints) {
+                        final frame = _videoFrameFor(constraints.biggest);
+                        return SizedBox(
+                          width: frame.width,
+                          height: frame.height,
+                          child: EchoVideoPlayer(
+                            url: widget.videoUrl,
+                            playbackId: 'video_full_${widget.echoId}',
+                            initiallyMuted: false,
+                            borderRadius: 0,
+                            fit: BoxFit.contain,
+                            compact: false,
+                          ),
+                        );
+                      },
                     ),
             ),
             Positioned(
@@ -87,5 +96,22 @@ class _EchoVideoScreenState extends State<EchoVideoScreen> {
         ),
       ),
     );
+  }
+
+  // sizes the portrait video box from the available safe area
+  // android 16 may ignore hard orientation locks on large screens
+  Size _videoFrameFor(Size available) {
+    const portraitAspect = 9 / 16;
+    final maxWidth = math.max(1.0, available.width);
+    final maxHeight = math.max(1.0, available.height);
+    final availableAspect = maxWidth / maxHeight;
+
+    if (availableAspect > portraitAspect) {
+      final height = maxHeight;
+      return Size(height * portraitAspect, height);
+    }
+
+    final width = maxWidth;
+    return Size(width, width / portraitAspect);
   }
 }

@@ -1,16 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- launch background -->
+<!-- android 12 splash mark -->
+<!-- @params none -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item>
-        <color android:color="#E8F5EE"/>
-    </item>
     <item
         android:width="110dp"
         android:height="110dp"
         android:gravity="center">
         <bitmap
             android:gravity="fill"
-            android:src="@drawable/splash"
-            android:tileMode="disabled"/>
+            android:src="@drawable/android12splash"
+            android:tileMode="disabled" />
     </item>
 </layer-list>

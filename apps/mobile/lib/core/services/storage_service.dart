@@ -4,6 +4,7 @@
 // stores public url never stores binary data in the database
 
 import 'dart:typed_data';
+import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -39,7 +40,8 @@ class StorageService {
     final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: _allowedExtensions,
-      withData: true,
+      withData: false,
+      withReadStream: true,
       allowMultiple: false,
     );
 
@@ -47,27 +49,61 @@ class StorageService {
 
     final file = result.files.first;
 
-    if (file.bytes == null) {
-      throw const StorageException('could not read file — try again');
-    }
-
     if (file.size > _maxFileSizeBytes) {
       throw const StorageException('image must be under 1 MB');
     }
 
+    final bytes = await _readPickedBytes(file);
     final ext = file.extension?.toLowerCase() ?? '';
     if (!_allowedExtensions.contains(ext)) {
       throw StorageException(
           'only ${_allowedExtensions.join(", ")} files allowed');
     }
 
-    final header = file.bytes!.take(16).toList();
+    final header = bytes.take(16).toList();
     if (!MediaFileSafety.bytesMatchImageExtension(ext, header)) {
       throw const StorageException('image file looks invalid or corrupted');
     }
 
     AppLogger.info('storage: picked file ${file.name} ${file.size} bytes');
-    return file;
+    return PlatformFile(
+      name: file.name,
+      size: bytes.length,
+      bytes: bytes,
+      path: file.path,
+      identifier: file.identifier,
+    );
+  }
+
+  // reads after size validation so older phones avoid eager large allocations
+  Future<Uint8List> _readPickedBytes(PlatformFile file) async {
+    final stream = file.readStream;
+    if (stream != null) {
+      final builder = BytesBuilder(copy: false);
+      var total = 0;
+      await for (final chunk in stream) {
+        total += chunk.length;
+        if (total > _maxFileSizeBytes) {
+          throw const StorageException('image must be under 1 MB');
+        }
+        builder.add(chunk);
+      }
+      return builder.takeBytes();
+    }
+
+    final path = file.path;
+    if (path != null) {
+      final bytes = await File(path).readAsBytes();
+      if (bytes.length > _maxFileSizeBytes) {
+        throw const StorageException('image must be under 1 MB');
+      }
+      return bytes;
+    }
+
+    final bytes = file.bytes;
+    if (bytes != null) return bytes;
+
+    throw const StorageException('could not read file - try again');
   }
 
   // uploads proof image for an echo

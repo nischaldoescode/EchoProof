@@ -5,6 +5,7 @@ import { cache } from "react";
 import type { Metadata } from "next";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
+import EchoOpenActions from "@/components/EchoOpenActions";
 import { supabaseAdmin as supabase } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +25,7 @@ type EchoAuthor = {
 
 type EchoRow = {
   id: string;
+  user_id: string | null;
   title: string | null;
   content: string;
   status: string;
@@ -90,7 +92,7 @@ const loadEcho = cache(async (echoId: string) => {
     .from("echoes")
     .select(
       `
-        id, title, content, status, category, confidence_score,
+        id, user_id, title, content, status, category, confidence_score,
         support_count, challenge_count, created_at,
         users_public(username, display_name, avatar_url, trust_tier, is_public)
       `,
@@ -98,7 +100,39 @@ const loadEcho = cache(async (echoId: string) => {
     .eq("id", echoId)
     .maybeSingle();
 
-  if (error || !data) return null;
+  if (error || !data) {
+    const { data: echoOnly, error: echoError } = await supabase
+      .from("echoes")
+      .select(
+        `
+          id, user_id, title, content, status, category, confidence_score,
+          support_count, challenge_count, created_at
+        `,
+      )
+      .eq("id", echoId)
+      .maybeSingle();
+
+    if (echoError || !echoOnly) return null;
+
+    const row = echoOnly as EchoRow;
+    if (!visibleStatuses.has(row.status)) return null;
+
+    let author: EchoAuthor | null = null;
+    if (row.user_id) {
+      const { data: authorRow } = await supabase
+        .from("users_public")
+        .select("username, display_name, avatar_url, trust_tier, is_public")
+        .eq("id", row.user_id)
+        .maybeSingle();
+      author = (authorRow as EchoAuthor | null) ?? null;
+    }
+
+    return {
+      ...row,
+      users_public: null,
+      author,
+    };
+  }
 
   const row = data as EchoRow;
   if (!visibleStatuses.has(row.status)) return null;
@@ -259,17 +293,7 @@ export default async function EchoLandingPage({ params }: Props) {
               </div>
             )}
 
-            <div className="mt-7 grid gap-3 sm:grid-cols-[1fr_auto]">
-              <a
-                href={`echoproof://echo/${echoId}`}
-                className="ep-hover-lift flex h-12 items-center justify-center rounded-xl bg-charcoal px-6 text-sm font-bold text-white"
-              >
-                Open in Echoproof
-              </a>
-              <div className="flex h-12 items-center justify-center rounded-xl border border-border-subtle px-5 text-sm font-semibold text-neutral-500">
-                Android download coming soon
-              </div>
-            </div>
+            <EchoOpenActions echoId={echoId} />
           </section>
         </div>
       </main>

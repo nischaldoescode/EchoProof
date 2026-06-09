@@ -445,7 +445,10 @@ export default async function UserProfilePage({ params }: Props) {
           </a>
 
           {/* download fallback */}
-          <div
+          <a
+            href="https://play.google.com/store/apps/details?id=com.echoproof.app"
+            target="_blank"
+            rel="noreferrer"
             style={{
               display: "flex",
               alignItems: "center",
@@ -463,8 +466,8 @@ export default async function UserProfilePage({ params }: Props) {
               fontFamily: "'Josefin Sans', sans-serif",
             }}
           >
-            Android download coming soon
-          </div>
+            Get it on Google Play
+          </a>
 
           {/* blurred echoes section */}
           <div style={{ position: "relative" }}>

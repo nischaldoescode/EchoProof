@@ -99,7 +99,10 @@ export default function NotFound() {
             >
               Back to home
             </Link>
-            <span
+            <a
+              href="https://play.google.com/store/apps/details?id=com.echoproof.app"
+              target="_blank"
+              rel="noreferrer"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -114,8 +117,8 @@ export default function NotFound() {
                 fontFamily: "'Josefin Sans', sans-serif",
               }}
             >
-              App coming soon
-            </span>
+              Google Play
+            </a>
           </div>
         </div>
       </main>
