@@ -108,7 +108,9 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
   Future<void> _loadEcho() async {
     try {
       final client = Supabase.instance.client;
-      final row = await client.from('echoes').select('''
+      final row = await client
+          .from('echoes')
+          .select('''
               id, user_id, title, content, category, category_detail, status, media_urls, reply_count,
               trust_score, confidence_score, controversy_score,
               support_count, challenge_count, created_at,
@@ -123,7 +125,9 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
               users_public!inner(
                 username, display_name, avatar_url, trust_tier, is_pro
               )
-          ''').eq('id', widget.echoId).single();
+          ''')
+          .eq('id', widget.echoId)
+          .single();
 
       setState(() {
         _echo = _mapRow(row);
@@ -190,8 +194,9 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
       final contextRows = List<Map<String, dynamic>>.from(rows as List);
       final currentUserId = client.auth.currentUser?.id;
       if (currentUserId != null) {
-        final hasOwnContext =
-            contextRows.any((row) => row['user_id'] == currentUserId);
+        final hasOwnContext = contextRows.any(
+          (row) => row['user_id'] == currentUserId,
+        );
         if (!hasOwnContext) {
           final ownRow = await client
               .from('signal_responses')
@@ -273,6 +278,12 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
     );
   }
 
+  void _openHashtag(String tag) {
+    final clean = tag.trim();
+    if (clean.length < 2) return;
+    context.push('/search?q=${Uri.encodeQueryComponent(clean)}');
+  }
+
   void _subscribeRealtime() {
     final client = Supabase.instance.client;
     _channel = client
@@ -290,21 +301,23 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
             final newRow = payload.newRecord;
             if (!mounted) return;
             setState(() {
-              _liveConfidence =
-                  (newRow['confidence_score'] as num?)?.toDouble();
-              _liveStatus =
-                  _parseStatus(newRow['status'] as String? ?? 'active');
+              _liveConfidence = (newRow['confidence_score'] as num?)
+                  ?.toDouble();
+              _liveStatus = _parseStatus(
+                newRow['status'] as String? ?? 'active',
+              );
               _liveSupport =
                   (newRow['context_support_count'] as num?)?.toInt() ??
-                      (newRow['support_count'] as num?)?.toInt();
+                  (newRow['support_count'] as num?)?.toInt();
               _liveChallenge =
                   (newRow['context_challenge_count'] as num?)?.toInt() ??
-                      (newRow['challenge_count'] as num?)?.toInt();
+                  (newRow['challenge_count'] as num?)?.toInt();
               _liveContextScore = (newRow['context_score'] as num?)?.toInt();
               _livePublicVerdict = newRow['public_verdict'] as String?;
               _livePublicVerdictAt = _parseDate(newRow['public_verdict_at']);
-              _livePublicContextClosesAt =
-                  _parseDate(newRow['public_context_closes_at']);
+              _livePublicContextClosesAt = _parseDate(
+                newRow['public_context_closes_at'],
+              );
               _livePublicContextMinCount =
                   (newRow['public_context_min_count'] as num?)?.toInt();
               _livePublicContextDecisionReason =
@@ -336,8 +349,8 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
       username: user['username'] as String,
       userDisplayName:
           (user['display_name'] as String?)?.trim().isNotEmpty == true
-              ? user['display_name'] as String
-              : user['username'] as String,
+          ? user['display_name'] as String
+          : user['username'] as String,
       userTrustTier: trustTier,
       userIsVerified: trustTier == 'high' || trustTier == 'elite',
       userIsPro: user['is_pro'] as bool? ?? false,
@@ -349,10 +362,12 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
       confidenceScore: (row['confidence_score'] as num?)?.toDouble() ?? 0.0,
       trustScore: (row['trust_score'] as num?)?.toInt() ?? 0,
       controversyScore: (row['controversy_score'] as num?)?.toDouble() ?? 0.0,
-      supportCount: (row['context_support_count'] as num?)?.toInt() ??
+      supportCount:
+          (row['context_support_count'] as num?)?.toInt() ??
           (row['support_count'] as num?)?.toInt() ??
           0,
-      challengeCount: (row['context_challenge_count'] as num?)?.toInt() ??
+      challengeCount:
+          (row['context_challenge_count'] as num?)?.toInt() ??
           (row['challenge_count'] as num?)?.toInt() ??
           0,
       contextSupportCount: (row['context_support_count'] as num?)?.toInt() ?? 0,
@@ -388,16 +403,16 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
   }
 
   EchoStatus _parseStatus(String v) => switch (v) {
-        'pending_verification' => EchoStatus.pendingVerification,
-        'active' => EchoStatus.active,
-        'under_review' => EchoStatus.underReview,
-        'verified' => EchoStatus.verified,
-        'controversial' => EchoStatus.controversial,
-        'disputed' => EchoStatus.disputed,
-        'hidden' => EchoStatus.hidden,
-        'rejected' => EchoStatus.rejected,
-        _ => EchoStatus.pendingVerification,
-      };
+    'pending_verification' => EchoStatus.pendingVerification,
+    'active' => EchoStatus.active,
+    'under_review' => EchoStatus.underReview,
+    'verified' => EchoStatus.verified,
+    'controversial' => EchoStatus.controversial,
+    'disputed' => EchoStatus.disputed,
+    'hidden' => EchoStatus.hidden,
+    'rejected' => EchoStatus.rejected,
+    _ => EchoStatus.pendingVerification,
+  };
 
   void _handleEchoHidden() {
     if (!mounted) return;
@@ -453,8 +468,8 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
             _RuleLine(
               icon: Icons.block_rounded,
               text:
-                  'If no one adds context before the window closes, the echo is treated as not publicly supported.',
-              color: AppColors.sunsetCoralDark,
+                  'If too little context arrives before the window closes, the echo is marked as insufficient context.',
+              color: AppColors.textSecondary,
             ),
           ],
         ),
@@ -475,8 +490,9 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
       _liveSolanaStatus = 'recording';
     });
     try {
-      final signature =
-          await SolanaRecordRetryService.retryEchoCreation(echo.id);
+      final signature = await SolanaRecordRetryService.retryEchoCreation(
+        echo.id,
+      );
       if (!mounted) return;
       setState(() {
         if (signature != null) {
@@ -509,8 +525,9 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
       _liveVerifiedRecordStatus = 'recording';
     });
     try {
-      final signature =
-          await SolanaRecordRetryService.retryEchoVerification(echo.id);
+      final signature = await SolanaRecordRetryService.retryEchoVerification(
+        echo.id,
+      );
       if (!mounted) return;
       setState(() {
         if (signature != null) {
@@ -561,7 +578,8 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
           _livePublicContextClosesAt ?? _echo!.publicContextClosesAt,
       publicContextMinCount:
           _livePublicContextMinCount ?? _echo!.publicContextMinCount,
-      publicContextDecisionReason: _livePublicContextDecisionReason ??
+      publicContextDecisionReason:
+          _livePublicContextDecisionReason ??
           _echo!.publicContextDecisionReason,
       createdRecordTx: _liveCreatedRecordTx ?? _echo!.createdRecordTx,
       createdRecordAt: _liveCreatedRecordAt ?? _echo!.createdRecordAt,
@@ -573,14 +591,17 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
       bondCount: _liveBondCount ?? _echo!.bondCount,
     );
 
-    final previewUrl =
-        extractFirstUrl('${displayed.title}\n${displayed.content}');
+    final previewUrl = extractFirstUrl(
+      '${displayed.title}\n${displayed.content}',
+    );
     final hideUrlText = previewUrl != null && !_previewUnavailable;
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
     final isOwnEcho =
         currentUserId != null && currentUserId == displayed.userId;
     final showPostSolanaDetails =
-        isOwnEcho && displayed.publicVerdict != 'open';
+        isOwnEcho &&
+        displayed.publicVerdict != 'open' &&
+        displayed.publicVerdict != 'needs_context';
     final showVerifiedSolanaDetails =
         isOwnEcho && displayed.publicVerdict == 'supported';
     final canRetryPostRecord = _canRetrySolanaRecord(
@@ -624,9 +645,8 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
               title: _EchoDetailAppBarTitle(echo: displayed),
               actions: [
                 _ProofTrailAppBarAction(
-                  onPressed: () => context.push(
-                    '/feed/echo/${displayed.id}/proof-trail',
-                  ),
+                  onPressed: () =>
+                      context.push('/feed/echo/${displayed.id}/proof-trail'),
                 ),
                 IconButton(
                   tooltip: 'How context works',
@@ -687,13 +707,15 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: AppTypography
-                                              .textTheme.titleSmall,
+                                              .textTheme
+                                              .titleSmall,
                                         ),
                                         if (displayed.userIsVerified ||
                                             displayed.userIsPro)
                                           Padding(
-                                            padding:
-                                                const EdgeInsets.only(top: 2),
+                                            padding: const EdgeInsets.only(
+                                              top: 2,
+                                            ),
                                             child: _InlineDetailBadge(
                                               isVerified:
                                                   displayed.userIsVerified,
@@ -705,7 +727,8 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: AppTypography
-                                              .textTheme.labelMedium,
+                                              .textTheme
+                                              .labelMedium,
                                         ),
                                       ],
                                     ),
@@ -723,12 +746,13 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                       if (displayed.title.isNotEmpty) ...[
                         RichTextDisplay(
                           text: displayed.title,
-                          style:
-                              AppTypography.textTheme.headlineSmall?.copyWith(
-                            height: 1.15,
-                            color: AppColors.charcoal,
-                          ),
+                          style: AppTypography.textTheme.headlineSmall
+                              ?.copyWith(
+                                height: 1.15,
+                                color: AppColors.charcoal,
+                              ),
                           hideUrls: hideUrlText,
+                          onHashtagTap: _openHashtag,
                         ),
                         const SizedBox(height: AppSpacing.md),
                       ],
@@ -737,6 +761,7 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                         text: displayed.content,
                         style: AppTypography.textTheme.bodyLarge,
                         hideUrls: hideUrlText,
+                        onHashtagTap: _openHashtag,
                       ),
 
                       if (previewUrl != null)
@@ -830,7 +855,8 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                             displayed.verifiedRecordTx!.isNotEmpty) ...[
                           VerifiedEchoRecord(
                             transactionSignature: displayed.verifiedRecordTx!,
-                            verifiedAt: displayed.verifiedRecordAt ??
+                            verifiedAt:
+                                displayed.verifiedRecordAt ??
                                 displayed.createdRecordAt ??
                                 DateTime.now(),
                           ),
@@ -845,10 +871,7 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                       ],
 
                       // proofs section
-                      _ProofsSection(
-                        proofs: _proofs,
-                        onRefresh: _loadProofs,
-                      ),
+                      _ProofsSection(proofs: _proofs, onRefresh: _loadProofs),
 
                       const SizedBox(height: AppSpacing.xl),
                       const Divider(),
@@ -879,8 +902,9 @@ class _EchoDetailAppBarTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final compactId = echo.id.replaceAll('-', '');
-    final shortId =
-        compactId.length <= 8 ? compactId : compactId.substring(0, 8);
+    final shortId = compactId.length <= 8
+        ? compactId
+        : compactId.substring(0, 8);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -980,25 +1004,20 @@ class _RuleLine extends StatelessWidget {
 }
 
 class _InlineDetailBadge extends StatelessWidget {
-  const _InlineDetailBadge({
-    required this.isVerified,
-    required this.isPro,
-  });
+  const _InlineDetailBadge({required this.isVerified, required this.isPro});
 
   final bool isVerified;
   final bool isPro;
 
   @override
   Widget build(BuildContext context) {
-    final color = isVerified ? AppColors.fernGreen : const Color(0xFFFFB300);
+    final color = AppColors.fernGreen;
     final label = isVerified && isPro
         ? context.l('Verified Pro')
         : isVerified
-            ? context.l('Verified')
-            : context.l('Pro');
-    final icon = isPro && !isVerified
-        ? Icons.workspace_premium_rounded
-        : Icons.verified_rounded;
+        ? context.l('Verified')
+        : context.l('Pro');
+    final icon = Icons.verified_rounded;
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -1006,10 +1025,7 @@ class _InlineDetailBadge extends StatelessWidget {
         Container(
           width: 15,
           height: 15,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           child: Icon(icon, size: 10, color: Colors.white),
         ),
         const SizedBox(width: 4),
@@ -1196,10 +1212,12 @@ class _PublicContextSectionState extends State<_PublicContextSection> {
       _selectedStance = _normalizeContextStance(widget.initialStance);
     }
     if (!_userSelectedStance) {
-      final supportRows =
-          widget.contexts.where((row) => row['stance'] == 'support').toList();
-      final challengeRows =
-          widget.contexts.where((row) => row['stance'] == 'challenge').toList();
+      final supportRows = widget.contexts
+          .where((row) => row['stance'] == 'support')
+          .toList();
+      final challengeRows = widget.contexts
+          .where((row) => row['stance'] == 'challenge')
+          .toList();
       if (_selectedStance == 'support' &&
           supportRows.isEmpty &&
           challengeRows.isNotEmpty) {
@@ -1220,12 +1238,15 @@ class _PublicContextSectionState extends State<_PublicContextSection> {
     final color = _publicVerdictColor(echo.publicVerdict);
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
     final isOwnEcho = currentUserId != null && currentUserId == echo.userId;
-    final supportRows =
-        contexts.where((row) => row['stance'] == 'support').toList();
-    final challengeRows =
-        contexts.where((row) => row['stance'] == 'challenge').toList();
-    final selectedRows =
-        _selectedStance == 'support' ? supportRows : challengeRows;
+    final supportRows = contexts
+        .where((row) => row['stance'] == 'support')
+        .toList();
+    final challengeRows = contexts
+        .where((row) => row['stance'] == 'challenge')
+        .toList();
+    final selectedRows = _selectedStance == 'support'
+        ? supportRows
+        : challengeRows;
     Map<String, dynamic>? ownContext;
     if (currentUserId != null) {
       for (final row in contexts) {
@@ -1237,9 +1258,13 @@ class _PublicContextSectionState extends State<_PublicContextSection> {
     }
     final now = DateTime.now();
     final closesAt = echo.publicContextClosesAt;
-    final isClosed = echo.publicVerdict != 'open' ||
+    final isClosed =
+        (echo.publicVerdict != 'open' &&
+            echo.publicVerdict != 'needs_context') ||
         (closesAt != null && !closesAt.isAfter(now));
-    final windowEndedOpen = echo.publicVerdict == 'open' &&
+    final windowEndedOpen =
+        (echo.publicVerdict == 'open' ||
+            echo.publicVerdict == 'needs_context') &&
         closesAt != null &&
         !closesAt.isAfter(now);
     final headerVerdict = windowEndedOpen ? 'Window closed' : verdict;
@@ -1254,10 +1279,7 @@ class _PublicContextSectionState extends State<_PublicContextSection> {
         return;
       }
       if (isClosed) {
-        showInfoSnack(
-          context,
-          'Public context is closed for this echo.',
-        );
+        showInfoSnack(context, 'Public context is closed for this echo.');
         return;
       }
       if (ownContext != null) {
@@ -1300,9 +1322,7 @@ class _PublicContextSectionState extends State<_PublicContextSection> {
               decoration: BoxDecoration(
                 color: headerColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-                border: Border.all(
-                  color: headerColor.withValues(alpha: 0.35),
-                ),
+                border: Border.all(color: headerColor.withValues(alpha: 0.35)),
               ),
               child: Text(
                 headerVerdict,
@@ -1542,7 +1562,8 @@ class _ContextTabButton extends StatelessWidget {
           child: AnimatedDefaultTextStyle(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
-            style: AppTypography.textTheme.labelMedium?.copyWith(
+            style:
+                AppTypography.textTheme.labelMedium?.copyWith(
                   color: selected ? color : AppColors.textSecondary,
                   fontWeight: FontWeight.w800,
                 ) ??
@@ -1609,7 +1630,11 @@ class _YourContextNotice extends StatelessWidget {
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Text(
-              'Your ${stance == 'support' ? 'support' : 'challenge'} context is listed here. ${isClosed ? 'Evaluation is closed.' : editsLeft > 0 ? 'You can edit it once.' : 'You already used your edit.'}',
+              'Your ${stance == 'support' ? 'support' : 'challenge'} context is listed here. ${isClosed
+                  ? 'Evaluation is closed.'
+                  : editsLeft > 0
+                  ? 'You can edit it once.'
+                  : 'You already used your edit.'}',
               style: AppTypography.textTheme.bodySmall?.copyWith(
                 color: AppColors.textSecondary,
               ),
@@ -1633,19 +1658,20 @@ class _ContextEvaluationNote extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final total = echo.supportCount + echo.challengeCount;
-    final remaining =
-        (echo.publicContextMinCount - total).clamp(0, 1 << 31).toInt();
+    final remaining = (echo.publicContextMinCount - total)
+        .clamp(0, 1 << 31)
+        .toInt();
     final closesAt = echo.publicContextClosesAt;
     final verdict = echo.publicVerdict;
     final decidedAt = echo.publicVerdictAt;
 
     final text = switch (verdict) {
-      'supported' ||
-      'not_supported' ||
-      'contested' =>
+      'supported' || 'not_supported' || 'contested' || 'insufficient_context' =>
         'Decided by public context${decidedAt == null ? '' : ' ${Formatters.timeAgo(decidedAt)}'}.',
+      'needs_context' =>
+        'This echo is being held for stronger public context before it spreads normally.',
       _ when echo.publicContextDecisionReason == 'insufficient_context' =>
-        'The review window ended without enough public context, so it is not publicly supported.',
+        'The review window ended without enough public context, so it is not treated as proven.',
       _ when closesAt != null && !closesAt.isAfter(DateTime.now()) =>
         'The public context window has ended. Existing support and challenge context is still visible.',
       _ when closesAt != null =>
@@ -1682,8 +1708,9 @@ class _ContextBalanceBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final total = support + challenge;
     final supportShare = total == 0 ? 0.5 : support / total;
-    final progress =
-        minCount <= 0 ? 1.0 : (total / minCount).clamp(0.0, 1.0).toDouble();
+    final progress = minCount <= 0
+        ? 1.0
+        : (total / minCount).clamp(0.0, 1.0).toDouble();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1702,8 +1729,10 @@ class _ContextBalanceBar extends StatelessWidget {
                   ),
                 ),
                 Expanded(
-                  flex:
-                      ((1 - supportShare) * 1000).round().clamp(1, 999).toInt(),
+                  flex: ((1 - supportShare) * 1000)
+                      .round()
+                      .clamp(1, 999)
+                      .toInt(),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 260),
                     color: const Color(0xFFE08A76),
@@ -1809,10 +1838,12 @@ class _ContextRowState extends State<_ContextRow> {
     });
 
     try {
-      final rows = await Supabase.instance.client.rpc(
-        'toggle_signal_response_like',
-        params: {'p_response_id': widget.row['id']},
-      ) as List;
+      final rows =
+          await Supabase.instance.client.rpc(
+                'toggle_signal_response_like',
+                params: {'p_response_id': widget.row['id']},
+              )
+              as List;
       final row = rows.isEmpty ? null : rows.first as Map<String, dynamic>?;
       if (!mounted || row == null) return;
       final liked = row['liked'] as bool? ?? _liked;
@@ -1821,9 +1852,9 @@ class _ContextRowState extends State<_ContextRow> {
         _likeCount = (row['like_count'] as num?)?.toInt() ?? _likeCount;
       });
       if (liked) {
-        unawaited(_notifySocialEvent('context_like', {
-          'response_id': widget.row['id'],
-        }));
+        unawaited(
+          _notifySocialEvent('context_like', {'response_id': widget.row['id']}),
+        );
       }
       await widget.onChanged();
     } catch (e) {
@@ -1838,8 +1869,8 @@ class _ContextRowState extends State<_ContextRow> {
         message.contains('public_context_closed')
             ? 'Public context is closed for this echo.'
             : message.contains('own_context')
-                ? 'You cannot like your own context.'
-                : 'Could not update context like.',
+            ? 'You cannot like your own context.'
+            : 'Could not update context like.',
       );
     }
   }
@@ -1863,13 +1894,14 @@ class _ContextRowState extends State<_ContextRow> {
     final user = widget.row['users_public'] as Map<String, dynamic>? ?? {};
     final displayName =
         (user['display_name'] as String?)?.trim().isNotEmpty == true
-            ? user['display_name'] as String
-            : user['username'] as String? ?? 'unknown';
+        ? user['display_name'] as String
+        : user['username'] as String? ?? 'unknown';
     final username = user['username'] as String? ?? 'unknown';
     final avatarUrl = user['avatar_url'] as String?;
     final stance = widget.row['stance'] as String? ?? 'support';
-    final color =
-        stance == 'support' ? AppColors.fernGreen : AppColors.sunsetCoralDark;
+    final color = stance == 'support'
+        ? AppColors.fernGreen
+        : AppColors.sunsetCoralDark;
     final mediaUrls =
         (widget.row['media_urls'] as List?)?.cast<String>() ?? const <String>[];
     final created = _parseContextDate(widget.row['created_at']);
@@ -1948,8 +1980,9 @@ class _ContextRowState extends State<_ContextRow> {
                       ),
                       decoration: BoxDecoration(
                         color: color.withValues(alpha: 0.1),
-                        borderRadius:
-                            BorderRadius.circular(AppSpacing.radiusFull),
+                        borderRadius: BorderRadius.circular(
+                          AppSpacing.radiusFull,
+                        ),
                       ),
                       child: Text(
                         stance == 'support' ? 'Supports' : 'Challenges',
@@ -2027,24 +2060,28 @@ String _relativeWindow(DateTime target) {
   final value = duration.inDays >= 1
       ? '${duration.inDays}d'
       : duration.inHours >= 1
-          ? '${duration.inHours}h'
-          : '${duration.inMinutes.clamp(1, 59)}m';
+      ? '${duration.inHours}h'
+      : '${duration.inMinutes.clamp(1, 59)}m';
   return past ? '$value ago' : 'in $value';
 }
 
 String _publicVerdictLabel(String verdict) => switch (verdict) {
-      'supported' => 'Supported',
-      'not_supported' => 'Not supported',
-      'contested' => 'Contested',
-      _ => 'Open',
-    };
+  'supported' => 'Supported',
+  'not_supported' => 'Not supported',
+  'contested' => 'Contested',
+  'needs_context' => 'Needs context',
+  'insufficient_context' => 'Insufficient context',
+  _ => 'Open',
+};
 
 Color _publicVerdictColor(String verdict) => switch (verdict) {
-      'supported' => AppColors.fernGreenDark,
-      'not_supported' => AppColors.sunsetCoralDark,
-      'contested' => AppColors.statusControversial,
-      _ => AppColors.textTertiary,
-    };
+  'supported' => AppColors.fernGreenDark,
+  'not_supported' => AppColors.sunsetCoralDark,
+  'contested' => AppColors.statusControversial,
+  'needs_context' => AppColors.statusUnderReview,
+  'insufficient_context' => AppColors.textSecondary,
+  _ => AppColors.textTertiary,
+};
 
 bool _canRetrySolanaRecord({
   required String? currentUserId,
@@ -2098,7 +2135,8 @@ class _DetailCategoryChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final detail = echo.categoryDetail?.trim();
-    final label = echo.category == EchoCategory.other &&
+    final label =
+        echo.category == EchoCategory.other &&
             detail != null &&
             detail.isNotEmpty
         ? context.l('Other: {detail}', {'detail': detail})
@@ -2126,10 +2164,7 @@ class _DetailCategoryChip extends StatelessWidget {
 }
 
 class _ProofsSection extends StatelessWidget {
-  const _ProofsSection({
-    required this.proofs,
-    required this.onRefresh,
-  });
+  const _ProofsSection({required this.proofs, required this.onRefresh});
   final List<Map<String, dynamic>> proofs;
   final VoidCallback onRefresh;
 
@@ -2138,8 +2173,10 @@ class _ProofsSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(context.tx('echoDetail.evidence'),
-            style: AppTypography.textTheme.titleMedium),
+        Text(
+          context.tx('echoDetail.evidence'),
+          style: AppTypography.textTheme.titleMedium,
+        ),
         const SizedBox(height: AppSpacing.sm),
         if (proofs.isEmpty)
           Text(
@@ -2151,7 +2188,7 @@ class _ProofsSection extends StatelessWidget {
             final user = p['users_public'] as Map<String, dynamic>? ?? {};
             final created =
                 DateTime.tryParse(p['created_at'] as String? ?? '') ??
-                    DateTime.now();
+                DateTime.now();
             return Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.sm),
               child: ProofAttachment(
@@ -2243,9 +2280,11 @@ class _RepliesPreviewSection extends StatelessWidget {
             TextButton.icon(
               onPressed: onOpenReplies,
               icon: const Icon(Icons.chat_bubble_outline_rounded, size: 15),
-              label: Text(context.l('View {count} more', {
-                'count': replies.length - visible.length,
-              })),
+              label: Text(
+                context.l('View {count} more', {
+                  'count': replies.length - visible.length,
+                }),
+              ),
               style: TextButton.styleFrom(
                 foregroundColor: AppColors.fernGreenDark,
                 padding: EdgeInsets.zero,
@@ -2285,10 +2324,11 @@ class _InlineReplyState extends State<_InlineReply> {
     final username = user['username'] as String? ?? 'unknown';
     final displayName =
         (user['display_name'] as String?)?.trim().isNotEmpty == true
-            ? user['display_name'] as String
-            : username;
+        ? user['display_name'] as String
+        : username;
     final avatarUrl = user['avatar_url'] as String?;
-    final created = DateTime.tryParse(reply['created_at'] as String? ?? '') ??
+    final created =
+        DateTime.tryParse(reply['created_at'] as String? ?? '') ??
         DateTime.now();
     final content = reply['content'] as String? ?? '';
     final previewUrl = extractFirstUrl(content);
@@ -2302,17 +2342,12 @@ class _InlineReplyState extends State<_InlineReply> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
       decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: AppColors.borderSubtle),
-        ),
+        border: Border(bottom: BorderSide(color: AppColors.borderSubtle)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _VerifiedAvatar(
-            avatarUrl: avatarUrl,
-            isVerified: isPro || isTrusted,
-          ),
+          _VerifiedAvatar(avatarUrl: avatarUrl, isVerified: isPro || isTrusted),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Column(
@@ -2331,13 +2366,9 @@ class _InlineReplyState extends State<_InlineReply> {
                     const SizedBox(width: AppSpacing.xs),
                     if (isPro || isTrusted) ...[
                       Icon(
-                        isPro
-                            ? Icons.workspace_premium_rounded
-                            : Icons.verified_rounded,
+                        isPro ? Icons.verified_rounded : Icons.verified_rounded,
                         size: 14,
-                        color: isPro
-                            ? const Color(0xFFFFB300)
-                            : AppColors.fernGreen,
+                        color: AppColors.fernGreen,
                       ),
                       const SizedBox(width: AppSpacing.xs),
                     ],
@@ -2410,10 +2441,7 @@ class _InlineReplyState extends State<_InlineReply> {
 }
 
 class _VerifiedAvatar extends StatelessWidget {
-  const _VerifiedAvatar({
-    required this.avatarUrl,
-    required this.isVerified,
-  });
+  const _VerifiedAvatar({required this.avatarUrl, required this.isVerified});
   final String? avatarUrl;
   final bool isVerified;
 

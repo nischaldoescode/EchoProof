@@ -85,15 +85,13 @@ class _SearchScreenState extends State<SearchScreen>
       _errorMessage = null;
     });
 
-    _debounce = Timer(
-      const Duration(milliseconds: 260),
-      () => _runSearch(q),
-    );
+    _debounce = Timer(const Duration(milliseconds: 260), () => _runSearch(q));
   }
 
   Future<void> _runSearch(String query) async {
     final q = query.trim();
     final generation = ++_searchGeneration;
+    final hashtag = _hashtagFromQuery(q);
     final pattern = _ilikePattern(q);
 
     setState(() => _isSearching = true);
@@ -101,19 +99,24 @@ class _SearchScreenState extends State<SearchScreen>
     try {
       final client = Supabase.instance.client;
 
-      final usersRes = await client
-          .from('users_public')
-          .select(
-              'id, username, display_name, avatar_url, trust_tier, is_public, bio, is_pro')
-          .or('username.ilike.$pattern,display_name.ilike.$pattern,bio.ilike.$pattern')
-          .eq('is_public', true)
-          .eq('is_suspended', false)
-          .limit(20);
+      final usersRes = hashtag == null
+          ? await client
+                .from('users_public')
+                .select(
+                  'id, username, display_name, avatar_url, trust_tier, is_public, bio, is_pro',
+                )
+                .or(
+                  'username.ilike.$pattern,display_name.ilike.$pattern,bio.ilike.$pattern',
+                )
+                .eq('is_public', true)
+                .eq('is_suspended', false)
+                .limit(20)
+          : const [];
 
-      final echoesRes = await client
+      var echoQuery = client
           .from('echoes')
           .select(
-            'id, user_id, title, content, category, status, media_urls, '
+            'id, user_id, title, content, category, status, media_urls, hashtags, '
             'support_count, challenge_count, context_support_count, '
             'context_challenge_count, context_score, public_verdict, '
             'public_verdict_at, public_context_closes_at, '
@@ -121,21 +124,27 @@ class _SearchScreenState extends State<SearchScreen>
             'reply_count, created_at, '
             'users_public!inner(username, display_name, trust_tier, avatar_url, is_pro, is_public)',
           )
-          .or('title.ilike.$pattern,content.ilike.$pattern')
           .not('status', 'in', '("hidden","rejected")')
-          .eq('users_public.is_public', true)
+          .eq('users_public.is_public', true);
+
+      echoQuery = hashtag == null
+          ? echoQuery.or('title.ilike.$pattern,content.ilike.$pattern')
+          : echoQuery.contains('hashtags', [hashtag]);
+
+      final echoesRes = await echoQuery
           .order('created_at', ascending: false)
           .limit(20);
 
       if (!mounted || generation != _searchGeneration) return;
 
       setState(() {
-        _users = List<Map<String, dynamic>>.from(usersRes as List);
+        _users = List<Map<String, dynamic>>.from(usersRes);
         _echoes = List<Map<String, dynamic>>.from(echoesRes as List);
         _isSearching = false;
         _hasSearched = true;
         _errorMessage = null;
       });
+      if (hashtag != null) _tabs.animateTo(2);
     } catch (e) {
       AppLogger.error('search: failed $e');
       if (mounted && generation == _searchGeneration) {
@@ -146,6 +155,16 @@ class _SearchScreenState extends State<SearchScreen>
         });
       }
     }
+  }
+
+  String? _hashtagFromQuery(String query) {
+    final match = RegExp(
+      r'^[#~]?([A-Za-z0-9][A-Za-z0-9_-]{1,31})$',
+    ).firstMatch(query.trim());
+    if (match == null) return null;
+    final raw = query.trim();
+    if (!raw.startsWith('#') && !raw.startsWith('~')) return null;
+    return match.group(1)!.toLowerCase();
   }
 
   String _ilikePattern(String query) {
@@ -178,11 +197,7 @@ class _SearchScreenState extends State<SearchScreen>
           onPressed: () => context.pop(),
           color: AppColors.charcoal,
         ),
-        title: _SearchField(
-          ctrl: _ctrl,
-          focus: _focus,
-          onChanged: _search,
-        ),
+        title: _SearchField(ctrl: _ctrl, focus: _focus, onChanged: _search),
         bottom: TabBar(
           controller: _tabs,
           labelColor: AppColors.charcoal,
@@ -281,10 +296,7 @@ class _SearchFieldState extends State<_SearchField> {
         controller: widget.ctrl,
         focusNode: widget.focus,
         onChanged: widget.onChanged,
-        style: GoogleFonts.josefinSans(
-          fontSize: 14,
-          color: AppColors.charcoal,
-        ),
+        style: GoogleFonts.josefinSans(fontSize: 14, color: AppColors.charcoal),
         decoration: InputDecoration(
           hintText: context.l('Search people or echoes...'),
           hintStyle: GoogleFonts.josefinSans(
@@ -318,10 +330,7 @@ class _SearchFieldState extends State<_SearchField> {
 }
 
 class _UserResults extends StatelessWidget {
-  const _UserResults({
-    required this.users,
-    required this.query,
-  });
+  const _UserResults({required this.users, required this.query});
   final List<Map<String, dynamic>> users;
   final String query;
 
@@ -339,17 +348,11 @@ class _UserResults extends StatelessWidget {
     return ListView.separated(
       padding: const EdgeInsets.only(top: AppSpacing.sm, bottom: 96),
       itemCount: users.length,
-      separatorBuilder: (_, __) => const Divider(
-        height: 1,
-        indent: 72,
-      ),
+      separatorBuilder: (_, __) => const Divider(height: 1, indent: 72),
       itemBuilder: (_, i) {
         return _AnimatedResult(
           index: i,
-          child: _UserResultTile(
-            user: users[i],
-            query: query,
-          ),
+          child: _UserResultTile(user: users[i], query: query),
         );
       },
     );
@@ -388,8 +391,9 @@ class _TopResults extends StatelessWidget {
       return _NoResults(
         icon: Icons.search_off_rounded,
         title: context.l('No results found'),
-        message: context
-            .l('Try fewer words, a username, or a phrase from the echo.'),
+        message: context.l(
+          'Try fewer words, a username, or a phrase from the echo.',
+        ),
         query: query,
       );
     }
@@ -404,7 +408,9 @@ class _TopResults extends StatelessWidget {
             actionLabel: users.length > 3 ? context.l('View all') : null,
             onAction: users.length > 3 ? onPeopleTap : null,
           ),
-          ...users.take(3).map(
+          ...users
+              .take(3)
+              .map(
                 (user) => _AnimatedResult(
                   index: index++,
                   child: _UserResultTile(user: user, query: query),
@@ -417,7 +423,9 @@ class _TopResults extends StatelessWidget {
             actionLabel: echoes.length > 5 ? context.l('View all') : null,
             onAction: echoes.length > 5 ? onEchoesTap : null,
           ),
-          ...echoes.take(5).map(
+          ...echoes
+              .take(5)
+              .map(
                 (echo) => _AnimatedResult(
                   index: index++,
                   child: _EchoResultCard(echo: echo, query: query),
@@ -430,10 +438,7 @@ class _TopResults extends StatelessWidget {
 }
 
 class _UserResultTile extends StatelessWidget {
-  const _UserResultTile({
-    required this.user,
-    required this.query,
-  });
+  const _UserResultTile({required this.user, required this.query});
 
   final Map<String, dynamic> user;
   final String query;
@@ -526,10 +531,7 @@ class _UserResultTile extends StatelessWidget {
 }
 
 class _EchoResults extends StatelessWidget {
-  const _EchoResults({
-    required this.echoes,
-    required this.query,
-  });
+  const _EchoResults({required this.echoes, required this.query});
   final List<Map<String, dynamic>> echoes;
   final String query;
 
@@ -550,10 +552,7 @@ class _EchoResults extends StatelessWidget {
       itemBuilder: (_, i) {
         return _AnimatedResult(
           index: i,
-          child: _EchoResultCard(
-            echo: echoes[i],
-            query: query,
-          ),
+          child: _EchoResultCard(echo: echoes[i], query: query),
         );
       },
     );
@@ -561,10 +560,7 @@ class _EchoResults extends StatelessWidget {
 }
 
 class _EchoResultCard extends StatelessWidget {
-  const _EchoResultCard({
-    required this.echo,
-    required this.query,
-  });
+  const _EchoResultCard({required this.echo, required this.query});
 
   final Map<String, dynamic> echo;
   final String query;
@@ -575,10 +571,12 @@ class _EchoResultCard extends StatelessWidget {
     final echoId = echo['id'] as String;
     final title = echo['title'] as String? ?? '';
     final content = echo['content'] as String? ?? '';
-    final support = (echo['context_support_count'] as num?)?.toInt() ??
+    final support =
+        (echo['context_support_count'] as num?)?.toInt() ??
         (echo['support_count'] as num?)?.toInt() ??
         0;
-    final challenge = (echo['context_challenge_count'] as num?)?.toInt() ??
+    final challenge =
+        (echo['context_challenge_count'] as num?)?.toInt() ??
         (echo['challenge_count'] as num?)?.toInt() ??
         0;
     final replies = (echo['reply_count'] as num?)?.toInt() ?? 0;
@@ -586,8 +584,8 @@ class _EchoResultCard extends StatelessWidget {
     final username = user['username'] as String? ?? 'unknown';
     final displayName =
         (user['display_name'] as String?)?.trim().isNotEmpty == true
-            ? user['display_name'] as String
-            : username;
+        ? user['display_name'] as String
+        : username;
     final avatarUrl = user['avatar_url'] as String?;
     final tierStr = user['trust_tier'] as String? ?? 'unverified';
     final mediaUrls = (echo['media_urls'] as List?)?.cast<String>() ?? const [];
@@ -602,10 +600,7 @@ class _EchoResultCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(AppSpacing.echoCardRadius),
-          border: Border.all(
-            color: _borderColor(status),
-            width: 1.2,
-          ),
+          border: Border.all(color: _borderColor(status), width: 1.2),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -619,10 +614,7 @@ class _EchoResultCard extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  _SmallAvatar(
-                    avatarUrl: avatarUrl,
-                    isVerified: false,
-                  ),
+                  _SmallAvatar(avatarUrl: avatarUrl, isVerified: false),
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Column(
@@ -673,8 +665,11 @@ class _EchoResultCard extends StatelessWidget {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.image_outlined,
-                            size: 13, color: AppColors.textTertiary),
+                        const Icon(
+                          Icons.image_outlined,
+                          size: 13,
+                          color: AppColors.textTertiary,
+                        ),
                         const SizedBox(width: 4),
                         Text(
                           context.l('{count} media', {
@@ -774,14 +769,16 @@ class _HighlightedText extends StatelessWidget {
       if (index > start) {
         spans.add(TextSpan(text: text.substring(start, index)));
       }
-      spans.add(TextSpan(
-        text: text.substring(index, index + query.length),
-        style: baseStyle.copyWith(
-          backgroundColor: AppColors.fernGreen.withValues(alpha: 0.18),
-          color: AppColors.fernGreenDark,
-          fontWeight: FontWeight.w700,
+      spans.add(
+        TextSpan(
+          text: text.substring(index, index + query.length),
+          style: baseStyle.copyWith(
+            backgroundColor: AppColors.fernGreen.withValues(alpha: 0.18),
+            color: AppColors.fernGreenDark,
+            fontWeight: FontWeight.w700,
+          ),
         ),
-      ));
+      );
       start = index + query.length;
     }
 
@@ -794,10 +791,7 @@ class _HighlightedText extends StatelessWidget {
 }
 
 class _SmallAvatar extends StatelessWidget {
-  const _SmallAvatar({
-    required this.avatarUrl,
-    required this.isVerified,
-  });
+  const _SmallAvatar({required this.avatarUrl, required this.isVerified});
   final String? avatarUrl;
   final bool isVerified;
 
@@ -866,13 +860,13 @@ class _StatusChip extends StatelessWidget {
       'verified' => (context.l('Verified'), AppColors.fernGreen),
       'disputed' => (context.l('Disputed'), AppColors.sunsetCoral),
       'controversial' => (
-          context.l('Controversial'),
-          AppColors.statusControversial
-        ),
+        context.l('Controversial'),
+        AppColors.statusControversial,
+      ),
       'under_review' => (
-          context.l('Under Review'),
-          AppColors.statusUnderReview
-        ),
+        context.l('Under Review'),
+        AppColors.statusUnderReview,
+      ),
       'pending_verification' => (context.l('Pending'), AppColors.textTertiary),
       _ => (context.l('Active'), AppColors.textTertiary),
     };
@@ -907,8 +901,9 @@ class _TierBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isHighTrust = tier == 'elite' || tier == 'high';
-    final color =
-        isHighTrust ? AppColors.fernGreenDark : AppColors.textTertiary;
+    final color = isHighTrust
+        ? AppColors.fernGreenDark
+        : AppColors.textTertiary;
     final bg = isHighTrust ? AppColors.fernGreenLight : AppColors.softSand;
 
     return Container(
@@ -930,10 +925,7 @@ class _TierBadge extends StatelessWidget {
 }
 
 class _AnimatedResult extends StatelessWidget {
-  const _AnimatedResult({
-    required this.index,
-    required this.child,
-  });
+  const _AnimatedResult({required this.index, required this.child});
 
   final int index;
   final Widget child;
@@ -1033,10 +1025,7 @@ class _NoResults extends StatelessWidget {
         builder: (context, value, child) {
           return Opacity(
             opacity: value,
-            child: Transform.scale(
-              scale: 0.98 + (value * 0.02),
-              child: child,
-            ),
+            child: Transform.scale(scale: 0.98 + (value * 0.02), child: child),
           );
         },
         child: Padding(
@@ -1165,10 +1154,7 @@ class _EmptySearch extends StatelessWidget {
 }
 
 class _SuggestionChip extends StatelessWidget {
-  const _SuggestionChip({
-    required this.label,
-    required this.onTap,
-  });
+  const _SuggestionChip({required this.label, required this.onTap});
 
   final String label;
   final ValueChanged<String> onTap;

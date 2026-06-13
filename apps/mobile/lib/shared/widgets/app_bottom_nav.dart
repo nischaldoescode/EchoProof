@@ -7,10 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../app/theme/colors.dart';
+import '../../app/theme/spacing.dart';
 import '../../features/echo/presentation/services/echo_feed_service.dart';
 import '../../features/notifications/presentation/services/notification_service.dart';
 import 'app_banner_ad.dart';
-import 'bottom_ad_banner.dart';
 
 class AppBottomNav extends StatelessWidget {
   const AppBottomNav({
@@ -27,26 +27,31 @@ class AppBottomNav extends StatelessWidget {
       icon: Icons.home_outlined,
       activeIcon: Icons.home_rounded,
       path: '/feed',
+      label: 'Home',
     ),
     _NavItem(
       icon: Icons.explore_outlined,
       activeIcon: Icons.explore_rounded,
       path: '/discover',
+      label: 'Explore',
     ),
     _NavItem(
       icon: Icons.lock_outline_rounded,
       activeIcon: Icons.lock_rounded,
       path: '/rooms',
+      label: 'Rooms',
     ),
     _NavItem(
       icon: Icons.notifications_outlined,
       activeIcon: Icons.notifications_rounded,
       path: '/notifications',
+      label: 'Activity',
     ),
     _NavItem(
       icon: Icons.person_outline,
       activeIcon: Icons.person_rounded,
       path: '/profile',
+      label: 'Profile',
     ),
   ];
 
@@ -57,6 +62,7 @@ class AppBottomNav extends StatelessWidget {
     if (location.startsWith('/rooms')) return '/rooms';
     if (location.startsWith('/notifications')) return '/notifications';
     if (location == '/profile') return '/profile';
+    if (location.startsWith('/profile/analytics')) return '/profile';
     if (location.startsWith('/profile/')) return '/feed';
     return '/feed';
   }
@@ -65,151 +71,192 @@ class AppBottomNav extends StatelessWidget {
   Widget build(BuildContext context) {
     final activePath = _activePathFor(currentLocation);
 
-    return SafeArea(
-      top: false,
-      left: false,
-      right: false,
-      bottom: true,
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        // ad prompt stays above root navigation
-        const BottomAdBanner(),
-
-        Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(
-              top: BorderSide(color: AppColors.borderSubtle, width: 0.5),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SafeArea(
+          top: false,
+          left: false,
+          right: false,
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.sm,
+              AppSpacing.xs,
+              AppSpacing.sm,
+              AppSpacing.xs,
             ),
-          ),
-          child: SafeArea(
-            top: false,
-            child: SizedBox(
-              height: 55,
-              child: Row(
-                children: _items.map((item) {
-                  final isActive = activePath == item.path;
-                  return Expanded(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xFFFDFDFC),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: AppColors.charcoal.withValues(alpha: 0.08),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 22,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: SizedBox(
+                height: 64,
+                child: Row(
+                  children: _items.map((item) {
+                    final isActive = activePath == item.path;
+                    return Expanded(
                       child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () {
-                      if (item.path == '/feed') {
-                        if (activePath == '/feed' && onFeedTap != null) {
-                          unawaited(Future<void>.sync(onFeedTap!));
-                          return;
-                        }
-                        final notifications =
-                            context.read<NotificationService>();
-                        unawaited(
-                          context.read<EchoFeedService>().refresh().then(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          if (item.path == '/feed') {
+                            if (activePath == '/feed' && onFeedTap != null) {
+                              unawaited(Future<void>.sync(onFeedTap!));
+                              return;
+                            }
+                            final notifications = context
+                                .read<NotificationService>();
+                            unawaited(
+                              context.read<EchoFeedService>().refresh().then(
                                 (_) => notifications.markFollowerEchoesRead(),
                               ),
-                        );
-                      }
-                      if (currentLocation != item.path) {
-                        context.go(item.path);
-                      }
-                    },
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 250),
+                            );
+                          }
+                          if (currentLocation != item.path) {
+                            context.go(item.path);
+                          }
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 220),
                           curve: Curves.easeOutCubic,
-                          padding: EdgeInsets.symmetric(
-                            horizontal: isActive ? 16 : 0,
-                            vertical: 6,
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: 2,
+                            vertical: 4,
                           ),
                           decoration: BoxDecoration(
                             color: isActive
-                                ? AppColors.charcoal.withValues(alpha: 0.08)
+                                ? AppColors.charcoal.withValues(alpha: 0.9)
                                 : Colors.transparent,
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: BorderRadius.circular(22),
                           ),
-                          child: Stack(
-                            clipBehavior: Clip.none,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 200),
-                                child: Icon(
-                                  isActive ? item.activeIcon : item.icon,
-                                  key: ValueKey('${item.path}_$isActive'),
-                                  size: 22,
+                              Stack(
+                                clipBehavior: Clip.none,
+                                alignment: Alignment.center,
+                                children: [
+                                  AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 180),
+                                    child: Icon(
+                                      isActive ? item.activeIcon : item.icon,
+                                      key: ValueKey('${item.path}_$isActive'),
+                                      size: 21,
+                                      color: isActive
+                                          ? Colors.white
+                                          : AppColors.charcoal.withValues(
+                                              alpha: 0.68,
+                                            ),
+                                    ),
+                                  ),
+                                  // unread dot for followed user posts
+                                  if (item.path == '/feed')
+                                    Consumer<NotificationService>(
+                                      builder: (context, notif, child) {
+                                        if (!notif.hasUnreadFollowerEcho) {
+                                          return const SizedBox.shrink();
+                                        }
+                                        return Positioned(
+                                          top: -4,
+                                          right: -7,
+                                          child: Container(
+                                            width: 8,
+                                            height: 8,
+                                            decoration: BoxDecoration(
+                                              color: AppColors.fernGreen,
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                color: isActive
+                                                    ? AppColors.charcoal
+                                                    : Colors.white,
+                                                width: 1.4,
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  // unread badge for notifications tab
+                                  if (item.path == '/notifications')
+                                    Consumer<NotificationService>(
+                                      builder: (context, notif, child) {
+                                        final count = notif.unreadCount;
+                                        if (count == 0) {
+                                          return const SizedBox.shrink();
+                                        }
+                                        return Positioned(
+                                          top: -6,
+                                          right: -9,
+                                          child: Container(
+                                            padding: const EdgeInsets.all(2),
+                                            decoration: const BoxDecoration(
+                                              color: AppColors.sunsetCoral,
+                                              shape: BoxShape.circle,
+                                            ),
+                                            constraints: const BoxConstraints(
+                                              minWidth: 14,
+                                              minHeight: 14,
+                                            ),
+                                            child: Text(
+                                              count > 9 ? '9+' : '$count',
+                                              style: const TextStyle(
+                                                fontSize: 8,
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                              textAlign: TextAlign.center,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              AnimatedDefaultTextStyle(
+                                duration: const Duration(milliseconds: 180),
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  fontWeight: isActive
+                                      ? FontWeight.w700
+                                      : FontWeight.w600,
                                   color: isActive
-                                      ? AppColors.charcoal
-                                      : AppColors.textTertiary,
+                                      ? Colors.white
+                                      : AppColors.textSecondary,
+                                  letterSpacing: 0,
+                                ),
+                                child: Text(
+                                  item.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              // unread dot for followed-user posts
-                              if (item.path == '/feed')
-                                Consumer<NotificationService>(
-                                  builder: (_, notif, __) {
-                                    if (!notif.hasUnreadFollowerEcho) {
-                                      return const SizedBox.shrink();
-                                    }
-                                    return Positioned(
-                                      top: -3,
-                                      right: -4,
-                                      child: Container(
-                                        width: 8,
-                                        height: 8,
-                                        decoration: BoxDecoration(
-                                          color: AppColors.fernGreen,
-                                          shape: BoxShape.circle,
-                                          border: Border.all(
-                                            color: Colors.white,
-                                            width: 1.4,
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              // unread badge for notifications tab
-                              if (item.path == '/notifications')
-                                Consumer<NotificationService>(
-                                  builder: (_, notif, __) {
-                                    final count = notif.unreadCount;
-                                    if (count == 0) {
-                                      return const SizedBox.shrink();
-                                    }
-                                    return Positioned(
-                                      top: -4,
-                                      right: -6,
-                                      child: Container(
-                                        padding: const EdgeInsets.all(2),
-                                        decoration: const BoxDecoration(
-                                          color: AppColors.sunsetCoral,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        constraints: const BoxConstraints(
-                                            minWidth: 14, minHeight: 14),
-                                        child: Text(
-                                          count > 9 ? '9+' : '$count',
-                                          style: const TextStyle(
-                                            fontSize: 8,
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
                             ],
                           ),
-                        )
-                      ],
-                    ),
-                  ));
-                }).toList(),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
               ),
             ),
           ),
         ),
-        const SizedBox(height: 5),
+        const SizedBox(height: 4),
         const AppBannerAd(),
-      ]),
+      ],
     );
   }
 }
@@ -356,8 +403,9 @@ class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
                       ? const []
                       : [
                           BoxShadow(
-                            color:
-                                Colors.black.withValues(alpha: 0.07 * progress),
+                            color: Colors.black.withValues(
+                              alpha: 0.07 * progress,
+                            ),
                             blurRadius: 22 * progress,
                             offset: Offset(0, 8 * progress),
                           ),
@@ -381,9 +429,11 @@ class _NavItem {
     required this.icon,
     required this.activeIcon,
     required this.path,
+    required this.label,
   });
 
   final IconData icon;
   final IconData activeIcon;
   final String path;
+  final String label;
 }

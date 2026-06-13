@@ -506,6 +506,8 @@ abstract final class AppCopy {
       'content cannot be empty': 'Content खाली नहीं हो सकता',
       'Explain your opinion or claim.\n\nUse @username to mention, ~signal to tag.':
           'अपनी राय या claim समझाएं.\n\nMention के लिए @username, tag के लिए ~signal use करें.',
+      'Explain your opinion or claim.\n\nUse @username and #topic-name to connect it.':
+          'अपनी राय या claim समझाएं.\n\nConnect करने के लिए @username और #topic-name use करें.',
       'Pro preview': 'Pro preview',
       'Pro rich text': 'Pro rich text',
       'Publish': 'Publish करें',

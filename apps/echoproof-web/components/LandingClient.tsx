@@ -161,7 +161,7 @@ function PageLoader() {
               fontFamily: "'Josefin Sans', sans-serif",
             }}
           >
-            Echoproof
+            Echo<span style={{ color: "#2E6FAE" }}>Proof</span>
           </span>
           <span
             className="ldr-tag"

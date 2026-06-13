@@ -57,7 +57,8 @@ class StorageService {
     final ext = file.extension?.toLowerCase() ?? '';
     if (!_allowedExtensions.contains(ext)) {
       throw StorageException(
-          'only ${_allowedExtensions.join(", ")} files allowed');
+        'only ${_allowedExtensions.join(", ")} files allowed',
+      );
     }
 
     final header = bytes.take(16).toList();
@@ -120,7 +121,9 @@ class StorageService {
     AppLogger.info('storage: uploading proof $path');
 
     try {
-      await _client.storage.from('echo-proofs').uploadBinary(
+      await _client.storage
+          .from('echo-proofs')
+          .uploadBinary(
             path,
             bytes,
             fileOptions: FileOptions(contentType: contentType, upsert: false),
@@ -133,6 +136,44 @@ class StorageService {
     final publicUrl = _client.storage.from('echo-proofs').getPublicUrl(path);
 
     AppLogger.info('storage: uploaded successfully');
+    return UploadResult(publicUrl: publicUrl, storagePath: path);
+  }
+
+  // uploads a profile banner under the current user folder
+  // path format: profile-banners/{userid}/{uuid}.{ext}
+  Future<UploadResult> uploadProfileBanner({
+    required Uint8List bytes,
+    required String extension,
+  }) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) {
+      throw const StorageException('sign in again to update banner');
+    }
+    if (bytes.length > _maxFileSizeBytes) {
+      throw const StorageException('banner must be under 1 MB');
+    }
+    final normalizedExt = extension.toLowerCase();
+    if (!_allowedExtensions.contains(normalizedExt)) {
+      throw const StorageException('only jpg, png, or webp banners allowed');
+    }
+
+    final path = '$userId/${_uuid.v4()}.$normalizedExt';
+    final contentType = MediaFileSafety.contentTypeForExtension(normalizedExt);
+
+    AppLogger.info('storage: uploading profile banner $path');
+
+    await _client.storage
+        .from('profile-banners')
+        .uploadBinary(
+          path,
+          bytes,
+          fileOptions: FileOptions(contentType: contentType, upsert: false),
+        );
+
+    final publicUrl = _client.storage
+        .from('profile-banners')
+        .getPublicUrl(path);
+    AppLogger.info('storage: profile banner uploaded successfully');
     return UploadResult(publicUrl: publicUrl, storagePath: path);
   }
 

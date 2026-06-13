@@ -218,9 +218,10 @@ class _InteractionButtonState extends State<_InteractionButton>
       duration: const Duration(milliseconds: 100),
       reverseDuration: const Duration(milliseconds: 80),
     );
-    _scale = Tween<double>(begin: 1.0, end: 0.88).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
-    );
+    _scale = Tween<double>(
+      begin: 1.0,
+      end: 0.88,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
   }
 
   @override
@@ -243,13 +244,14 @@ class _InteractionButtonState extends State<_InteractionButton>
 
   @override
   Widget build(BuildContext context) {
-    final label =
-        widget.count > 0 ? '${widget.count} ${widget.label}' : widget.label;
+    final label = widget.count > 0
+        ? '${widget.count} ${widget.label}'
+        : widget.label;
     final color = widget.muted
         ? AppColors.textTertiary
         : _isFlashing
-            ? widget.flashColor
-            : AppColors.textSecondary;
+        ? widget.flashColor
+        : AppColors.textSecondary;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -290,8 +292,9 @@ class _InteractionButtonState extends State<_InteractionButton>
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 11,
-                      fontWeight:
-                          _isFlashing ? FontWeight.w700 : FontWeight.w600,
+                      fontWeight: _isFlashing
+                          ? FontWeight.w700
+                          : FontWeight.w600,
                       color: color,
                       fontFamily: AppTypography.fontFamily,
                     ),
@@ -308,6 +311,7 @@ class _InteractionButtonState extends State<_InteractionButton>
 
 bool _isPublicContextClosed(EchoEntity echo) {
   final closesAt = echo.publicContextClosesAt;
-  return echo.publicVerdict != 'open' ||
+  return (echo.publicVerdict != 'open' &&
+          echo.publicVerdict != 'needs_context') ||
       (closesAt != null && !closesAt.isAfter(DateTime.now()));
 }

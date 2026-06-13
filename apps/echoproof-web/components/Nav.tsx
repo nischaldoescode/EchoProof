@@ -40,7 +40,7 @@ export default function Nav() {
             />
           </div>
           <span className="font-semibold text-[15px] tracking-tight text-charcoal">
-            Echoproof
+            Echo<span className="text-[#2E6FAE]">Proof</span>
           </span>
         </Link>
 

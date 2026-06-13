@@ -60,8 +60,11 @@ class EchoCardShimmer extends StatelessWidget {
 }
 
 class _ShimmerBox extends StatelessWidget {
-  const _ShimmerBox(
-      {required this.width, required this.height, this.radius = 6});
+  const _ShimmerBox({
+    required this.width,
+    required this.height,
+    this.radius = 6,
+  });
   final double width;
   final double height;
   final double radius;
@@ -80,11 +83,7 @@ class _ShimmerBox extends StatelessWidget {
 }
 
 class EchoLogoLoader extends StatefulWidget {
-  const EchoLogoLoader({
-    super.key,
-    this.size = 74,
-    this.label,
-  });
+  const EchoLogoLoader({super.key, this.size = 74, this.label});
 
   final double size;
   final String? label;
@@ -122,58 +121,12 @@ class _EchoLogoLoaderState extends State<EchoLogoLoader>
             animation: _controller,
             builder: (context, child) {
               final value = _controller.value;
-              final glow = 0.16 + (value < 0.5 ? value : 1 - value) * 0.28;
 
-              return Transform.scale(
-                scale: 0.96 + glow * 0.12,
-                child: Container(
-                  width: widget.size,
-                  height: widget.size,
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppColors.white,
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(color: AppColors.borderSubtle),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.fernGreen.withValues(alpha: glow),
-                        blurRadius: 26,
-                        spreadRadius: 1,
-                      ),
-                    ],
-                  ),
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(14),
-                        child: Image.asset(
-                          'assets/images/logo.png',
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                      Positioned.fill(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(14),
-                          child: FractionalTranslation(
-                            translation: Offset(-1.4 + value * 2.8, 0),
-                            child: Container(
-                              width: widget.size * 0.34,
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    Colors.white.withValues(alpha: 0),
-                                    Colors.white.withValues(alpha: 0.62),
-                                    Colors.white.withValues(alpha: 0),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+              return SizedBox(
+                width: widget.size * 1.35,
+                height: widget.size * 0.74,
+                child: CustomPaint(
+                  painter: _SignalFlowLoaderPainter(progress: value),
                 ),
               );
             },
@@ -192,5 +145,67 @@ class _EchoLogoLoaderState extends State<EchoLogoLoader>
         ],
       ),
     );
+  }
+}
+
+class _SignalFlowLoaderPainter extends CustomPainter {
+  const _SignalFlowLoaderPainter({required this.progress});
+
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final railPaint = Paint()
+      ..color = AppColors.fernGreen.withValues(alpha: 0.10)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5
+      ..strokeCap = StrokeCap.round;
+    final pulsePaint = Paint()
+      ..shader = LinearGradient(
+        colors: [
+          AppColors.fernGreen.withValues(alpha: 0),
+          AppColors.fernGreen.withValues(alpha: 0.85),
+          AppColors.fernGreenDark.withValues(alpha: 0.72),
+          AppColors.fernGreen.withValues(alpha: 0),
+        ],
+      ).createShader(Offset.zero & size)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3.2
+      ..strokeCap = StrokeCap.round;
+    final dotPaint = Paint()
+      ..color = AppColors.fernGreenDark.withValues(alpha: 0.72)
+      ..style = PaintingStyle.fill;
+
+    for (var i = 0; i < 3; i++) {
+      final inset = i * size.height * 0.13;
+      final rect = Rect.fromCenter(
+        center: center,
+        width: size.width - inset * 2,
+        height: size.height - inset * 1.3,
+      );
+      final start = -2.85 + i * 0.18;
+      final sweep = 1.22 + i * 0.08;
+      canvas.drawArc(rect, start, sweep, false, railPaint);
+      canvas.drawArc(
+        rect,
+        start + progress * 6.28318530718,
+        sweep * 0.54,
+        false,
+        pulsePaint,
+      );
+    }
+
+    final dotX = (size.width * (0.18 + progress * 0.64)).clamp(
+      size.width * 0.18,
+      size.width * 0.82,
+    );
+    final dotY = center.dy + (progress - 0.5).abs() * size.height * 0.18;
+    canvas.drawCircle(Offset(dotX.toDouble(), dotY), 3.5, dotPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _SignalFlowLoaderPainter oldDelegate) {
+    return progress != oldDelegate.progress;
   }
 }

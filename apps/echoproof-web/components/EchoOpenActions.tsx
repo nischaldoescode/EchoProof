@@ -80,10 +80,10 @@ export default function EchoOpenActions({ echoId }: { echoId: string }) {
         {opening ? (
           <>
             <span className="h-2.5 w-2.5 animate-ping rounded-full bg-fern-green" />
-            Opening Echoproof
+            Opening EchoProof
           </>
         ) : (
-          "Open in Echoproof"
+          "Open in EchoProof"
         )}
       </a>
       <a

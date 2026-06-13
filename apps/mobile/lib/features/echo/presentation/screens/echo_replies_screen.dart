@@ -132,9 +132,9 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
             .eq('type', 'like')
             .filter('reply_id', 'in', '(${replyIds.join(',')})');
         likedIds.addAll(
-          List<Map<String, dynamic>>.from(likeRows as List)
-              .map((row) => row['reply_id'] as String?)
-              .whereType<String>(),
+          List<Map<String, dynamic>>.from(
+            likeRows as List,
+          ).map((row) => row['reply_id'] as String?).whereType<String>(),
         );
       }
 
@@ -219,10 +219,12 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
 
   Future<void> _toggleReplyLike(String replyId) async {
     try {
-      final rows = await Supabase.instance.client.rpc(
-        'toggle_echo_reply_like',
-        params: {'p_reply_id': replyId},
-      ) as List;
+      final rows =
+          await Supabase.instance.client.rpc(
+                'toggle_echo_reply_like',
+                params: {'p_reply_id': replyId},
+              )
+              as List;
       final row = rows.isEmpty ? null : rows.first as Map<String, dynamic>;
       final liked = row?['liked'] as bool? ?? !_likedReplyIds.contains(replyId);
       final nextCount = (row?['like_count'] as num?)?.toInt();
@@ -238,7 +240,8 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
           if (reply['id'] != replyId) return reply;
           return {
             ...reply,
-            'like_count': nextCount ??
+            'like_count':
+                nextCount ??
                 ((reply['like_count'] as num?)?.toInt() ?? 0) +
                     (liked ? 1 : -1),
           };
@@ -282,8 +285,10 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Delete this reply?',
-                  style: AppTypography.textTheme.titleMedium),
+              Text(
+                'Delete this reply?',
+                style: AppTypography.textTheme.titleMedium,
+              ),
               const SizedBox(height: AppSpacing.sm),
               Text(
                 'Reply deletion is limited to 1 per day and checked on the server.',
@@ -347,8 +352,9 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
         _replies = _replies
             .where((reply) => !removedIds.contains(reply['id'] as String?))
             .toList();
-        _likedReplyIds =
-            _likedReplyIds.where((id) => !removedIds.contains(id)).toSet();
+        _likedReplyIds = _likedReplyIds
+            .where((id) => !removedIds.contains(id))
+            .toSet();
       });
       if (mounted) showSuccessSnack(context, 'Reply deleted');
     } catch (e) {
@@ -370,8 +376,9 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
   @override
   Widget build(BuildContext context) {
     // group replies into threads: top-level and their children
-    final topLevel =
-        _replies.where((r) => r['parent_reply_id'] == null).toList();
+    final topLevel = _replies
+        .where((r) => r['parent_reply_id'] == null)
+        .toList();
     final byParent = <String, List<Map<String, dynamic>>>{};
     for (final reply in _replies) {
       final parentId = reply['parent_reply_id'] as String?;
@@ -397,8 +404,10 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
         elevation: 0,
         scrolledUnderElevation: 0.5,
         shadowColor: AppColors.borderSubtle,
-        title: Text(context.l('Thread'),
-            style: AppTypography.textTheme.titleLarge),
+        title: Text(
+          context.l('Thread'),
+          style: AppTypography.textTheme.titleLarge,
+        ),
         foregroundColor: AppColors.charcoal,
       ),
       body: Column(
@@ -431,8 +440,9 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
                           );
                         }
                         final reply = topLevel[index - 1];
-                        final children =
-                            collectDescendants(reply['id'] as String);
+                        final children = collectDescendants(
+                          reply['id'] as String,
+                        );
 
                         return _ReplyThread(
                           reply: reply,
@@ -503,9 +513,7 @@ class _OriginalEchoHeaderState extends State<_OriginalEchoHeader> {
     return Container(
       padding: const EdgeInsets.all(AppSpacing.xl),
       decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: AppColors.borderSubtle),
-        ),
+        border: Border(bottom: BorderSide(color: AppColors.borderSubtle)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -586,16 +594,18 @@ class _ReplyThread extends StatelessWidget {
     final username = user['username'] as String? ?? 'unknown';
     final displayName =
         (user['display_name'] as String?)?.trim().isNotEmpty == true
-            ? user['display_name'] as String
-            : username;
+        ? user['display_name'] as String
+        : username;
     final avatarUrl = user['avatar_url'] as String?;
-    final created = DateTime.tryParse(reply['created_at'] as String? ?? '') ??
+    final created =
+        DateTime.tryParse(reply['created_at'] as String? ?? '') ??
         DateTime.now();
     final userId = user['id'] as String?;
     final replyId = reply['id'] as String;
     final storedChildCount = (reply['child_reply_count'] as num?)?.toInt() ?? 0;
-    final childCount =
-        storedChildCount < children.length ? children.length : storedChildCount;
+    final childCount = storedChildCount < children.length
+        ? children.length
+        : storedChildCount;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -671,15 +681,17 @@ class _ReplyThread extends StatelessWidget {
           ),
         ),
         // nested children
-        ...children.map((child) => _NestedReply(
-              reply: child,
-              onReply: onReply,
-              onLike: onLike,
-              onDelete: onDelete,
-              onAuthorTap: onAuthorTap,
-              currentUserId: currentUserId,
-              likedReplyIds: likedReplyIds,
-            )),
+        ...children.map(
+          (child) => _NestedReply(
+            reply: child,
+            onReply: onReply,
+            onLike: onLike,
+            onDelete: onDelete,
+            onAuthorTap: onAuthorTap,
+            currentUserId: currentUserId,
+            likedReplyIds: likedReplyIds,
+          ),
+        ),
         if (!isLastTop) const Divider(height: 1, indent: 56),
       ],
     );
@@ -711,11 +723,12 @@ class _NestedReply extends StatelessWidget {
     final username = user['username'] as String? ?? 'unknown';
     final displayName =
         (user['display_name'] as String?)?.trim().isNotEmpty == true
-            ? user['display_name'] as String
-            : username;
+        ? user['display_name'] as String
+        : username;
     final avatarUrl = user['avatar_url'] as String?;
     final userId = user['id'] as String?;
-    final created = DateTime.tryParse(reply['created_at'] as String? ?? '') ??
+    final created =
+        DateTime.tryParse(reply['created_at'] as String? ?? '') ??
         DateTime.now();
     final replyId = reply['id'] as String;
 
@@ -1015,10 +1028,9 @@ class _InlineReplyBadge extends StatelessWidget {
 
     if (!isPro && !isTrusted) return const SizedBox.shrink();
 
-    final color = isPro ? const Color(0xFFFFB300) : AppColors.fernGreen;
-    final bg = isPro ? const Color(0xFFFFF6D7) : AppColors.fernGreenLight;
-    final icon =
-        isPro ? Icons.workspace_premium_rounded : Icons.verified_rounded;
+    final color = AppColors.fernGreen;
+    final bg = AppColors.fernGreenLight;
+    final icon = Icons.verified_rounded;
 
     return Tooltip(
       message: isPro ? 'Pro' : 'Trusted',
@@ -1044,7 +1056,7 @@ bool _isBadgedUser(Map<String, dynamic> user) {
       trustTier == 'elite';
 }
 
-class _ReplyInput extends StatelessWidget {
+class _ReplyInput extends StatefulWidget {
   const _ReplyInput({
     required this.replyKey,
     required this.replyingToUsername,
@@ -1062,13 +1074,25 @@ class _ReplyInput extends StatelessWidget {
   final VoidCallback onCancelReply;
 
   @override
+  State<_ReplyInput> createState() => _ReplyInputState();
+}
+
+class _ReplyInputState extends State<_ReplyInput> {
+  bool _focused = false;
+
+  @override
   Widget build(BuildContext context) {
+    final replyKey = widget.replyKey;
+    final replyingToUsername = widget.replyingToUsername;
+    final mentionableUsers = widget.mentionableUsers;
+    final isSubmitting = widget.isSubmitting;
+    final onSubmit = widget.onSubmit;
+    final onCancelReply = widget.onCancelReply;
+
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.white,
-        border: Border(
-          top: BorderSide(color: AppColors.borderSubtle),
-        ),
+        border: Border(top: BorderSide(color: AppColors.borderSubtle)),
       ),
       child: SafeArea(
         top: false,
@@ -1088,7 +1112,7 @@ class _ReplyInput extends StatelessWidget {
                   children: [
                     Text(
                       context.l('Replying to @{username}', {
-                        'username': replyingToUsername!,
+                        'username': replyingToUsername,
                       }),
                       style: GoogleFonts.josefinSans(
                         fontSize: 12,
@@ -1132,72 +1156,98 @@ class _ReplyInput extends StatelessWidget {
                   ),
                   const SizedBox(width: AppSpacing.sm),
                   Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: AppColors.softSand,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppColors.borderSubtle),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.md,
-                        vertical: AppSpacing.xs,
-                      ),
-                      child: FlutterMentions(
-                        key: replyKey,
-                        suggestionPosition: SuggestionPosition.Top,
-                        maxLines: 5,
-                        minLines: 1,
-                        style: AppTypography.textTheme.bodyMedium,
-                        decoration: InputDecoration(
-                          hintText: replyingToUsername != null
-                              ? context.l('Reply to @{username}...', {
-                                  'username': replyingToUsername!,
-                                })
-                              : context.l('Add a reply...'),
-                          hintStyle: GoogleFonts.josefinSans(
-                            fontSize: 14,
-                            color: AppColors.textTertiary,
+                    child: Focus(
+                      onFocusChange: (focused) {
+                        if (_focused == focused) return;
+                        setState(() => _focused = focused);
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        curve: Curves.easeOutCubic,
+                        decoration: BoxDecoration(
+                          color: _focused
+                              ? AppColors.white
+                              : AppColors.softSand,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: _focused
+                                ? AppColors.fernGreen.withValues(alpha: 0.48)
+                                : AppColors.borderSubtle,
+                            width: _focused ? 1.2 : 1,
                           ),
-                          border: InputBorder.none,
-                          isDense: true,
-                          contentPadding:
-                              const EdgeInsets.symmetric(vertical: 8),
-                        ),
-                        suggestionListDecoration: BoxDecoration(
-                          color: AppColors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.borderSubtle),
                           boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.08),
-                              blurRadius: 12,
-                              offset: const Offset(0, -4),
+                            if (_focused)
+                              BoxShadow(
+                                color: AppColors.fernGreen.withValues(
+                                  alpha: 0.08,
+                                ),
+                                blurRadius: 14,
+                                offset: const Offset(0, 5),
+                              ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.md,
+                          vertical: AppSpacing.xs,
+                        ),
+                        child: FlutterMentions(
+                          key: replyKey,
+                          suggestionPosition: SuggestionPosition.Top,
+                          maxLines: 5,
+                          minLines: 1,
+                          style: AppTypography.textTheme.bodyMedium,
+                          decoration: InputDecoration(
+                            hintText: replyingToUsername != null
+                                ? context.l('Reply to @{username}...', {
+                                    'username': replyingToUsername,
+                                  })
+                                : context.l('Add a reply...'),
+                            hintStyle: GoogleFonts.josefinSans(
+                              fontSize: 14,
+                              color: AppColors.textTertiary,
+                            ),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 8,
+                            ),
+                          ),
+                          suggestionListDecoration: BoxDecoration(
+                            color: AppColors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.borderSubtle),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.08),
+                                blurRadius: 12,
+                                offset: const Offset(0, -4),
+                              ),
+                            ],
+                          ),
+                          mentions: [
+                            Mention(
+                              trigger: '@',
+                              style: GoogleFonts.josefinSans(
+                                color: AppColors.fernGreen,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              data: mentionableUsers,
+                              suggestionBuilder: (data) {
+                                return _MentionSuggestionTile(data: data);
+                              },
+                            ),
+                            Mention(
+                              trigger: '~',
+                              style: GoogleFonts.josefinSans(
+                                color: AppColors.fernGreen,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              data: const [],
+                              matchAll: true,
+                              disableMarkup: true,
                             ),
                           ],
                         ),
-                        mentions: [
-                          Mention(
-                            trigger: '@',
-                            style: GoogleFonts.josefinSans(
-                              color: AppColors.fernGreen,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            data: mentionableUsers,
-                            suggestionBuilder: (data) {
-                              return _MentionSuggestionTile(data: data);
-                            },
-                          ),
-                          Mention(
-                            trigger: '~',
-                            style: GoogleFonts.josefinSans(
-                              color: AppColors.fernGreen,
-                              fontWeight: FontWeight.w500,
-                            ),
-                            data: const [],
-                            matchAll: true,
-                            disableMarkup: true,
-                          ),
-                        ],
                       ),
                     ),
                   ),
@@ -1275,8 +1325,11 @@ class _MentionSuggestionTile extends StatelessWidget {
             backgroundColor: AppColors.softSand,
             backgroundImage: avatarImageProvider(avatarUrl),
             child: avatarImageProvider(avatarUrl) == null
-                ? const Icon(Icons.person_outline,
-                    size: 16, color: AppColors.textTertiary)
+                ? const Icon(
+                    Icons.person_outline,
+                    size: 16,
+                    color: AppColors.textTertiary,
+                  )
                 : null,
           ),
           const SizedBox(width: AppSpacing.sm),
@@ -1320,8 +1373,11 @@ class _VerifiedAvatar extends StatelessWidget {
           backgroundColor: AppColors.softSand,
           backgroundImage: avatarImageProvider(avatarUrl),
           child: avatarImageProvider(avatarUrl) == null
-              ? Icon(Icons.person_outline,
-                  size: size * 0.5, color: AppColors.textTertiary)
+              ? Icon(
+                  Icons.person_outline,
+                  size: size * 0.5,
+                  color: AppColors.textTertiary,
+                )
               : null,
         ),
       ),

@@ -38,10 +38,12 @@ class EchoCard extends StatefulWidget {
     super.key,
     required this.echo,
     this.onTap,
+    this.showReplyPreview = true,
   });
 
   final EchoEntity echo;
   final VoidCallback? onTap;
+  final bool showReplyPreview;
 
   @override
   State<EchoCard> createState() => _EchoCardState();
@@ -96,7 +98,8 @@ class _EchoCardState extends State<EchoCard> {
       return;
     }
     const targetLang = 'en';
-    final cacheKey = 'translation:v1:$targetLang:'
+    final cacheKey =
+        'translation:v1:$targetLang:'
         '${sha256.convert(utf8.encode('${echo.id}|${echo.title}|${echo.content}'))}';
     if (Hive.isBoxOpen('echo_cache')) {
       final cached = Hive.box('echo_cache').get(cacheKey);
@@ -154,18 +157,29 @@ class _EchoCardState extends State<EchoCard> {
     }
   }
 
+  void _openHashtag(String tag) {
+    final clean = tag.trim();
+    if (clean.length < 2) return;
+    context.push('/search?q=${Uri.encodeQueryComponent(clean)}');
+  }
+
   Future<void> _recordDwell(int seconds) async {
     try {
       final client = Supabase.instance.client;
       final userId = client.auth.currentUser?.id;
       if (userId == null) return;
       // fire and forget so analytics never blocks the ui
-      unawaited(client.rpc('record_dwell_signal', params: {
-        'p_user_id': userId,
-        'p_echo_id': echo.id,
-        'p_category': echo.category.name,
-        'p_seconds': seconds,
-      }));
+      unawaited(
+        client.rpc(
+          'record_dwell_signal',
+          params: {
+            'p_user_id': userId,
+            'p_echo_id': echo.id,
+            'p_category': echo.category.name,
+            'p_seconds': seconds,
+          },
+        ),
+      );
     } catch (_) {}
   }
 
@@ -181,8 +195,9 @@ class _EchoCardState extends State<EchoCard> {
       _solanaStatusOverride = 'recording';
     });
     try {
-      final signature =
-          await SolanaRecordRetryService.retryEchoCreation(echo.id);
+      final signature = await SolanaRecordRetryService.retryEchoCreation(
+        echo.id,
+      );
       if (!mounted) return;
       setState(() {
         if (signature != null) {
@@ -216,20 +231,21 @@ class _EchoCardState extends State<EchoCard> {
     final cardColor = isWindowEndedOpen
         ? const Color(0xFFFCFAF6)
         : challengeHeavy
-            ? const Color(0xFFFFFCFA)
-            : const Color(0xFFFFFEFC);
+        ? const Color(0xFFFFFCFA)
+        : AppColors.white;
     final dividerColor = isWindowEndedOpen
         ? const Color(0xFFE2DAD0)
         : challengeHeavy
-            ? AppColors.sunsetCoral.withValues(alpha: 0.16)
-            : AppColors.borderSubtle.withValues(alpha: 0.82);
+        ? AppColors.sunsetCoral.withValues(alpha: 0.16)
+        : AppColors.borderSubtle.withValues(alpha: 0.82);
     final solanaStatus = _solanaStatusOverride ?? echo.solanaStatus;
     final createdRecordTx = _createdRecordTxOverride ?? echo.createdRecordTx;
     final showSolanaRecord = _shouldShowSolanaRecord(
       echo: echo,
       signature: createdRecordTx,
     );
-    final canRetrySolana = showSolanaRecord &&
+    final canRetrySolana =
+        showSolanaRecord &&
         _canRetrySolanaRecord(
           echo: echo,
           status: solanaStatus,
@@ -258,16 +274,16 @@ class _EchoCardState extends State<EchoCard> {
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeOut,
           margin: const EdgeInsets.fromLTRB(
-            AppSpacing.md,
+            AppSpacing.lg,
             AppSpacing.xs,
+            AppSpacing.lg,
             AppSpacing.md,
-            AppSpacing.sm,
           ),
           padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            AppSpacing.lg,
+            AppSpacing.lg,
             AppSpacing.md,
-            AppSpacing.md,
-            AppSpacing.md,
-            AppSpacing.sm,
           ),
           decoration: BoxDecoration(
             color: cardColor,
@@ -276,137 +292,192 @@ class _EchoCardState extends State<EchoCard> {
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.026),
-                blurRadius: 14,
-                offset: const Offset(0, 6),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
               ),
             ],
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _openAuthorProfile,
-                child: _AvatarWithRing(
-                  avatarUrl: echo.userAvatarUrl,
-                  userIsVerified: echo.userIsVerified,
-                  userIsPro: echo.userIsPro,
-                ),
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (echo.socialContext != null) ...[
-                      _SocialContextPill(label: echo.socialContext!),
-                      const SizedBox(height: 5),
-                    ],
-                    _TweetHeader(echo: echo, onAuthorTap: _openAuthorProfile),
-                    const SizedBox(height: AppSpacing.xs),
-                    _PublicVerdictPill(echo: echo),
-                    const SizedBox(height: 6),
-                    _ContextMiniBar(echo: echo),
-                    const SizedBox(height: AppSpacing.xs),
-                    if (echo.title.isNotEmpty) ...[
-                      RichTextDisplay(
-                        text: _showTranslated && _translatedTitle != null
-                            ? _translatedTitle!
-                            : echo.title,
-                        style: AppTypography.textTheme.titleMedium,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        hideUrls: hideUrlText,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final showSideMedia =
+                  constraints.maxWidth >= 620 && echo.mediaUrls.isNotEmpty;
+              final sideMediaWidth = (constraints.maxWidth * 0.34)
+                  .clamp(210.0, 280.0)
+                  .toDouble();
+
+              final textBody = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (echo.title.isNotEmpty) ...[
+                    RichTextDisplay(
+                      text: _showTranslated && _translatedTitle != null
+                          ? _translatedTitle!
+                          : echo.title,
+                      style: AppTypography.textTheme.titleMedium?.copyWith(
+                        fontSize: 20,
+                        height: 1.16,
+                        color: AppColors.charcoal,
                       ),
-                      const SizedBox(height: AppSpacing.xs),
-                    ],
-                    _ExpandableEchoText(
-                      text: _showTranslated && _translatedContent != null
-                          ? _translatedContent!
-                          : echo.content,
-                      style: AppTypography.textTheme.bodyMedium,
+                      maxLines: showSideMedia ? 3 : 2,
+                      overflow: TextOverflow.ellipsis,
                       hideUrls: hideUrlText,
+                      onHashtagTap: _openHashtag,
                     ),
-                    if (previewUrl != null) ...[
-                      EchoLinkPreview(
-                        url: previewUrl,
-                        onUnavailable: () {
-                          if (mounted) {
-                            setState(() => _previewUnavailable = true);
-                          }
-                        },
+                    const SizedBox(height: AppSpacing.xs),
+                  ],
+                  _ExpandableEchoText(
+                    text: _showTranslated && _translatedContent != null
+                        ? _translatedContent!
+                        : echo.content,
+                    style: AppTypography.textTheme.bodyMedium?.copyWith(
+                      height: 1.42,
+                      color: AppColors.textSecondary,
+                    ),
+                    hideUrls: hideUrlText,
+                    onHashtagTap: _openHashtag,
+                  ),
+                  if (previewUrl != null) ...[
+                    EchoLinkPreview(
+                      url: previewUrl,
+                      onUnavailable: () {
+                        if (mounted) {
+                          setState(() => _previewUnavailable = true);
+                        }
+                      },
+                    ),
+                  ],
+                ],
+              );
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (echo.socialContext != null) ...[
+                    _SocialContextPill(label: echo.socialContext!),
+                    const SizedBox(height: AppSpacing.sm),
+                  ],
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _openAuthorProfile,
+                        child: _AvatarWithRing(
+                          avatarUrl: echo.userAvatarUrl,
+                          userIsVerified: echo.userIsVerified,
+                          userIsPro: echo.userIsPro,
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: _TweetHeader(
+                          echo: echo,
+                          onAuthorTap: _openAuthorProfile,
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      _CategoryLabel(
+                        category: echo.category,
+                        detail: echo.categoryDetail,
                       ),
                     ],
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  if (showSideMedia)
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: textBody),
+                        const SizedBox(width: AppSpacing.lg),
+                        SizedBox(
+                          width: sideMediaWidth,
+                          child: _EchoMediaPreview(
+                            echoId: echo.id,
+                            urls: echo.mediaUrls,
+                            compactHeight: true,
+                          ),
+                        ),
+                      ],
+                    )
+                  else ...[
+                    textBody,
                     if (echo.mediaUrls.isNotEmpty) ...[
                       const SizedBox(height: AppSpacing.md),
                       _EchoMediaPreview(echoId: echo.id, urls: echo.mediaUrls),
                     ],
-                    const SizedBox(height: AppSpacing.sm),
-                    Wrap(
-                      spacing: AppSpacing.xs,
-                      runSpacing: AppSpacing.xs,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        _CategoryLabel(
-                          category: echo.category,
-                          detail: echo.categoryDetail,
-                        ),
-                        _StatusLabel(status: echo.status),
-                        if (showSolanaRecord)
-                          SolanaStatusChip(
-                            status: solanaStatus,
-                            signature: createdRecordTx,
-                            isRetrying: _isRetryingSolanaRecord,
-                            onRetry: canRetrySolana ? _retrySolanaRecord : null,
-                          ),
-                        _TranslateButton(
-                          isTranslating: _isTranslating,
-                          showTranslated: _showTranslated,
-                          onTap: _translate,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                    ConfidenceBar(
-                      confidence: echo.confidenceScore,
-                      status: echo.status,
-                    ),
-                    const SizedBox(height: AppSpacing.xs),
-                    InteractionButtons(echo: echo, dense: true),
-                    if (echo.topContext != null) ...[
-                      const SizedBox(height: AppSpacing.sm),
-                      _ContextPreviewCard(
-                        contextPreview: echo.topContext!,
-                        onTap: () {
-                          final preview = echo.topContext!;
-                          context.push(
-                            '/feed/echo/${echo.id}'
-                            '?stance=${Uri.encodeComponent(preview.stance)}'
-                            '&context=${Uri.encodeComponent(preview.id)}',
-                          );
-                        },
-                        onAuthorTap: (username, userId) =>
-                            _openProfile(username, userId: userId),
-                      ),
-                    ],
-                    if (echo.previewReplies.isNotEmpty) ...[
-                      const SizedBox(height: AppSpacing.sm),
-                      _ReplyPreviewCard(
-                        reply: echo.previewReplies.first,
-                        totalReplyCount: echo.replyCount,
-                        onTap: () => context.push('/echo/${echo.id}/replies'
-                            '?author=${Uri.encodeComponent(echo.username)}'
-                            '&content=${Uri.encodeComponent(echo.content)}'
-                            '&authorId=${Uri.encodeComponent(echo.userId)}'
-                            '${echo.userAvatarUrl == null ? '' : '&avatar=${Uri.encodeComponent(echo.userAvatarUrl!)}'}'),
-                        onAuthorTap: (username, userId) =>
-                            _openProfile(username, userId: userId),
-                      ),
-                    ],
                   ],
-                ),
-              ),
-            ],
+                  const SizedBox(height: AppSpacing.md),
+                  Row(
+                    children: [
+                      Expanded(child: _PublicVerdictPill(echo: echo)),
+                      const SizedBox(width: AppSpacing.sm),
+                      _StatusLabel(status: echo.status),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  Wrap(
+                    spacing: AppSpacing.xs,
+                    runSpacing: AppSpacing.xs,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (showSolanaRecord)
+                        SolanaStatusChip(
+                          status: solanaStatus,
+                          signature: createdRecordTx,
+                          isRetrying: _isRetryingSolanaRecord,
+                          onRetry: canRetrySolana ? _retrySolanaRecord : null,
+                        ),
+                      _TranslateButton(
+                        isTranslating: _isTranslating,
+                        showTranslated: _showTranslated,
+                        onTap: _translate,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  ConfidenceBar(
+                    confidence: echo.confidenceScore,
+                    status: echo.status,
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  InteractionButtons(echo: echo, dense: true),
+                  if (echo.topContext != null) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    _ContextPreviewCard(
+                      contextPreview: echo.topContext!,
+                      onTap: () {
+                        final preview = echo.topContext!;
+                        context.push(
+                          '/feed/echo/${echo.id}'
+                          '?stance=${Uri.encodeComponent(preview.stance)}'
+                          '&context=${Uri.encodeComponent(preview.id)}',
+                        );
+                      },
+                      onAuthorTap: (username, userId) =>
+                          _openProfile(username, userId: userId),
+                    ),
+                  ],
+                  if (widget.showReplyPreview &&
+                      echo.previewReplies.isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    EchoReplyPreviewCard(
+                      reply: echo.previewReplies.first,
+                      totalReplyCount: echo.replyCount,
+                      onHashtagTap: _openHashtag,
+                      onTap: () => context.push(
+                        '/echo/${echo.id}/replies'
+                        '?author=${Uri.encodeComponent(echo.username)}'
+                        '&content=${Uri.encodeComponent(echo.content)}'
+                        '&authorId=${Uri.encodeComponent(echo.userId)}'
+                        '${echo.userAvatarUrl == null ? '' : '&avatar=${Uri.encodeComponent(echo.userAvatarUrl!)}'}',
+                      ),
+                      onAuthorTap: (username, userId) =>
+                          _openProfile(username, userId: userId),
+                    ),
+                  ],
+                ],
+              );
+            },
           ),
         ),
       ),
@@ -458,6 +529,8 @@ class _PublicVerdictPill extends StatelessWidget {
       'supported' => AppColors.fernGreenDark,
       'not_supported' => AppColors.sunsetCoralDark,
       'contested' => AppColors.statusControversial,
+      'needs_context' => AppColors.statusUnderReview,
+      'insufficient_context' => AppColors.textSecondary,
       _ when windowEndedOpen => const Color(0xFF8A756B),
       _ when challengeHeavy => AppColors.sunsetCoralDark,
       _ => AppColors.textTertiary,
@@ -466,6 +539,8 @@ class _PublicVerdictPill extends StatelessWidget {
       'supported' => 'Supported by public context',
       'not_supported' => 'Not supported by public context',
       'contested' => 'Public context is split',
+      'needs_context' => 'Needs public context',
+      'insufficient_context' => 'Insufficient public context',
       _ when windowEndedOpen => 'Public context window ended',
       _ when challengeHeavy => 'Challenge context is leading',
       _ => 'Open for public context',
@@ -485,11 +560,14 @@ class _PublicVerdictPill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            verdict == 'not_supported' || challengeHeavy
-                ? Icons.report_problem_outlined
-                : windowEndedOpen
-                    ? Icons.lock_clock_outlined
-                    : Icons.groups_2_outlined,
+            switch (verdict) {
+              'not_supported' => Icons.report_problem_outlined,
+              'needs_context' => Icons.fact_check_outlined,
+              'insufficient_context' => Icons.hourglass_empty_rounded,
+              _ when challengeHeavy => Icons.report_problem_outlined,
+              _ when windowEndedOpen => Icons.lock_clock_outlined,
+              _ => Icons.groups_2_outlined,
+            },
             size: 13,
             color: color,
           ),
@@ -512,90 +590,8 @@ class _PublicVerdictPill extends StatelessWidget {
   }
 }
 
-class _ContextMiniBar extends StatelessWidget {
-  const _ContextMiniBar({required this.echo});
-  final EchoEntity echo;
-
-  @override
-  Widget build(BuildContext context) {
-    final support = echo.supportCount;
-    final challenge = echo.challengeCount;
-    final total = support + challenge;
-    final supportFlex = total == 0 ? 1 : support.clamp(0, 999).toInt();
-    final challengeFlex = total == 0 ? 1 : challenge.clamp(0, 999).toInt();
-    final threshold =
-        echo.publicContextMinCount <= 0 ? 7 : echo.publicContextMinCount;
-    final progress = (total / threshold).clamp(0.0, 1.0).toDouble();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-          child: SizedBox(
-            height: 5,
-            child: Row(
-              children: [
-                Expanded(
-                  flex: supportFlex == 0 ? 1 : supportFlex,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 220),
-                    color: total == 0
-                        ? AppColors.borderSubtle
-                        : AppColors.fernGreen.withValues(alpha: 0.78),
-                  ),
-                ),
-                Expanded(
-                  flex: challengeFlex == 0 ? 1 : challengeFlex,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 220),
-                    color: total == 0
-                        ? AppColors.borderSubtle
-                        : const Color(0xFFD78976).withValues(alpha: 0.76),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            Text(
-              '$support support',
-              style: GoogleFonts.josefinSans(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w700,
-                color: AppColors.fernGreenDark,
-              ),
-            ),
-            const Spacer(),
-            Text(
-              '${(progress * 100).round()}% eval',
-              style: GoogleFonts.josefinSans(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textTertiary,
-              ),
-            ),
-            const Spacer(),
-            Text(
-              '$challenge challenge',
-              style: GoogleFonts.josefinSans(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFF9E5A4D),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
 String _contextWindowLabel(EchoEntity echo) {
-  if (echo.publicVerdict != 'open') {
+  if (echo.publicVerdict != 'open' && echo.publicVerdict != 'needs_context') {
     final decided = echo.publicVerdictAt;
     return decided == null
         ? 'decided'
@@ -612,7 +608,8 @@ String _contextWindowLabel(EchoEntity echo) {
 
 bool _isContextWindowEndedOpen(EchoEntity echo) {
   final closesAt = echo.publicContextClosesAt;
-  return echo.publicVerdict == 'open' &&
+  return (echo.publicVerdict == 'open' ||
+          echo.publicVerdict == 'needs_context') &&
       closesAt != null &&
       !closesAt.isAfter(DateTime.now());
 }
@@ -621,7 +618,9 @@ bool _shouldShowSolanaRecord({
   required EchoEntity echo,
   required String? signature,
 }) {
-  if (echo.publicVerdict == 'open') return false;
+  if (echo.publicVerdict == 'open' || echo.publicVerdict == 'needs_context') {
+    return false;
+  }
   final currentUserId = Supabase.instance.client.auth.currentUser?.id;
   final isOwnEcho = currentUserId != null && currentUserId == echo.userId;
   if (signature != null && signature.isNotEmpty) {
@@ -631,7 +630,10 @@ bool _shouldShowSolanaRecord({
 }
 
 bool _isChallengeHeavy(EchoEntity echo) {
-  if (echo.publicVerdict == 'not_supported') return true;
+  if (echo.publicVerdict == 'not_supported' ||
+      echo.publicVerdict == 'needs_context') {
+    return true;
+  }
   final total = echo.supportCount + echo.challengeCount;
   if (total < 3) return false;
   final challengeShare = echo.challengeCount / total;
@@ -643,7 +645,9 @@ bool _canRetrySolanaRecord({
   required String status,
   required String? signature,
 }) {
-  if (echo.publicVerdict == 'open') return false;
+  if (echo.publicVerdict == 'open' || echo.publicVerdict == 'needs_context') {
+    return false;
+  }
   final currentUserId = Supabase.instance.client.auth.currentUser?.id;
   if (currentUserId == null || currentUserId != echo.userId) return false;
   if (signature != null && signature.isNotEmpty) return false;
@@ -664,8 +668,9 @@ class _ContextPreviewCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isSupport = contextPreview.stance == 'support';
-    final color =
-        isSupport ? AppColors.fernGreenDark : AppColors.sunsetCoralDark;
+    final color = isSupport
+        ? AppColors.fernGreenDark
+        : AppColors.sunsetCoralDark;
     final extraMedia = contextPreview.mediaUrls.isNotEmpty
         ? ' · ${contextPreview.mediaUrls.length} media'
         : '';
@@ -783,27 +788,33 @@ class _ContextPreviewCard extends StatelessWidget {
   }
 }
 
-class _ReplyPreviewCard extends StatefulWidget {
-  const _ReplyPreviewCard({
+class EchoReplyPreviewCard extends StatefulWidget {
+  const EchoReplyPreviewCard({
+    super.key,
     required this.reply,
     required this.totalReplyCount,
+    required this.onHashtagTap,
     required this.onTap,
     required this.onAuthorTap,
+    this.detached = false,
   });
 
   final EchoReplyPreview reply;
   final int totalReplyCount;
+  final ValueChanged<String> onHashtagTap;
   final VoidCallback onTap;
   final void Function(String username, String? userId) onAuthorTap;
+  final bool detached;
 
   @override
-  State<_ReplyPreviewCard> createState() => _ReplyPreviewCardState();
+  State<EchoReplyPreviewCard> createState() => _EchoReplyPreviewCardState();
 }
 
-class _ReplyPreviewCardState extends State<_ReplyPreviewCard> {
+class _EchoReplyPreviewCardState extends State<EchoReplyPreviewCard> {
   bool _previewUnavailable = false;
   late bool _liked;
   late int _likeCount;
+  int _likeBurst = 0;
 
   @override
   void initState() {
@@ -813,7 +824,7 @@ class _ReplyPreviewCardState extends State<_ReplyPreviewCard> {
   }
 
   @override
-  void didUpdateWidget(covariant _ReplyPreviewCard oldWidget) {
+  void didUpdateWidget(covariant EchoReplyPreviewCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.reply.id != widget.reply.id) {
       _previewUnavailable = false;
@@ -830,15 +841,19 @@ class _ReplyPreviewCardState extends State<_ReplyPreviewCard> {
     final previousCount = _likeCount;
     setState(() {
       _liked = nextLiked;
-      _likeCount =
-          (_likeCount + (nextLiked ? 1 : -1)).clamp(0, 1 << 31).toInt();
+      _likeCount = (_likeCount + (nextLiked ? 1 : -1))
+          .clamp(0, 1 << 31)
+          .toInt();
+      if (nextLiked) _likeBurst++;
     });
 
     try {
-      final rows = await Supabase.instance.client.rpc(
-        'toggle_echo_reply_like',
-        params: {'p_reply_id': widget.reply.id},
-      ) as List;
+      final rows =
+          await Supabase.instance.client.rpc(
+                'toggle_echo_reply_like',
+                params: {'p_reply_id': widget.reply.id},
+              )
+              as List;
       final row = rows.isEmpty ? null : rows.first as Map<String, dynamic>?;
       if (!mounted || row == null) return;
       final liked = row['liked'] as bool? ?? nextLiked;
@@ -847,9 +862,9 @@ class _ReplyPreviewCardState extends State<_ReplyPreviewCard> {
         _likeCount = (row['like_count'] as num?)?.toInt() ?? _likeCount;
       });
       if (liked) {
-        unawaited(_notifySocialEvent('reply_like', {
-          'reply_id': widget.reply.id,
-        }));
+        unawaited(
+          _notifySocialEvent('reply_like', {'reply_id': widget.reply.id}),
+        );
       }
     } catch (_) {
       if (!mounted) return;
@@ -878,15 +893,23 @@ class _ReplyPreviewCardState extends State<_ReplyPreviewCard> {
     final previewUrl = extractFirstUrl(widget.reply.content);
     final hideUrlText = previewUrl != null && !_previewUnavailable;
     final extraReplies = widget.totalReplyCount - 1;
+    final followedCue = widget.reply.isFromFollowed
+        ? 'reply from someone you follow'
+        : 'recent reply';
 
-    return GestureDetector(
+    final thread = GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: widget.onTap,
       child: Container(
-        padding: const EdgeInsets.only(top: AppSpacing.sm),
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: AppColors.borderSubtle)),
+        padding: EdgeInsets.only(
+          top: widget.detached ? AppSpacing.xs : AppSpacing.sm,
+          bottom: widget.detached ? AppSpacing.sm : 0,
         ),
+        decoration: widget.detached
+            ? null
+            : const BoxDecoration(
+                border: Border(top: BorderSide(color: AppColors.borderSubtle)),
+              ),
         child: IntrinsicHeight(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -911,6 +934,32 @@ class _ReplyPreviewCardState extends State<_ReplyPreviewCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (!widget.detached)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: widget.reply.isFromFollowed
+                              ? AppColors.fernGreenLight
+                              : AppColors.surfaceSecondary,
+                          borderRadius: BorderRadius.circular(
+                            AppSpacing.radiusFull,
+                          ),
+                        ),
+                        child: Text(
+                          followedCue,
+                          style: GoogleFonts.josefinSans(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            color: widget.reply.isFromFollowed
+                                ? AppColors.fernGreenDark
+                                : AppColors.textTertiary,
+                          ),
+                        ),
+                      ),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -941,6 +990,7 @@ class _ReplyPreviewCardState extends State<_ReplyPreviewCard> {
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 hideUrls: hideUrlText,
+                                onHashtagTap: widget.onHashtagTap,
                               ),
                             ],
                           ),
@@ -979,33 +1029,54 @@ class _ReplyPreviewCardState extends State<_ReplyPreviewCard> {
                         GestureDetector(
                           behavior: HitTestBehavior.opaque,
                           onTap: _toggleLike,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
+                          child: Stack(
+                            clipBehavior: Clip.none,
                             children: [
-                              AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 180),
-                                child: Icon(
-                                  _liked
-                                      ? Icons.favorite_rounded
-                                      : Icons.favorite_border_rounded,
-                                  key: ValueKey(_liked),
-                                  size: 13,
-                                  color: _liked
-                                      ? AppColors.fernGreen
-                                      : AppColors.textTertiary,
-                                ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  AnimatedScale(
+                                    scale: _liked ? 1.14 : 1.0,
+                                    duration: const Duration(milliseconds: 170),
+                                    curve: Curves.easeOutBack,
+                                    child: AnimatedSwitcher(
+                                      duration: const Duration(
+                                        milliseconds: 180,
+                                      ),
+                                      child: Icon(
+                                        _liked
+                                            ? Icons.favorite_rounded
+                                            : Icons.favorite_border_rounded,
+                                        key: ValueKey(_liked),
+                                        size: 13,
+                                        color: _liked
+                                            ? AppColors.fernGreen
+                                            : AppColors.textTertiary,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _likeCount > 0 ? '$_likeCount' : 'Like',
+                                    style: GoogleFonts.josefinSans(
+                                      fontSize: 11,
+                                      color: _liked
+                                          ? AppColors.fernGreenDark
+                                          : AppColors.textTertiary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 4),
-                              Text(
-                                _likeCount > 0 ? '$_likeCount' : 'Like',
-                                style: GoogleFonts.josefinSans(
-                                  fontSize: 11,
-                                  color: _liked
-                                      ? AppColors.fernGreenDark
-                                      : AppColors.textTertiary,
-                                  fontWeight: FontWeight.w600,
+                              if (_likeBurst > 0 && _liked)
+                                Positioned(
+                                  key: ValueKey(_likeBurst),
+                                  left: 1,
+                                  top: -8,
+                                  child: _ReplyLikeBurst(
+                                    color: AppColors.fernGreen,
+                                  ),
                                 ),
-                              ),
                             ],
                           ),
                         ),
@@ -1018,6 +1089,24 @@ class _ReplyPreviewCardState extends State<_ReplyPreviewCard> {
           ),
         ),
       ),
+    );
+
+    if (!widget.detached) return thread;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        -AppSpacing.sm,
+        AppSpacing.lg,
+        AppSpacing.sm,
+      ),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        0,
+        AppSpacing.lg,
+        AppSpacing.sm,
+      ),
+      child: thread,
     );
   }
 }
@@ -1070,11 +1159,85 @@ class _ReplyPreviewHeader extends StatelessWidget {
   }
 }
 
+class _ReplyLikeBurst extends StatelessWidget {
+  const _ReplyLikeBurst({required this.color});
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: (1 - value).clamp(0.0, 1.0).toDouble(),
+          child: SizedBox(
+            width: 24,
+            height: 20,
+            child: Stack(
+              children: [
+                _BurstDot(
+                  color: color,
+                  offset: Offset(-2 - 4 * value, -2 - 10 * value),
+                  scale: 1 - value * 0.35,
+                ),
+                _BurstDot(
+                  color: color.withValues(alpha: 0.75),
+                  offset: Offset(7, -6 - 11 * value),
+                  scale: 0.82 - value * 0.25,
+                ),
+                _BurstDot(
+                  color: color.withValues(alpha: 0.55),
+                  offset: Offset(15 + 4 * value, -1 - 8 * value),
+                  scale: 0.68 - value * 0.18,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _BurstDot extends StatelessWidget {
+  const _BurstDot({
+    required this.color,
+    required this.offset,
+    required this.scale,
+  });
+
+  final Color color;
+  final Offset offset;
+  final double scale;
+
+  @override
+  Widget build(BuildContext context) {
+    return Transform.translate(
+      offset: offset,
+      child: Transform.scale(
+        scale: scale.clamp(0.1, 1.0).toDouble(),
+        child: Container(
+          width: 5,
+          height: 5,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+      ),
+    );
+  }
+}
+
 class _EchoMediaPreview extends StatelessWidget {
-  const _EchoMediaPreview({required this.echoId, required this.urls});
+  const _EchoMediaPreview({
+    required this.echoId,
+    required this.urls,
+    this.compactHeight = false,
+  });
 
   final String echoId;
   final List<String> urls;
+  final bool compactHeight;
 
   bool _isVideo(String url) {
     return MediaFileSafety.isVideoPath(url);
@@ -1084,26 +1247,39 @@ class _EchoMediaPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     final visible = urls.take(2).toList();
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-      child: SizedBox(
-        height: visible.length == 1 ? 210 : 160,
-        child: Row(
-          children: [
-            for (int i = 0; i < visible.length; i++) ...[
-              Expanded(
-                child: _MediaTile(
-                  echoId: echoId,
-                  url: visible[i],
-                  urls: urls,
-                  isVideo: _isVideo(visible[i]),
-                ),
-              ),
-              if (i != visible.length - 1) const SizedBox(width: 2),
-            ],
-          ],
-        ),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        final height = compactHeight
+            ? (width * 0.68).clamp(144.0, 190.0).toDouble()
+            : visible.length == 1
+            ? (width * 0.62).clamp(176.0, 260.0).toDouble()
+            : (width * 0.44).clamp(138.0, 188.0).toDouble();
+
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          child: SizedBox(
+            height: height,
+            child: Row(
+              children: [
+                for (int i = 0; i < visible.length; i++) ...[
+                  Expanded(
+                    child: _MediaTile(
+                      echoId: echoId,
+                      url: visible[i],
+                      urls: urls,
+                      isVideo: _isVideo(visible[i]),
+                    ),
+                  ),
+                  if (i != visible.length - 1) const SizedBox(width: 2),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -1138,25 +1314,26 @@ class _MediaTile extends StatelessWidget {
     }
 
     final imageUrls = urls.where((u) => !_isVideoUrl(u)).toList();
-    final imageIndex =
-        imageUrls.indexOf(url).clamp(0, imageUrls.length - 1).toInt();
+    final imageIndex = imageUrls
+        .indexOf(url)
+        .clamp(0, imageUrls.length - 1)
+        .toInt();
 
     return GestureDetector(
-      onTap: () => ImageViewer.show(
-        context,
-        urls: imageUrls,
-        initialIndex: imageIndex,
-      ),
+      onTap: () =>
+          ImageViewer.show(context, urls: imageUrls, initialIndex: imageIndex),
       child: CachedNetworkImage(
         imageUrl: url,
         fit: BoxFit.cover,
         width: double.infinity,
         height: double.infinity,
-        placeholder: (_, __) => Container(color: AppColors.softSand),
-        errorWidget: (_, __, ___) => Container(
+        placeholder: (context, url) => Container(color: AppColors.softSand),
+        errorWidget: (context, url, error) => Container(
           color: AppColors.softSand,
-          child: const Icon(Icons.broken_image_outlined,
-              color: AppColors.textTertiary),
+          child: const Icon(
+            Icons.broken_image_outlined,
+            color: AppColors.textTertiary,
+          ),
         ),
       ),
     );
@@ -1172,11 +1349,13 @@ class _ExpandableEchoText extends StatefulWidget {
     required this.text,
     required this.style,
     required this.hideUrls,
+    required this.onHashtagTap,
   });
 
   final String text;
   final TextStyle? style;
   final bool hideUrls;
+  final ValueChanged<String> onHashtagTap;
 
   @override
   State<_ExpandableEchoText> createState() => _ExpandableEchoTextState();
@@ -1209,6 +1388,7 @@ class _ExpandableEchoTextState extends State<_ExpandableEchoText> {
             maxLines: _expanded ? null : 4,
             overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
             hideUrls: widget.hideUrls,
+            onHashtagTap: widget.onHashtagTap,
           ),
           if (_looksLong) ...[
             const SizedBox(height: 4),
@@ -1347,45 +1527,64 @@ class _TranslateButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.sm,
-          vertical: AppSpacing.xs,
-        ),
-        decoration: BoxDecoration(
-          color: AppColors.softSand,
-          borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (isTranslating)
-              const SizedBox(
-                width: 10,
-                height: 10,
-                child: CircularProgressIndicator(
-                  strokeWidth: 1.5,
-                  color: AppColors.fernGreen,
+    final isCompact = !isTranslating && !showTranslated;
+    final label = showTranslated
+        ? 'Original'
+        : isTranslating
+        ? 'Translating'
+        : 'Translate';
+
+    return Tooltip(
+      message: label,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          padding: isCompact
+              ? const EdgeInsets.all(7)
+              : const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.sm,
+                  vertical: AppSpacing.xs,
                 ),
-              )
-            else
-              Icon(
-                showTranslated ? Icons.language : Icons.translate_rounded,
-                size: 12,
-                color: AppColors.textTertiary,
-              ),
-            const SizedBox(width: 4),
-            Text(
-              showTranslated ? 'Original' : 'Translate',
-              style: TextStyle(
-                fontSize: 10.5,
-                color: AppColors.textTertiary,
-                fontFamily: AppTypography.fontFamily,
-              ),
+          decoration: BoxDecoration(
+            color: isCompact ? AppColors.surfaceSecondary : AppColors.softSand,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+            border: Border.all(
+              color: AppColors.borderSubtle.withValues(alpha: 0.7),
             ),
-          ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (isTranslating)
+                const SizedBox(
+                  width: 10,
+                  height: 10,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 1.5,
+                    color: AppColors.fernGreen,
+                  ),
+                )
+              else
+                Icon(
+                  showTranslated ? Icons.language : Icons.translate_rounded,
+                  size: isCompact ? 14 : 12,
+                  color: AppColors.textTertiary,
+                ),
+              if (!isCompact) ...[
+                const SizedBox(width: 4),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: AppColors.textTertiary,
+                    fontFamily: AppTypography.fontFamily,
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );
@@ -1409,11 +1608,11 @@ class _InlineAccountBadge extends StatelessWidget {
     final color = switch (badgeType) {
       BadgeType.verifiedPro => AppColors.fernGreenDark,
       BadgeType.verified => AppColors.fernGreen,
-      BadgeType.pro => const Color(0xFFFFB300),
+      BadgeType.pro => AppColors.fernGreenDark,
       BadgeType.none => AppColors.textTertiary,
     };
     final icon = switch (badgeType) {
-      BadgeType.pro || BadgeType.verifiedPro => Icons.workspace_premium_rounded,
+      BadgeType.pro || BadgeType.verifiedPro => Icons.verified_rounded,
       _ => Icons.verified_rounded,
     };
 
@@ -1443,82 +1642,54 @@ class _AvatarWithRing extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const double radius = AppSpacing.avatarSizeSm / 2;
-    const double ringWidth = 1.5;
-    const double gap = 1.5;
-    // total size includes diameter ring and gap
-    const double totalSize = radius * 2 + (ringWidth + gap) * 2;
-
-    if (!userIsVerified) {
-      // simple avatar without a ring
-      return CircleAvatar(
-        radius: radius,
-        backgroundColor: AppColors.softSand,
-        backgroundImage: avatarImageProvider(avatarUrl),
-        child: avatarImageProvider(avatarUrl) == null
-            ? const Icon(Icons.person_outline,
-                size: 16, color: AppColors.textTertiary)
-            : null,
-      );
-    }
+    const double totalSize = radius * 2;
 
     final badgeType = resolveBadgeType(
       isVerified: userIsVerified,
       isPro: userIsPro,
     );
 
-    final ringColor = switch (badgeType) {
-      BadgeType.verifiedPro => const Color(0xFF1DA1F2),
-      BadgeType.pro => const Color(0xFFFFB300),
-      BadgeType.verified => AppColors.fernGreen,
-      BadgeType.none => Colors.transparent,
-    };
+    final showBadge = badgeType != BadgeType.none;
 
     return SizedBox(
-      width: totalSize,
-      height: totalSize,
+      width: totalSize + (showBadge ? 4 : 0),
+      height: totalSize + (showBadge ? 4 : 0),
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          Container(
-            width: totalSize,
-            height: totalSize,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: ringColor,
-            ),
+          CircleAvatar(
+            radius: radius,
+            backgroundColor: AppColors.softSand,
+            backgroundImage: avatarImageProvider(avatarUrl),
+            child: avatarImageProvider(avatarUrl) == null
+                ? const Icon(
+                    Icons.person_outline,
+                    size: 16,
+                    color: AppColors.textTertiary,
+                  )
+                : null,
           ),
-          // avatar inset
-          Positioned(
-            left: ringWidth + gap,
-            top: ringWidth + gap,
-            child: CircleAvatar(
-              radius: radius,
-              backgroundColor: AppColors.softSand,
-              backgroundImage: avatarImageProvider(avatarUrl),
-              child: avatarImageProvider(avatarUrl) == null
-                  ? const Icon(Icons.person_outline,
-                      size: 16, color: AppColors.textTertiary)
-                  : null,
-            ),
-          ),
-          // tiny verified dot
-          Positioned(
-            right: 0,
-            bottom: 0,
-            child: Container(
-              width: 12,
-              height: 12,
-              decoration: const BoxDecoration(
-                color: AppColors.fernGreen,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.verified_rounded,
-                size: 8,
-                color: Colors.white,
+          if (showBadge)
+            Positioned(
+              right: -1,
+              bottom: -1,
+              child: Container(
+                width: 13,
+                height: 13,
+                decoration: BoxDecoration(
+                  color: badgeType == BadgeType.verified
+                      ? AppColors.fernGreen
+                      : AppColors.fernGreenDark,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 1.5),
+                ),
+                child: const Icon(
+                  Icons.verified_rounded,
+                  size: 8,
+                  color: Colors.white,
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -1533,7 +1704,8 @@ class _CategoryLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cleanDetail = detail?.trim();
-    final label = category == EchoCategory.other &&
+    final label =
+        category == EchoCategory.other &&
             cleanDetail != null &&
             cleanDetail.isNotEmpty
         ? 'Other: $cleanDetail'
@@ -1570,45 +1742,45 @@ class _StatusLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     final (label, color, bg) = switch (status) {
       EchoStatus.verified => (
-          'Verified by community',
-          AppColors.fernGreenDark,
-          AppColors.fernGreenLight,
-        ),
+        'Verified by community',
+        AppColors.fernGreenDark,
+        AppColors.fernGreenLight,
+      ),
       EchoStatus.disputed => (
-          'Disputed',
-          AppColors.sunsetCoralDark,
-          AppColors.sunsetCoralLight,
-        ),
+        'Disputed',
+        AppColors.sunsetCoralDark,
+        AppColors.sunsetCoralLight,
+      ),
       EchoStatus.controversial => (
-          'Controversial',
-          const Color(0xFF7A5200),
-          const Color(0xFFFFF3E0),
-        ),
+        'Controversial',
+        const Color(0xFF7A5200),
+        const Color(0xFFFFF3E0),
+      ),
       EchoStatus.underReview => (
-          'Under review',
-          const Color(0xFF7A5200),
-          const Color(0xFFFFF8E1),
-        ),
+        'Under review',
+        const Color(0xFF7A5200),
+        const Color(0xFFFFF8E1),
+      ),
       EchoStatus.rejected => (
-          'Rejected',
-          AppColors.sunsetCoralDark,
-          AppColors.sunsetCoralLight,
-        ),
+        'Rejected',
+        AppColors.sunsetCoralDark,
+        AppColors.sunsetCoralLight,
+      ),
       EchoStatus.active => (
-          'Active',
-          const Color(0xFF1A6DB5),
-          const Color(0xFFE8F4FD),
-        ),
+        'Active',
+        const Color(0xFF1A6DB5),
+        const Color(0xFFE8F4FD),
+      ),
       EchoStatus.pendingVerification => (
-          'Awaiting signals',
-          const Color(0xFF6B4FA0),
-          const Color(0xFFF3EEF9),
-        ),
+        'Awaiting signals',
+        const Color(0xFF6B4FA0),
+        const Color(0xFFF3EEF9),
+      ),
       EchoStatus.hidden => (
-          'Hidden',
-          AppColors.textTertiary,
-          AppColors.softSand,
-        ),
+        'Hidden',
+        AppColors.textTertiary,
+        AppColors.softSand,
+      ),
     };
 
     return Container(

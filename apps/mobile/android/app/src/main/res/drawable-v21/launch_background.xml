@@ -5,8 +5,8 @@
         <color android:color="#E8F5EE"/>
     </item>
     <item
-        android:width="96dp"
-        android:height="96dp"
+        android:width="88dp"
+        android:height="88dp"
         android:gravity="center">
         <bitmap
             android:gravity="fill"

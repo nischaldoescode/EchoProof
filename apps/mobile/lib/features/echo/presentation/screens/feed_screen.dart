@@ -31,6 +31,8 @@ import '../../../../core/services/ad_service.dart';
 import '../../../subscription/presentation/services/subscription_service.dart';
 import '../../../../core/utils/snack.dart';
 import '../../../notifications/presentation/services/notification_service.dart';
+import '../../../../shared/widgets/brand_wordmark.dart';
+import '../../../../shared/widgets/top_flow_loader.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
@@ -42,6 +44,7 @@ class FeedScreen extends StatefulWidget {
 class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   final _scrollCtrl = ScrollController();
   FeedFilter _filter = const FeedFilter();
+  _FeedLane _lane = _FeedLane.forYou;
   Timer? _feedAdTimer;
   DateTime _lastActiveAt = DateTime.now();
 
@@ -81,6 +84,7 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
       _maybeShowPermissionsOverlay();
       _maybeTriggerBirthdayEaster();
       _startFeedAdRoutine();
+      _maybeShowLinkNotice();
       // rating prompt after enough real use
       Future.delayed(const Duration(seconds: 3), () {
         if (mounted) RatingPrompt.maybeShow(context);
@@ -88,13 +92,21 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
     });
   }
 
+  void _maybeShowLinkNotice() {
+    final notice = GoRouterState.of(context).uri.queryParameters['notice'];
+    if (notice == 'unsupported-link') {
+      showInfoSnack(context, context.l('That link is not supported yet.'));
+    }
+  }
+
   Future<void> _maybeShowPermissionsOverlay() async {
     if (!Hive.isBoxOpen('app_settings')) {
       await Hive.openBox('app_settings');
     }
     final box = Hive.box('app_settings');
-    final shown = box.get(StorageKeys.permissionsPromptShown,
-        defaultValue: false) as bool;
+    final shown =
+        box.get(StorageKeys.permissionsPromptShown, defaultValue: false)
+            as bool;
     if (shown) return;
 
     if (await PermissionsSheet.corePermissionsGranted()) {
@@ -229,8 +241,51 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
     await _refreshFeed();
   }
 
-  List<EchoEntity> _filtered(List<EchoEntity> echoes) {
-    return _filter.apply(echoes);
+  List<EchoEntity> _filtered(EchoFeedService feed) {
+    final result = _filter.apply(feed.echoes);
+    return switch (_lane) {
+      _FeedLane.forYou => result,
+      _FeedLane.following =>
+        result.where((echo) => _isFollowingCandidate(echo, feed)).toList()
+          ..sort(
+            (a, b) => _followingScore(
+              b,
+              feed.followingIds,
+            ).compareTo(_followingScore(a, feed.followingIds)),
+          ),
+    };
+  }
+
+  bool _isFollowingCandidate(EchoEntity echo, EchoFeedService feed) {
+    return feed.followingIds.contains(echo.userId) ||
+        echo.socialContext != null ||
+        echo.previewReplies.any((reply) => reply.isFromFollowed);
+  }
+
+  double _followingScore(EchoEntity echo, Set<String> followingIds) {
+    final authoredByFollow = followingIds.contains(echo.userId) ? 120.0 : 0.0;
+    final supportedByFollow = echo.socialContext == null ? 0.0 : 60.0;
+    final repliedByFollow =
+        echo.previewReplies.any((reply) => reply.isFromFollowed) ? 54.0 : 0.0;
+    final proofWeight = echo.proofCount * 5.0;
+    final replyWeight = echo.replyCount * 2.5;
+    final verdictWeight = switch (echo.publicVerdict) {
+      'supported' => 24.0,
+      'contested' => -18.0,
+      'needs_context' => -12.0,
+      'insufficient_context' => -32.0,
+      'not_supported' => -100.0,
+      _ => 0.0,
+    };
+
+    return authoredByFollow +
+        supportedByFollow +
+        repliedByFollow +
+        proofWeight +
+        replyWeight +
+        echo.confidenceScore * 0.08 +
+        echo.trustScore * 0.12 +
+        verdictWeight;
   }
 
   int _itemCount(List<EchoEntity> filtered, bool hasMore) {
@@ -238,7 +293,8 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   }
 
   Widget _refreshableState(Widget child) {
-    final minHeight = MediaQuery.sizeOf(context).height -
+    final minHeight =
+        MediaQuery.sizeOf(context).height -
         kToolbarHeight -
         MediaQuery.paddingOf(context).top -
         MediaQuery.paddingOf(context).bottom -
@@ -265,41 +321,64 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
     final isTablet = size.width > 700;
 
     return SwipeNavigationWrapper(
-        currentLocation: '/feed',
-        child: ExitConfirmWrapper(
-          child: Scaffold(
-            backgroundColor: AppColors.white,
-            appBar: _FeedAppBar(
-              filterActive: _filter.isActive,
-              onFilterTap: _openFilter,
-            ),
-            floatingActionButton: const _CreateFab(),
-            bottomNavigationBar: AppBottomNav(
-              currentLocation: '/feed',
-              onFeedTap: _handleFeedNavTap,
-            ),
-            body: _buildBody(feed, isTablet),
+      currentLocation: '/feed',
+      child: ExitConfirmWrapper(
+        child: Scaffold(
+          backgroundColor: AppColors.surfaceSecondary,
+          appBar: _FeedAppBar(
+            filterActive: _filter.isActive,
+            onFilterTap: _openFilter,
           ),
-        ));
+          floatingActionButton: const _CreateFab(),
+          bottomNavigationBar: AppBottomNav(
+            currentLocation: '/feed',
+            onFeedTap: _handleFeedNavTap,
+          ),
+          body: Stack(
+            children: [
+              _buildBody(feed, isTablet),
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: TopFlowLoader(
+                  visible:
+                      feed.isLoading ||
+                      feed.loadState == FeedLoadState.loadingMore,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildBody(EchoFeedService feed, bool isTablet) {
     if (feed.isLoading && feed.echoes.isEmpty) {
       return _refreshableState(
-          EchoLogoLoader(label: context.l('Loading feed')));
+        EchoLogoLoader(label: context.l('Loading feed')),
+      );
     }
 
     if (feed.loadState == FeedLoadState.error && feed.echoes.isEmpty) {
       return _refreshableState(
-        _ErrorState(
-          onRetry: () => context.read<EchoFeedService>().loadFeed(),
-        ),
+        _ErrorState(onRetry: () => context.read<EchoFeedService>().loadFeed()),
       );
     }
 
-    final filtered = _filtered(feed.echoes);
+    final filtered = _filtered(feed);
 
     if (feed.echoes.isEmpty) return _refreshableState(const _EmptyFeed());
+
+    if (filtered.isEmpty && _lane != _FeedLane.forYou) {
+      return _refreshableState(
+        _EmptyLane(
+          lane: _lane,
+          onReset: () => setState(() => _lane = _FeedLane.forYou),
+        ),
+      );
+    }
 
     if (filtered.isEmpty && _filter.isActive) {
       return _refreshableState(
@@ -311,6 +390,13 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
 
     return Column(
       children: [
+        _FeedModeTabs(
+          selected: _lane,
+          onChanged: (lane) {
+            HapticFeedback.selectionClick();
+            setState(() => _lane = lane);
+          },
+        ),
         AnimatedSize(
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeInOut,
@@ -321,18 +407,6 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
                   onTap: _openFilter,
                 )
               : const SizedBox.shrink(),
-        ),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 260),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          child: filtered.isEmpty
-              ? const SizedBox.shrink()
-              : _FeedPulseBar(
-                  key: ValueKey('${filtered.length}_${_filter.hashCode}'),
-                  echoes: filtered,
-                  onTap: _refreshFeed,
-                ),
         ),
         Expanded(
           child: RefreshIndicator(
@@ -352,11 +426,16 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
                   );
                 }
 
-                return _AnimatedCard(
-                  key: ValueKey(filtered[index].id),
-                  echoId: filtered[index].id,
-                  initialEcho: filtered[index],
-                  index: index,
+                return Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 900),
+                    child: _AnimatedCard(
+                      key: ValueKey(filtered[index].id),
+                      echoId: filtered[index].id,
+                      initialEcho: filtered[index],
+                      index: index,
+                    ),
+                  ),
                 );
               },
             ),
@@ -367,89 +446,115 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   }
 }
 
-class _FeedPulseBar extends StatelessWidget {
-  const _FeedPulseBar({
-    super.key,
-    required this.echoes,
-    required this.onTap,
-  });
+enum _FeedLane { forYou, following }
 
-  final List<EchoEntity> echoes;
-  final Future<void> Function() onTap;
+class _FeedModeTabs extends StatelessWidget {
+  const _FeedModeTabs({required this.selected, required this.onChanged});
+
+  final _FeedLane selected;
+  final ValueChanged<_FeedLane> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final supported =
-        echoes.where((echo) => echo.publicVerdict == 'supported').length;
-    final open = echoes.where((echo) => echo.publicVerdict == 'open').length;
-    final challenged = echoes.where((echo) {
-      return echo.publicVerdict == 'not_supported' ||
-          echo.publicVerdict == 'contested' ||
-          echo.challengeCount > echo.supportCount;
-    }).length;
-    final latest = echoes.isEmpty ? '' : echoes.first.timeAgo;
+    final items = [
+      (lane: _FeedLane.forYou, icon: Icons.eco_outlined, label: 'For you'),
+      (
+        lane: _FeedLane.following,
+        icon: Icons.group_outlined,
+        label: 'Following',
+      ),
+    ];
 
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 420),
-      curve: Curves.easeOutCubic,
-      builder: (context, value, child) {
-        return Opacity(
-          opacity: value,
-          child: Transform.translate(
-            offset: Offset(0, 10 * (1 - value)),
-            child: child,
-          ),
-        );
-      },
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.white,
+        border: Border(bottom: BorderSide(color: AppColors.borderSubtle)),
+      ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
-          AppSpacing.md,
-          AppSpacing.xs,
-          AppSpacing.md,
-          AppSpacing.xs,
+          AppSpacing.lg,
+          AppSpacing.sm,
+          AppSpacing.lg,
+          AppSpacing.sm,
         ),
-        child: Material(
-          color: AppColors.surfaceSecondary,
-          borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-          child: InkWell(
+        child: Row(
+          children: [
+            for (final item in items)
+              Expanded(
+                child: _FeedModeTab(
+                  icon: item.icon,
+                  label: item.label,
+                  selected: selected == item.lane,
+                  onTap: () => onChanged(item.lane),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FeedModeTab extends StatelessWidget {
+  const _FeedModeTab({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 3),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm,
+            vertical: 10,
+          ),
+          decoration: BoxDecoration(
+            color: selected
+                ? AppColors.fernGreenLight.withValues(alpha: 0.58)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-            onTap: () {
-              HapticFeedback.selectionClick();
-              unawaited(onTap());
-            },
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.sm,
-                vertical: 7,
-              ),
-              child: Row(
-                children: [
-                  _PulseChip(
-                    icon: Icons.bolt_rounded,
-                    label: latest.isEmpty ? 'live context' : 'fresh $latest',
-                    color: AppColors.charcoal,
-                  ),
-                  _PulseChip(
-                    icon: Icons.verified_outlined,
-                    label: '$supported supported',
-                    color: AppColors.fernGreenDark,
-                  ),
-                  _PulseChip(
-                    icon: Icons.groups_2_outlined,
-                    label: '$open open',
-                    color: AppColors.textSecondary,
-                  ),
-                  _PulseChip(
-                    icon: Icons.report_problem_outlined,
-                    label: '$challenged challenged',
-                    color: AppColors.sunsetCoralDark,
-                  ),
-                ],
-              ),
+            border: Border.all(
+              color: selected
+                  ? AppColors.fernGreen.withValues(alpha: 0.22)
+                  : Colors.transparent,
             ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: selected
+                    ? AppColors.fernGreenDark
+                    : AppColors.textSecondary,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: GoogleFonts.josefinSans(
+                  fontSize: 14,
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  color: selected
+                      ? AppColors.fernGreenDark
+                      : AppColors.textSecondary,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -457,45 +562,53 @@ class _FeedPulseBar extends StatelessWidget {
   }
 }
 
-class _PulseChip extends StatelessWidget {
-  const _PulseChip({
-    required this.icon,
-    required this.label,
-    required this.color,
-  });
+class _EmptyLane extends StatelessWidget {
+  const _EmptyLane({required this.lane, required this.onReset});
 
-  final IconData icon;
-  final String label;
-  final Color color;
+  final _FeedLane lane;
+  final VoidCallback onReset;
 
   @override
   Widget build(BuildContext context) {
+    final (icon, title, message) = switch (lane) {
+      _FeedLane.following => (
+        Icons.group_outlined,
+        'Nothing from follows yet',
+        'Follow people or wait for their echoes and replies to appear here.',
+      ),
+      _FeedLane.forYou => (
+        Icons.eco_outlined,
+        'Your feed is quiet',
+        'Fresh echoes will appear here soon.',
+      ),
+    };
+
     return Padding(
-      padding: const EdgeInsets.only(right: AppSpacing.xs),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-          border: Border.all(color: color.withValues(alpha: 0.11)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 13, color: color),
-            const SizedBox(width: 5),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.josefinSans(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w700,
-                color: color,
-              ),
+      padding: const EdgeInsets.all(AppSpacing.xl),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 42, color: AppColors.fernGreen),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            context.l(title),
+            textAlign: TextAlign.center,
+            style: AppTypography.textTheme.titleSmall,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            context.l(message),
+            textAlign: TextAlign.center,
+            style: AppTypography.textTheme.bodySmall?.copyWith(
+              color: AppColors.textSecondary,
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          TextButton(
+            onPressed: onReset,
+            child: Text(context.l('Back to For you')),
+          ),
+        ],
       ),
     );
   }
@@ -553,8 +666,11 @@ class _ActiveFilterBar extends StatelessWidget {
             ),
             GestureDetector(
               onTap: onClear,
-              child: const Icon(Icons.close_rounded,
-                  size: 16, color: AppColors.textTertiary),
+              child: const Icon(
+                Icons.close_rounded,
+                size: 16,
+                color: AppColors.textTertiary,
+              ),
             ),
           ],
         ),
@@ -598,9 +714,10 @@ class _AnimatedCardState extends State<_AnimatedCard>
         curve: const Interval(0, 0.6, curve: Curves.easeOut),
       ),
     );
-    _y = Tween<double>(begin: 16, end: 0).animate(
-      CurvedAnimation(parent: _c, curve: Curves.easeOutCubic),
-    );
+    _y = Tween<double>(
+      begin: 16,
+      end: 0,
+    ).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
 
     final delay = widget.index < 8
         ? Duration(milliseconds: widget.index * 45)
@@ -622,10 +739,7 @@ class _AnimatedCardState extends State<_AnimatedCard>
       animation: _c,
       builder: (_, child) => Opacity(
         opacity: _opacity.value,
-        child: Transform.translate(
-          offset: Offset(0, _y.value),
-          child: child,
-        ),
+        child: Transform.translate(offset: Offset(0, _y.value), child: child),
       ),
       child: Selector<EchoFeedService, EchoEntity>(
         selector: (_, feed) => feed.echoes.firstWhere(
@@ -634,29 +748,74 @@ class _AnimatedCardState extends State<_AnimatedCard>
         ),
         shouldRebuild: (previous, next) => previous != next,
         builder: (context, echo, _) {
+          final followedReply = _followedReplyFor(echo);
           return RepaintBoundary(
-            child: EchoCard(
-              echo: echo,
-              onTap: () => context.push('/feed/echo/${echo.id}'),
+            child: Column(
+              children: [
+                EchoCard(
+                  echo: echo,
+                  showReplyPreview: false,
+                  onTap: () => context.push('/feed/echo/${echo.id}'),
+                ),
+                if (followedReply != null)
+                  EchoReplyPreviewCard(
+                    detached: true,
+                    reply: followedReply,
+                    totalReplyCount: echo.replyCount,
+                    onHashtagTap: _openHashtag,
+                    onTap: () => _openReplies(echo),
+                    onAuthorTap: _openReplyAuthor,
+                  ),
+              ],
             ),
           );
         },
       ),
     );
   }
+
+  EchoReplyPreview? _followedReplyFor(EchoEntity echo) {
+    for (final reply in echo.previewReplies) {
+      if (reply.isFromFollowed) return reply;
+    }
+    return null;
+  }
+
+  void _openReplies(EchoEntity echo) {
+    context.push(
+      '/echo/${echo.id}/replies'
+      '?author=${Uri.encodeComponent(echo.username)}'
+      '&content=${Uri.encodeComponent(echo.content)}'
+      '&authorId=${Uri.encodeComponent(echo.userId)}'
+      '${echo.userAvatarUrl == null ? '' : '&avatar=${Uri.encodeComponent(echo.userAvatarUrl!)}'}',
+    );
+  }
+
+  void _openHashtag(String tag) {
+    final normalized = tag.startsWith('#') || tag.startsWith('~')
+        ? tag
+        : '#$tag';
+    context.push('/search?q=${Uri.encodeQueryComponent(normalized)}');
+  }
+
+  void _openReplyAuthor(String username, String? userId) {
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId != null && userId.isNotEmpty && userId == currentUserId) {
+      context.push('/profile');
+      return;
+    }
+    context.push('/profile/${Uri.encodeComponent(username)}');
+  }
 }
 
 class _FeedAppBar extends StatefulWidget implements PreferredSizeWidget {
-  const _FeedAppBar({
-    required this.filterActive,
-    required this.onFilterTap,
-  });
+  const _FeedAppBar({required this.filterActive, required this.onFilterTap});
 
   final bool filterActive;
   final VoidCallback onFilterTap;
 
   @override
-  Size get preferredSize => const Size.fromHeight(56);
+  Size get preferredSize => const Size.fromHeight(70);
 
   @override
   State<_FeedAppBar> createState() => _FeedAppBarState();
@@ -699,6 +858,11 @@ class _FeedAppBarState extends State<_FeedAppBar> {
       elevation: 0,
       scrolledUnderElevation: 0.5,
       shadowColor: AppColors.borderSubtle,
+      toolbarHeight: 70,
+      titleSpacing: AppSpacing.lg,
+      shape: const Border(
+        bottom: BorderSide(color: AppColors.borderSubtle, width: 0.5),
+      ),
       title: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTapDown: (details) {
@@ -710,35 +874,27 @@ class _FeedAppBarState extends State<_FeedAppBar> {
         },
         child: Padding(
           // wider hidden target keeps the easter egg reachable on dense screens
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.asset(
-                  'assets/images/logo.png',
-                  width: 28,
-                  height: 28,
-                  fit: BoxFit.cover,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text('Echoproof', style: AppTypography.textTheme.titleLarge),
-            ],
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+          child: const EchoProofWordmark(
+            fontSize: 26,
+            proofColor: AppColors.fernGreenDark,
           ),
         ),
       ),
       actions: [
+        _FeedHeaderIconButton(
+          icon: Icons.search_rounded,
+          onPressed: () => context.push('/search'),
+          tooltip: context.l('Search'),
+        ),
         Stack(
           clipBehavior: Clip.none,
           children: [
-            IconButton(
-              icon: const Icon(Icons.tune_rounded, size: 22),
+            _FeedHeaderIconButton(
+              icon: Icons.tune_rounded,
               onPressed: widget.onFilterTap,
-              color:
-                  widget.filterActive ? AppColors.charcoal : AppColors.charcoal,
               tooltip: context.l('Filter'),
+              selected: widget.filterActive,
             ),
             if (widget.filterActive)
               Positioned(
@@ -755,14 +911,77 @@ class _FeedAppBarState extends State<_FeedAppBar> {
               ),
           ],
         ),
-        IconButton(
-          icon: const Icon(Icons.search_rounded, size: 22),
-          onPressed: () => context.push('/search'),
-          color: AppColors.charcoal,
-          tooltip: context.l('Search'),
+        Consumer<NotificationService>(
+          builder: (context, notif, child) {
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                _FeedHeaderIconButton(
+                  icon: Icons.notifications_none_rounded,
+                  onPressed: () => context.push('/notifications'),
+                  tooltip: context.l('Notifications'),
+                ),
+                if (notif.unreadCount > 0)
+                  Positioned(
+                    right: 10,
+                    top: 9,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: AppColors.fernGreen,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 1.4),
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
         ),
-        const SizedBox(width: 4),
+        _FeedHeaderIconButton(
+          icon: Icons.account_circle_outlined,
+          onPressed: () => context.push('/profile'),
+          tooltip: context.l('Profile'),
+        ),
+        const SizedBox(width: AppSpacing.sm),
       ],
+    );
+  }
+}
+
+class _FeedHeaderIconButton extends StatelessWidget {
+  const _FeedHeaderIconButton({
+    required this.icon,
+    required this.onPressed,
+    required this.tooltip,
+    this.selected = false,
+  });
+
+  final IconData icon;
+  final VoidCallback onPressed;
+  final String tooltip;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 1),
+      child: IconButton(
+        tooltip: tooltip,
+        onPressed: onPressed,
+        style: IconButton.styleFrom(
+          backgroundColor: selected
+              ? AppColors.fernGreenLight
+              : AppColors.surfaceSecondary,
+          foregroundColor: selected
+              ? AppColors.fernGreenDark
+              : AppColors.charcoal,
+          minimumSize: const Size(40, 40),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        icon: Icon(icon, size: 23),
+      ),
     );
   }
 }
@@ -786,9 +1005,10 @@ class _CreateFabState extends State<_CreateFab>
       vsync: this,
       duration: const Duration(milliseconds: 150),
     );
-    _scale = Tween<double>(begin: 1.0, end: 0.90).animate(
-      CurvedAnimation(parent: _c, curve: Curves.easeIn),
-    );
+    _scale = Tween<double>(
+      begin: 1.0,
+      end: 0.90,
+    ).animate(CurvedAnimation(parent: _c, curve: Curves.easeIn));
   }
 
   @override
@@ -828,8 +1048,11 @@ class _CreateFabState extends State<_CreateFab>
                   ),
                 ],
               ),
-              child:
-                  const Icon(Icons.edit_rounded, color: Colors.white, size: 22),
+              child: const Icon(
+                Icons.edit_rounded,
+                color: Colors.white,
+                size: 22,
+              ),
             ),
           ),
           if (hasDraft)
@@ -870,12 +1093,17 @@ class _EmptyFeed extends StatelessWidget {
                 color: AppColors.softSand,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Icon(Icons.wb_sunny_outlined,
-                  size: 36, color: AppColors.textTertiary),
+              child: const Icon(
+                Icons.wb_sunny_outlined,
+                size: 36,
+                color: AppColors.textTertiary,
+              ),
             ),
             const SizedBox(height: AppSpacing.xl),
-            Text(context.l('Nothing yet'),
-                style: AppTypography.textTheme.headlineSmall),
+            Text(
+              context.l('Nothing yet'),
+              style: AppTypography.textTheme.headlineSmall,
+            ),
             const SizedBox(height: AppSpacing.sm),
             Text(
               context.l('Be the first to create an echo.'),
@@ -903,11 +1131,16 @@ class _EmptyFilter extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.filter_alt_off_outlined,
-                size: 48, color: AppColors.textTertiary),
+            const Icon(
+              Icons.filter_alt_off_outlined,
+              size: 48,
+              color: AppColors.textTertiary,
+            ),
             const SizedBox(height: AppSpacing.lg),
-            Text(context.l('No echoes match your filters'),
-                style: AppTypography.textTheme.titleMedium),
+            Text(
+              context.l('No echoes match your filters'),
+              style: AppTypography.textTheme.titleMedium,
+            ),
             const SizedBox(height: AppSpacing.sm),
             Text(
               context.l('Try adjusting or clearing your filters.'),
@@ -946,11 +1179,16 @@ class _ErrorState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.cloud_off_outlined,
-              size: 48, color: AppColors.textTertiary),
+          const Icon(
+            Icons.cloud_off_outlined,
+            size: 48,
+            color: AppColors.textTertiary,
+          ),
           const SizedBox(height: AppSpacing.lg),
-          Text(context.l('Could not load feed'),
-              style: AppTypography.textTheme.titleMedium),
+          Text(
+            context.l('Could not load feed'),
+            style: AppTypography.textTheme.titleMedium,
+          ),
           const SizedBox(height: AppSpacing.md),
           ElevatedButton(
             onPressed: onRetry,
@@ -960,8 +1198,10 @@ class _ErrorState extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-            child: Text(context.l('Try again'),
-                style: GoogleFonts.josefinSans(fontWeight: FontWeight.w600)),
+            child: Text(
+              context.l('Try again'),
+              style: GoogleFonts.josefinSans(fontWeight: FontWeight.w600),
+            ),
           ),
         ],
       ),

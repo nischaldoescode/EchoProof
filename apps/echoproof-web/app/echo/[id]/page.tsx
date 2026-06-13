@@ -206,7 +206,9 @@ export default async function EchoLandingPage({ params }: Props) {
               />
             </div>
             <div>
-              <p className="text-sm font-bold text-charcoal">Echoproof</p>
+              <p className="text-sm font-bold text-charcoal">
+                Echo<span className="text-[#2E6FAE]">Proof</span>
+              </p>
               <p className="text-xs text-neutral-500">Public echo preview</p>
             </div>
           </div>
@@ -282,13 +284,17 @@ export default async function EchoLandingPage({ params }: Props) {
               </>
             ) : (
               <div className="py-8 text-center">
-                <div className="mx-auto mb-5 h-12 w-12 rounded-2xl bg-neutral-100 ep-shimmer" />
+                <div className="mx-auto mb-5 h-12 w-12 rounded-2xl bg-fern-light ep-shimmer" />
                 <h1 className="text-2xl font-bold text-charcoal">
                   Echo unavailable
                 </h1>
                 <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-neutral-500">
-                  This echo may have been removed, made unavailable, or the link
-                  may be incomplete.
+                  This link may be incomplete, the echo may no longer be
+                  public, or it may have been removed after review.
+                </p>
+                <p className="mx-auto mt-3 max-w-sm text-xs leading-5 text-neutral-400">
+                  On Android, EchoProof can still open valid echo links directly
+                  inside the app.
                 </p>
               </div>
             )}
