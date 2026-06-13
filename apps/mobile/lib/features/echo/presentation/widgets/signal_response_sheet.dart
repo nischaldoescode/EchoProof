@@ -108,10 +108,12 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
       final userId = client.auth.currentUser?.id;
       if (userId == null) throw Exception('not authenticated');
 
-      final uploadedUrls =
-          _media.isEmpty ? List<String>.from(_existingMediaUrls) : <String>[];
-      final uploadedTypes =
-          _media.isEmpty ? List<String>.from(_existingMediaTypes) : <String>[];
+      final uploadedUrls = _media.isEmpty
+          ? List<String>.from(_existingMediaUrls)
+          : <String>[];
+      final uploadedTypes = _media.isEmpty
+          ? List<String>.from(_existingMediaTypes)
+          : <String>[];
       for (final item in _media) {
         final url = await _uploadMedia(client, userId, item);
         uploadedUrls.add(url);
@@ -219,7 +221,9 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
     final path = '$userId/context/$nonce.$ext';
     final file = File(item.path);
 
-    await client.storage.from('media').uploadBinary(
+    await client.storage
+        .from('media')
+        .uploadBinary(
           path,
           await file.readAsBytes(),
           fileOptions: FileOptions(
@@ -264,10 +268,10 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
                   _loadingExisting
                       ? 'Checking your context'
                       : _hasExisting
-                          ? 'Edit your context'
-                          : _stance == 'support'
-                              ? 'Support with context'
-                              : 'Challenge with context',
+                      ? 'Edit your context'
+                      : _stance == 'support'
+                      ? 'Support with context'
+                      : 'Challenge with context',
                   style: AppTypography.textTheme.titleMedium,
                 ),
                 const SizedBox(height: AppSpacing.sm),
@@ -275,10 +279,10 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
                   _loadingExisting
                       ? 'Looking for your existing support or challenge on this echo.'
                       : _hasExisting
-                          ? _editCount >= 1
-                              ? 'You already used your one edit. Your context remains visible in echo details.'
-                              : 'You can edit this ${_stance == 'support' ? 'support' : 'challenge'} once. You cannot add the opposite side on the same echo.'
-                          : 'Explain why. Other users can like your context, and the public evaluation decides the echo.',
+                      ? _editCount >= 1
+                            ? 'You already used your one edit. Your context remains visible in echo details.'
+                            : 'You can edit this ${_stance == 'support' ? 'support' : 'challenge'} once. You cannot add the opposite side on the same echo.'
+                      : 'Explain why. Other users can like your context, and the public evaluation decides the echo.',
                   style: AppTypography.textTheme.bodySmall,
                 ),
                 if (_loadingExisting) ...[
@@ -311,6 +315,27 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
                         ? 'What makes this echo credible?'
                         : 'What context makes this echo unsupported?',
                     alignLabelWithHint: true,
+                    filled: true,
+                    fillColor: AppColors.surfaceSecondary,
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(
+                        color: AppColors.borderSubtle,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(
+                        color: AppColors.fernGreen,
+                        width: 1.4,
+                      ),
+                    ),
+                    errorBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(
+                        color: AppColors.sunsetCoral,
+                      ),
+                    ),
                   ),
                   style: AppTypography.textTheme.bodyMedium,
                 ),
@@ -323,16 +348,16 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
                       tooltip: 'Add image',
                       onPressed:
                           _submitting || (_hasExisting && _editCount >= 1)
-                              ? null
-                              : () => _pickMedia(false),
+                          ? null
+                          : () => _pickMedia(false),
                       icon: const Icon(Icons.image_outlined),
                     ),
                     IconButton(
                       tooltip: 'Add video',
                       onPressed:
                           _submitting || (_hasExisting && _editCount >= 1)
-                              ? null
-                              : () => _pickMedia(true),
+                          ? null
+                          : () => _pickMedia(true),
                       icon: const Icon(Icons.videocam_outlined),
                     ),
                     Text(
@@ -379,7 +404,8 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: _submitting ||
+                    onPressed:
+                        _submitting ||
                             _controller.text.trim().length < 10 ||
                             _loadingExisting ||
                             (_hasExisting && _editCount >= 1)
@@ -395,7 +421,8 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
                             ),
                           )
                         : Text(
-                            _hasExisting ? 'Update context' : 'Send context'),
+                            _hasExisting ? 'Update context' : 'Send context',
+                          ),
                   ),
                 ),
               ],
@@ -449,13 +476,8 @@ class _StanceSegmentedControl extends StatelessWidget {
     required this.onLockedTap,
   });
 
-  final List<
-      ({
-        String value,
-        String label,
-        IconData icon,
-        Color color,
-      })> stances;
+  final List<({String value, String label, IconData icon, Color color})>
+  stances;
   final String selected;
   final bool locked;
   final ValueChanged<String> onChanged;
@@ -480,8 +502,9 @@ class _StanceSegmentedControl extends StatelessWidget {
           AnimatedAlign(
             duration: const Duration(milliseconds: 240),
             curve: Curves.easeOutCubic,
-            alignment:
-                safeIndex == 0 ? Alignment.centerLeft : Alignment.centerRight,
+            alignment: safeIndex == 0
+                ? Alignment.centerLeft
+                : Alignment.centerRight,
             child: FractionallySizedBox(
               widthFactor: stances.isEmpty ? 1 : 1 / stances.length,
               heightFactor: 1,

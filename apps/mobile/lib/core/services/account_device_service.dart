@@ -2,8 +2,10 @@
 // @params none
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
@@ -11,6 +13,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../features/auth/presentation/services/auth_service.dart';
 import '../utils/logger.dart';
+import '../utils/app_haptics.dart';
 import '../utils/snack.dart';
 import 'device_service.dart';
 import 'package:hyper_snackbar/hyper_snackbar.dart';
@@ -75,26 +78,19 @@ class AccountDeviceService extends ChangeNotifier {
     notifyListeners();
     try {
       final deviceId = await _deviceService.getDeviceId();
+      final deviceName = await _deviceName();
       final response = await _client.functions.invoke(
         'register-account-device',
         body: {
           'device_id': deviceId,
-          'device_name': _deviceName,
+          'device_name': deviceName,
           'platform': _deviceService.platform,
           'force': force,
         },
       );
-      final data = Map<String, dynamic>.from(response.data as Map);
+      final data = _mapData(response.data);
       if (data['error'] == 'device_conflict') {
-        final current =
-            Map<String, dynamic>.from(data['current_device'] as Map);
-        _pendingConflict = AccountDeviceConflict(
-          AccountDeviceRecord.fromMap(current),
-          data['message'] as String? ??
-              'Your account is active on another device.',
-        );
-        notifyListeners();
-        throw _pendingConflict!;
+        await _throwDeviceConflict(data);
       }
       if (data['error'] != null) {
         throw Exception(data['message'] ?? data['error']);
@@ -106,6 +102,17 @@ class AccountDeviceService extends ChangeNotifier {
       _pendingConflict = null;
       await loadDevices();
       return record;
+    } on FunctionException catch (e) {
+      final data = _tryMapData(e.details);
+      if (e.status == 409 && data?['error'] == 'device_conflict') {
+        await _throwDeviceConflict(data!);
+      }
+      throw Exception(
+        data?['message'] ??
+            data?['error'] ??
+            e.reasonPhrase ??
+            'Could not register this device.',
+      );
     } finally {
       _registering = false;
       notifyListeners();
@@ -126,15 +133,32 @@ class AccountDeviceService extends ChangeNotifier {
         .eq('active', true)
         .order('last_seen_at', ascending: false);
     _devices = (rows as List)
-        .map((row) => AccountDeviceRecord.fromMap(
-              Map<String, dynamic>.from(row as Map),
-            ))
+        .map(
+          (row) => AccountDeviceRecord.fromMap(
+            Map<String, dynamic>.from(row as Map),
+          ),
+        )
         .toList();
     notifyListeners();
   }
 
   Future<AccountDeviceRecord> continueOnThisDevice() {
     return register(force: true);
+  }
+
+  Future<AccountDeviceRecord> secureThisDevice() {
+    return register(force: true);
+  }
+
+  Future<Never> _throwDeviceConflict(Map<String, dynamic> data) async {
+    final current = Map<String, dynamic>.from(data['current_device'] as Map);
+    _pendingConflict = AccountDeviceConflict(
+      AccountDeviceRecord.fromMap(current),
+      data['message'] as String? ?? 'Your account is active on another device.',
+    );
+    await loadDevices().catchError((_) {});
+    notifyListeners();
+    throw _pendingConflict!;
   }
 
   Future<bool> heartbeat() async {
@@ -145,10 +169,7 @@ class AccountDeviceService extends ChangeNotifier {
       final now = DateTime.now().toUtc().toIso8601String();
       final rows = await _client
           .from('account_devices')
-          .update({
-            'last_seen_at': now,
-            'updated_at': now,
-          })
+          .update({'last_seen_at': now, 'updated_at': now})
           .eq('user_id', userId)
           .eq('device_id', deviceId)
           .eq('active', true)
@@ -242,6 +263,7 @@ class AccountDeviceService extends ChangeNotifier {
     try {
       final context = HyperSnackbar.navigatorKey.currentContext;
       if (context != null) {
+        unawaited(AppHaptics.caution(key: 'device_invalidated'));
         showWarningSnack(context, message);
       }
       await stopRealtime();
@@ -262,15 +284,72 @@ class AccountDeviceService extends ChangeNotifier {
     }
   }
 
-  String get _deviceName {
-    final host = Platform.localHostname.trim();
-    if (host.isEmpty || host == 'localhost') {
-      return Platform.isAndroid
-          ? 'Android phone'
-          : Platform.isIOS
-              ? 'iPhone'
-              : '${Platform.operatingSystem} device';
+  Future<String> _deviceName() async {
+    try {
+      final plugin = DeviceInfoPlugin();
+      if (Platform.isAndroid) {
+        final info = await plugin.androidInfo;
+        final manufacturer = _prettyPart(info.manufacturer);
+        final model = _prettyPart(info.model);
+        if (model.isNotEmpty && manufacturer.isNotEmpty) {
+          final lowerModel = model.toLowerCase();
+          final lowerMaker = manufacturer.toLowerCase();
+          if (lowerModel.contains(lowerMaker)) return model;
+          return '$manufacturer $model';
+        }
+        if (model.isNotEmpty) return model;
+        final device = _prettyPart(info.device);
+        if (device.isNotEmpty) return device;
+      }
+
+      if (Platform.isIOS) {
+        final info = await plugin.iosInfo;
+        final name = _prettyPart(info.name);
+        if (name.isNotEmpty && name.toLowerCase() != 'iphone') return name;
+        final model = _prettyPart(info.utsname.machine);
+        if (model.isNotEmpty) return model;
+        return 'iPhone';
+      }
+    } catch (e) {
+      AppLogger.warn('device-session: device name lookup failed $e');
     }
-    return host;
+
+    final host = Platform.localHostname.trim();
+    if (host.isNotEmpty && host != 'localhost') return host;
+    return Platform.isAndroid
+        ? 'Android phone'
+        : Platform.isIOS
+        ? 'iPhone'
+        : '${Platform.operatingSystem} device';
+  }
+
+  String _prettyPart(String value) {
+    final cleaned = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (cleaned.isEmpty || cleaned.toLowerCase() == 'unknown') return '';
+    return cleaned
+        .split(' ')
+        .map(
+          (part) => part.isEmpty
+              ? part
+              : '${part[0].toUpperCase()}${part.substring(1)}',
+        )
+        .join(' ');
+  }
+
+  Map<String, dynamic> _mapData(Object? value) {
+    final map = _tryMapData(value);
+    if (map != null) return map;
+    throw Exception('Invalid device registration response.');
+  }
+
+  Map<String, dynamic>? _tryMapData(Object? value) {
+    if (value is Map) return Map<String, dynamic>.from(value);
+    if (value is String && value.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(value);
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+    }
+    return null;
   }
 }

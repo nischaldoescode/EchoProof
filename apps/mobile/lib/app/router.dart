@@ -21,6 +21,8 @@ import '../features/echo/presentation/screens/proof_trail_screen.dart';
 import '../features/echo/presentation/screens/echo_video_screen.dart';
 import '../features/echo/presentation/screens/discover_screen.dart';
 import '../features/profile/presentation/screens/profile_screen.dart';
+import '../features/profile/presentation/screens/analytics_tab.dart'
+    show ProfileAnalyticsScreen;
 import '../features/notifications/presentation/screens/notifications_screen.dart';
 import '../features/settings/presentation/screens/settings_screen.dart';
 import '../features/rooms/presentation/screens/rooms_screen.dart';
@@ -86,8 +88,9 @@ CustomTransitionPage<void> _signalDriftPage(GoRouterState state) {
   final origin = state.extra is Offset ? state.extra as Offset : null;
   return CustomTransitionPage<void>(
     child: const EchoSignalGameScreen(),
-    transitionDuration: const Duration(milliseconds: 430),
-    reverseTransitionDuration: const Duration(milliseconds: 330),
+    opaque: false,
+    transitionDuration: const Duration(milliseconds: 580),
+    reverseTransitionDuration: const Duration(milliseconds: 320),
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
       final reduceMotion = MediaQuery.disableAnimationsOf(context);
       if (reduceMotion) {
@@ -95,11 +98,12 @@ CustomTransitionPage<void> _signalDriftPage(GoRouterState state) {
       }
 
       final screen = MediaQuery.sizeOf(context);
-      final fallback = Offset(screen.width * 0.18, 28);
+      final padding = MediaQuery.paddingOf(context);
+      final fallback = Offset(screen.width * 0.18, padding.top + 28);
       final revealOrigin = origin ?? fallback;
       final curve = CurvedAnimation(
         parent: animation,
-        curve: Curves.easeOutQuart,
+        curve: Curves.easeOutCubic,
         reverseCurve: Curves.easeInQuart,
       );
 
@@ -107,23 +111,97 @@ CustomTransitionPage<void> _signalDriftPage(GoRouterState state) {
         animation: curve,
         builder: (context, _) {
           final value = curve.value;
-          return ClipPath(
-            clipper: _SignalDriftRevealClipper(
-              origin: revealOrigin,
-              progress: value,
-            ),
-            child: FadeTransition(
-              opacity: Tween<double>(begin: 0.94, end: 1).animate(curve),
-              child: Transform.scale(
-                scale: 0.992 + value * 0.008,
-                child: child,
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              ClipPath(
+                clipper: _SignalDriftRevealClipper(
+                  origin: revealOrigin,
+                  progress: value,
+                ),
+                child: FadeTransition(
+                  opacity: Tween<double>(begin: 0.9, end: 1).animate(curve),
+                  child: Transform.scale(
+                    scale: 0.985 + value * 0.015,
+                    child: child,
+                  ),
+                ),
               ),
-            ),
+              IgnorePointer(
+                child: CustomPaint(
+                  painter: _SignalDriftRevealPainter(
+                    origin: revealOrigin,
+                    progress: value,
+                  ),
+                ),
+              ),
+            ],
           );
         },
       );
     },
   );
+}
+
+class _SignalDriftRevealPainter extends CustomPainter {
+  const _SignalDriftRevealPainter({
+    required this.origin,
+    required this.progress,
+  });
+
+  final Offset origin;
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final safeOrigin = Offset(
+      origin.dx.clamp(0, size.width).toDouble(),
+      origin.dy.clamp(0, size.height).toDouble(),
+    );
+    final maxRadius = _maxRadiusFor(size, safeOrigin);
+    final eased = Curves.easeOutCubic.transform(progress.clamp(0, 1));
+    final radius = 10 + maxRadius * eased;
+    final visible = (1 - progress).clamp(0, 1).toDouble();
+    final accent = const Color(0xFF2F6F5A);
+
+    if (visible <= 0) return;
+
+    final fill = Paint()
+      ..color = accent.withValues(alpha: 0.08 * visible)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(safeOrigin, radius * 0.52, fill);
+
+    final ring = Paint()
+      ..color = accent.withValues(alpha: 0.28 * visible)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 10 - (7 * progress.clamp(0, 1));
+    canvas.drawCircle(safeOrigin, radius, ring);
+
+    if (progress < 0.45) {
+      final pulse = Paint()
+        ..color = accent.withValues(alpha: 0.14 * (1 - progress / 0.45))
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5;
+      canvas.drawCircle(safeOrigin, radius * 1.18, pulse);
+    }
+  }
+
+  double _maxRadiusFor(Size size, Offset point) {
+    final corners = [
+      Offset.zero,
+      Offset(size.width, 0),
+      Offset(0, size.height),
+      Offset(size.width, size.height),
+    ];
+    return corners
+        .map((corner) => (corner - point).distance)
+        .fold<double>(0, math.max);
+  }
+
+  @override
+  bool shouldRepaint(covariant _SignalDriftRevealPainter oldDelegate) {
+    return origin != oldDelegate.origin || progress != oldDelegate.progress;
+  }
 }
 
 class _SignalDriftRevealClipper extends CustomClipper<Path> {
@@ -143,7 +221,7 @@ class _SignalDriftRevealClipper extends CustomClipper<Path> {
     );
     final maxRadius = _maxRadiusFor(size, safeOrigin);
     final eased = Curves.easeOutCubic.transform(progress.clamp(0, 1));
-    final radius = 42 + maxRadius * eased;
+    final radius = 6 + maxRadius * eased;
     return Path()..addOval(Rect.fromCircle(center: safeOrigin, radius: radius));
   }
 
@@ -396,6 +474,10 @@ GoRouter createRouter({
       GoRoute(
         path: '/profile',
         pageBuilder: (_, __) => _profilePage(const ProfileScreen()),
+      ),
+      GoRoute(
+        path: '/profile/analytics',
+        pageBuilder: (_, __) => _profilePage(const ProfileAnalyticsScreen()),
       ),
       GoRoute(
         path: '/profile/:username/follows',

@@ -21,6 +21,7 @@ import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 import 'package:in_app_purchase_android/billing_client_wrappers.dart'
     show ReplacementMode;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../../core/constants/play_licensing.dart';
 import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/utils/logger.dart';
 
@@ -107,6 +108,9 @@ class SubscriptionService extends ChangeNotifier {
   Future<void> _init() async {
     AppLogger.info('subscription: init started');
     _recordBillingEvent('service init started');
+    _recordBillingEvent(
+      'play licensing key bundled length=${PlayLicensing.publicKey.length}',
+    );
 
     // check server-side subscription status on startup
     await checkSubscriptionStatus();
@@ -243,23 +247,22 @@ class SubscriptionService extends ChangeNotifier {
           'Plan loading stopped because this device is offline.',
           notify: false,
         );
-        _finishLoadingIfCurrent(
-          requestEpoch,
-          reason: 'product load offline',
-        );
+        _finishLoadingIfCurrent(requestEpoch, reason: 'product load offline');
         _recordBillingEvent('query products stopped offline', notify: true);
         return;
       }
 
-      final resp = await _iap.queryProductDetails(_kProductIds).timeout(
-        _kProductQueryTimeout,
-        onTimeout: () {
-          throw TimeoutException(
-            'google play product query timed out',
+      final resp = await _iap
+          .queryProductDetails(_kProductIds)
+          .timeout(
             _kProductQueryTimeout,
+            onTimeout: () {
+              throw TimeoutException(
+                'google play product query timed out',
+                _kProductQueryTimeout,
+              );
+            },
           );
-        },
-      );
       AppLogger.info(
         'subscription: product query returned products=${resp.productDetails.length} not_found=${resp.notFoundIDs.join(',')} error=${resp.error} elapsed_ms=${timer.elapsedMilliseconds}',
       );
@@ -300,7 +303,8 @@ class SubscriptionService extends ChangeNotifier {
         );
         _productsLoadedAt = DateTime.now();
         AppLogger.info(
-            'subscription: loaded ${resp.productDetails.length} products');
+          'subscription: loaded ${resp.productDetails.length} products',
+        );
         AppLogger.info(
           'subscription: monthly=${_monthlyProduct?.id} monthly_base=${_monthlyProduct == null ? null : _basePlanIdFor(_monthlyProduct!)} yearly=${_yearlyProduct?.id} yearly_base=${_yearlyProduct == null ? null : _basePlanIdFor(_yearlyProduct!)}',
         );
@@ -316,7 +320,8 @@ class SubscriptionService extends ChangeNotifier {
             notify: false,
           );
           AppLogger.warn(
-              'subscription: products not found ${resp.notFoundIDs.join(',')}');
+            'subscription: products not found ${resp.notFoundIDs.join(',')}',
+          );
           _recordBillingEvent(
             'query products missing ids=${resp.notFoundIDs.join(',')}',
             notify: true,
@@ -418,8 +423,9 @@ class SubscriptionService extends ChangeNotifier {
         notify: true,
       );
       await _loadProducts();
-      final freshProduct =
-          product.id == _kYearlyId ? _yearlyProduct : _monthlyProduct;
+      final freshProduct = product.id == _kYearlyId
+          ? _yearlyProduct
+          : _monthlyProduct;
       if (freshProduct == null) {
         _error ??= 'Google Play could not refresh this Pro plan. Try again.';
         _recordCheckoutDiagnostic(
@@ -447,8 +453,9 @@ class SubscriptionService extends ChangeNotifier {
       _error = null;
     }
 
-    final targetPlan =
-        checkoutProduct.id.contains('yearly') ? 'pro_yearly' : 'pro_monthly';
+    final targetPlan = checkoutProduct.id.contains('yearly')
+        ? 'pro_yearly'
+        : 'pro_monthly';
     AppLogger.info(
       'subscription: target plan=$targetPlan current_plan=$_currentPlan is_pro=$_isPro',
     );
@@ -552,17 +559,20 @@ class SubscriptionService extends ChangeNotifier {
       _recordBillingEvent('launching google play checkout', notify: true);
       final opened = await _iap
           .buyNonConsumable(purchaseParam: purchaseParam)
-          .timeout(_kCheckoutOpenTimeout, onTimeout: () {
-        _recordBillingEvent(
-          'checkout open timeout product=$_activeCheckoutProductId elapsed_ms=${timer.elapsedMilliseconds}',
-          notify: true,
-        );
-        _recordCheckoutDiagnostic(
-          'Google Play did not open checkout within ${_kCheckoutOpenTimeout.inSeconds}s. If Play confirms payment later, Pro will activate automatically.',
-          notify: true,
-        );
-        return false;
-      });
+          .timeout(
+            _kCheckoutOpenTimeout,
+            onTimeout: () {
+              _recordBillingEvent(
+                'checkout open timeout product=$_activeCheckoutProductId elapsed_ms=${timer.elapsedMilliseconds}',
+                notify: true,
+              );
+              _recordCheckoutDiagnostic(
+                'Google Play did not open checkout within ${_kCheckoutOpenTimeout.inSeconds}s. If Play confirms payment later, Pro will activate automatically.',
+                notify: true,
+              );
+              return false;
+            },
+          );
       slowOpenTimer.cancel();
       AppLogger.info(
         'subscription: buyNonConsumable returned opened=$opened elapsed_ms=${timer.elapsedMilliseconds}',
@@ -642,7 +652,8 @@ class SubscriptionService extends ChangeNotifier {
           _clearCheckoutTracking();
           // user is in the purchase flow show loading
           AppLogger.info(
-              'subscription: purchase pending ${purchase.productID}');
+            'subscription: purchase pending ${purchase.productID}',
+          );
           _isLoading = false;
           _error =
               'Payment is pending. Pro will activate after Google confirms it.';
@@ -761,16 +772,18 @@ class SubscriptionService extends ChangeNotifier {
 
       final obfuscatedId = _obfuscateUserId(userId);
 
-      final res = await client.functions.invoke(
-        'verify-purchase',
-        body: {
-          'purchase_token': purchaseToken,
-          'product_id': purchase.productID,
-          'order_id': orderId,
-          'purchase_time_ms': purchaseTimeMs,
-          'obfuscated_account_id': obfuscatedId,
-        },
-      ).timeout(_kServerValidationTimeout);
+      final res = await client.functions
+          .invoke(
+            'verify-purchase',
+            body: {
+              'purchase_token': purchaseToken,
+              'product_id': purchase.productID,
+              'order_id': orderId,
+              'purchase_time_ms': purchaseTimeMs,
+              'obfuscated_account_id': obfuscatedId,
+            },
+          )
+          .timeout(_kServerValidationTimeout);
 
       final data = res.data as Map<String, dynamic>?;
 
@@ -787,7 +800,8 @@ class SubscriptionService extends ChangeNotifier {
           notify: false,
         );
         AppLogger.info(
-            'subscription: server validation succeeded — isPro=true');
+          'subscription: server validation succeeded — isPro=true',
+        );
         _recordBillingEvent(
           'server validation success plan=$_currentPlan expires=$_expiresAt',
           notify: true,
@@ -946,7 +960,8 @@ class SubscriptionService extends ChangeNotifier {
 
       await client.from('purchase_history').insert({
         'user_id': userId,
-        'order_id': purchase.purchaseID ??
+        'order_id':
+            purchase.purchaseID ??
             'failed_${DateTime.now().millisecondsSinceEpoch}',
         'product_id': purchase.productID,
         'purchase_token': purchase.verificationData.serverVerificationData,
@@ -973,7 +988,8 @@ class SubscriptionService extends ChangeNotifier {
 
       await client.from('purchase_history').upsert({
         'user_id': userId,
-        'order_id': purchase.purchaseID ??
+        'order_id':
+            purchase.purchaseID ??
             'pending_${DateTime.now().millisecondsSinceEpoch}',
         'product_id': purchase.productID,
         'purchase_token': purchase.verificationData.serverVerificationData,

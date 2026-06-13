@@ -11,8 +11,8 @@
     </item>
     <!-- android launch mask makes this read closer to the flutter mark -->
     <item
-        android:width="96dp"
-        android:height="96dp"
+        android:width="88dp"
+        android:height="88dp"
         android:gravity="center">
         <bitmap
             android:gravity="fill"

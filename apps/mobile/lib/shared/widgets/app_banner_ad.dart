@@ -1,5 +1,5 @@
 // app banner ad
-// shows the production admob banner below the bottom navigation
+// shows the production admob banner only where a screen opts in
 // waits for mobile ads initialization before the first request
 // hides itself for pro users and temporary ad-free sessions
 
@@ -26,6 +26,7 @@ class _AppBannerAdState extends State<AppBannerAd>
   bool _isLoading = false;
   bool _loadQueued = false;
   bool _blockedByConfig = false;
+  int _loadFailureCount = 0;
   Timer? _retryTimer;
   late final AnimationController _fadeCtrl;
   late final Animation<double> _fade;
@@ -82,7 +83,7 @@ class _AppBannerAdState extends State<AppBannerAd>
     _bannerAd = BannerAd(
       adUnitId: AdConstants.banner,
       size: AdSize.banner,
-      request: const AdRequest(),
+      request: AdService.contextualAdRequest,
       listener: BannerAdListener(
         onAdLoaded: (ad) {
           final responseInfo = ad.responseInfo;
@@ -94,6 +95,7 @@ class _AppBannerAdState extends State<AppBannerAd>
             setState(() {
               _isLoaded = true;
               _isLoading = false;
+              _loadFailureCount = 0;
             });
             _fadeCtrl.forward();
           }
@@ -108,14 +110,25 @@ class _AppBannerAdState extends State<AppBannerAd>
           AppLogger.audit(
             'admob: banner failed unit=${AdConstants.banner} code=${error.code} domain=${error.domain} message=${error.message} response_id=${responseInfo?.responseId} source=${loadedAdapter?.adSourceName} extras=${responseInfo?.responseExtras}',
           );
+          _loadFailureCount++;
+          final delay = _bannerRetryDelay(_loadFailureCount);
           _retryTimer?.cancel();
-          _retryTimer = Timer(const Duration(seconds: 60), () {
+          _retryTimer = Timer(delay, () {
             if (mounted) _loadBanner();
           });
         },
       ),
     );
     _bannerAd!.load();
+  }
+
+  Duration _bannerRetryDelay(int failures) {
+    final boundedFailures = failures < 1 ? 0 : failures - 1;
+    final shift = boundedFailures > 4 ? 4 : boundedFailures;
+    final delay = const Duration(minutes: 2) * (1 << shift);
+    return delay > const Duration(minutes: 20)
+        ? const Duration(minutes: 20)
+        : delay;
   }
 
   @override

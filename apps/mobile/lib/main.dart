@@ -20,7 +20,9 @@ import 'core/security/device_security_gate.dart';
 import 'core/security/secure_screen.dart';
 import 'core/services/ad_service.dart';
 import 'core/services/account_device_service.dart';
+import 'core/services/app_update_service.dart';
 import 'core/services/push_notification_service.dart';
+import 'core/utils/app_haptics.dart';
 import 'core/utils/logger.dart';
 import 'core/utils/snack.dart';
 import 'features/auth/presentation/services/auth_service.dart';
@@ -84,6 +86,7 @@ Future<void> main() async {
   final subscriptionService = SubscriptionService();
   final adService = AdService();
   final accountDeviceService = AccountDeviceService();
+  final appUpdateService = AppUpdateService();
 
   await authService.checkUsername();
   // pre-load notification count for badge
@@ -205,6 +208,7 @@ Future<void> main() async {
     subscriptionService,
     authService,
     accountDeviceService,
+    appUpdateService,
     router,
   );
   WidgetsBinding.instance.addObserver(lifecycleObserver);
@@ -250,6 +254,16 @@ Future<void> main() async {
       unawaited(_maybeShowAccountRecoveryDialog(authService, router));
     });
   }
+
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    Future.delayed(const Duration(milliseconds: 900), () {
+      unawaited(
+        appUpdateService.checkForRequiredUpdate(
+          reason: AppUpdateCheckReason.launch,
+        ),
+      );
+    });
+  });
 }
 
 String? _lastHandledLink;
@@ -280,8 +294,11 @@ Future<void> _registerAccountDevice(
     final context = HyperSnackbar.navigatorKey.currentContext;
     if (context == null || !context.mounted) {
       AppLogger.warn('device-session: conflict but no context available');
+      await authService.signOut(enforceCooldown: false);
+      router.go('/login');
       return;
     }
+    unawaited(AppHaptics.criticalOpen(key: 'device_conflict_dialog'));
     final proceed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -305,11 +322,13 @@ Future<void> _registerAccountDevice(
 
     if (!context.mounted) return;
     if (proceed == true) {
+      unawaited(AppHaptics.criticalConfirm(key: 'device_conflict_continue'));
       await deviceService.register(force: true);
       await deviceService.startRealtime(authService, router);
       if (!context.mounted) return;
       showInfoSnack(context, 'This device is now the active session.');
     } else {
+      unawaited(AppHaptics.caution(key: 'device_conflict_cancel'));
       await authService.signOut(enforceCooldown: false);
       router.go('/login');
     }
@@ -336,6 +355,7 @@ Future<void> _maybeShowAccountRecoveryDialog(
   if (context == null || !context.mounted) return;
 
   _accountRecoveryDialogOpen = true;
+  unawaited(AppHaptics.criticalOpen(key: 'account_recovery_dialog'));
   final keepAccount = await showGeneralDialog<bool>(
     context: context,
     barrierDismissible: false,
@@ -402,6 +422,7 @@ Future<void> _maybeShowAccountRecoveryDialog(
   if (!authService.isLoggedIn) return;
 
   if (keepAccount == true) {
+    unawaited(AppHaptics.criticalConfirm(key: 'account_recovery_keep'));
     final restored = await authService.restorePendingAccountDeletion();
     if (restored) {
       router.go('/feed');
@@ -421,6 +442,7 @@ Future<void> _maybeShowAccountRecoveryDialog(
     return;
   }
 
+  unawaited(AppHaptics.caution(key: 'account_recovery_dismiss'));
   await authService.signOut(enforceCooldown: false);
   router.go('/login');
 }
@@ -519,6 +541,18 @@ void _handleDeepLink(Uri uri, GoRouter router, [AuthService? auth]) {
       );
       return;
     }
+  }
+
+  final host = uri.host.toLowerCase();
+  final isEchoProofLink =
+      uri.scheme == 'echoproof' ||
+      host == 'echoproof.online' ||
+      host == 'www.echoproof.online' ||
+      host == 'join.echoproof.online' ||
+      host == 'www.join.echoproof.online';
+  if (isEchoProofLink) {
+    AppLogger.warn('deep link: unsupported link ignored $uri');
+    _safeGo(router, '/feed?notice=unsupported-link', auth: auth);
   }
 }
 
@@ -624,10 +658,9 @@ String _roomInviteLocation(Uri uri) {
   final code = _normalizedRoomCode(rawCode);
   final key = (uri.queryParameters['key'] ?? fragmentParams['key'] ?? '')
       .trim();
-  final query = {
-    if (code != null) 'code': code,
-    if (key.isNotEmpty) 'key': key,
-  };
+  final query = <String, String>{};
+  if (code != null) query['code'] = code;
+  if (key.isNotEmpty) query['key'] = key;
   return Uri(
     path: '/rooms',
     queryParameters: query.isEmpty ? null : query,
@@ -666,10 +699,10 @@ void _safeGo(GoRouter router, String location, {AuthService? auth}) {
     router.go(normalized);
   } on GoException catch (e) {
     AppLogger.warn('deep link: route failed for $normalized: $e');
-    router.go('/feed');
+    router.go('/feed?notice=unsupported-link');
   } catch (e) {
     AppLogger.warn('deep link: route failed for $normalized: $e');
-    router.go('/feed');
+    router.go('/feed?notice=unsupported-link');
   }
 }
 
@@ -720,18 +753,46 @@ bool _isSupabaseAuthLink(Uri uri) {
 }
 
 class _AppLifecycleObserver extends WidgetsBindingObserver {
-  _AppLifecycleObserver(this._sub, this._auth, this._devices, this._router);
+  _AppLifecycleObserver(
+    this._sub,
+    this._auth,
+    this._devices,
+    this._updates,
+    this._router,
+  );
   final SubscriptionService _sub;
   final AuthService _auth;
   final AccountDeviceService _devices;
+  final AppUpdateService _updates;
   final GoRouter _router;
+  DateTime? _backgroundedAt;
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      _backgroundedAt ??= DateTime.now();
+      return;
+    }
+
     if (state == AppLifecycleState.resumed) {
+      final backgroundedAt = _backgroundedAt;
+      _backgroundedAt = null;
+      final backgroundedFor = backgroundedAt == null
+          ? Duration.zero
+          : DateTime.now().difference(backgroundedAt);
       AppLogger.info('subscription: app resumed, checking checkout state');
       unawaited(_sub.recoverCheckoutAfterResume());
       unawaited(_verifyAccountAfterResume());
+      if (backgroundedFor >= const Duration(seconds: 8)) {
+        unawaited(
+          _updates.checkForRequiredUpdate(
+            reason: AppUpdateCheckReason.resume,
+            force: backgroundedFor >= const Duration(seconds: 30),
+          ),
+        );
+      }
     }
   }
 

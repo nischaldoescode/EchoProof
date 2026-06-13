@@ -56,9 +56,8 @@ class NotificationService extends ChangeNotifier {
 
   int get unreadCount => _notifications.where((n) => !n.read).length;
 
-  bool get hasUnreadFollowerEcho => _notifications.any(
-        (n) => !n.read && n.type == 'new_follower_echo',
-      );
+  bool get hasUnreadFollowerEcho =>
+      _notifications.any((n) => !n.read && n.type == 'new_follower_echo');
 
   Future<void> loadNotifications() async {
     final client = Supabase.instance.client;
@@ -105,6 +104,30 @@ class NotificationService extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> openNotification(
+    BuildContext context,
+    NotificationItem item,
+  ) async {
+    if (!item.read) {
+      try {
+        await Supabase.instance.client
+            .from('notifications')
+            .update({'read': true})
+            .eq('id', item.id);
+        _notifications = _notifications
+            .map((n) => n.id == item.id ? n.copyWith(read: true) : n)
+            .toList();
+        notifyListeners();
+      } catch (e) {
+        AppLogger.warn('notifications: mark single read failed $e');
+      }
+    }
+
+    final route = _routeFor(item);
+    if (route == null || !context.mounted) return;
+    GoRouter.of(context).push(route);
+  }
+
   Future<void> markFollowerEchoesRead() async {
     final ids = _notifications
         .where((n) => !n.read && n.type == 'new_follower_echo')
@@ -136,6 +159,35 @@ class NotificationService extends ChangeNotifier {
     await _resolveFollowRequest(item, 'rejected');
   }
 
+  Future<void> markDeviceAlertHandled(
+    NotificationItem item,
+    String status,
+  ) async {
+    final nextData = {...?item.data, 'handled': true, 'status': status};
+
+    await Supabase.instance.client
+        .from('notifications')
+        .update({'read': true, 'data': nextData})
+        .eq('id', item.id);
+
+    _notifications = _notifications
+        .map(
+          (n) => n.id == item.id
+              ? NotificationItem(
+                  id: n.id,
+                  type: n.type,
+                  title: n.title,
+                  body: n.body,
+                  read: true,
+                  createdAt: n.createdAt,
+                  data: nextData,
+                )
+              : n,
+        )
+        .toList();
+    notifyListeners();
+  }
+
   Future<bool> isFollowingActor(NotificationItem item) async {
     final actorId = _actorIdFor(item);
     final userId = _currentUserId();
@@ -164,15 +216,15 @@ class NotificationService extends ChangeNotifier {
 
     final client = Supabase.instance.client;
     final alreadyFollowing = await isFollowingActor(item);
-    final nextData = {
-      ...?item.data,
-      'followed_back': true,
-    };
+    final nextData = {...?item.data, 'followed_back': true};
 
     if (alreadyFollowing) {
-      await client.from('notifications').update({
-        'data': {...nextData, 'follow_back_status': 'following'},
-      }).eq('id', item.id);
+      await client
+          .from('notifications')
+          .update({
+            'data': {...nextData, 'follow_back_status': 'following'},
+          })
+          .eq('id', item.id);
       await loadNotifications();
       return 'following';
     }
@@ -190,9 +242,12 @@ class NotificationService extends ChangeNotifier {
         'following_id': actorId,
       }, onConflict: 'follower_id,following_id');
       unawaited(_notifySocialEvent('new_follower', {'target_id': actorId}));
-      await client.from('notifications').update({
-        'data': {...nextData, 'follow_back_status': 'following'},
-      }).eq('id', item.id);
+      await client
+          .from('notifications')
+          .update({
+            'data': {...nextData, 'follow_back_status': 'following'},
+          })
+          .eq('id', item.id);
       await loadNotifications();
       return 'following';
     }
@@ -208,13 +263,16 @@ class NotificationService extends ChangeNotifier {
         .single();
     final requestId = row['id'] as String?;
     if (requestId != null) {
-      unawaited(_notifySocialEvent('follow_request', {
-        'request_id': requestId,
-      }));
+      unawaited(
+        _notifySocialEvent('follow_request', {'request_id': requestId}),
+      );
     }
-    await client.from('notifications').update({
-      'data': {...nextData, 'follow_back_status': 'requested'},
-    }).eq('id', item.id);
+    await client
+        .from('notifications')
+        .update({
+          'data': {...nextData, 'follow_back_status': 'requested'},
+        })
+        .eq('id', item.id);
     await loadNotifications();
     return 'requested';
   }
@@ -229,25 +287,24 @@ class NotificationService extends ChangeNotifier {
     }
 
     final client = Supabase.instance.client;
-    final nextData = {
-      ...?item.data,
-      'handled': true,
-      'status': status,
-    };
+    final nextData = {...?item.data, 'handled': true, 'status': status};
 
     await client
         .from('follow_requests')
-        .update({'status': status}).eq('id', requestId);
+        .update({'status': status})
+        .eq('id', requestId);
 
     await client
         .from('notifications')
-        .update({'read': true, 'data': nextData}).eq('id', item.id);
+        .update({'read': true, 'data': nextData})
+        .eq('id', item.id);
 
     if (status == 'accepted') {
-      unawaited(_notifySocialEvent(
-        'follow_request_accepted',
-        {'request_id': requestId},
-      ));
+      unawaited(
+        _notifySocialEvent('follow_request_accepted', {
+          'request_id': requestId,
+        }),
+      );
     }
 
     await loadNotifications();
@@ -332,7 +389,8 @@ class NotificationService extends ChangeNotifier {
       title: row['title'] as String,
       body: row['body'] as String,
       read: row['read'] as bool? ?? false,
-      createdAt: DateTime.tryParse(row['created_at'] as String? ?? '') ??
+      createdAt:
+          DateTime.tryParse(row['created_at'] as String? ?? '') ??
           DateTime.now(),
       data: row['data'] as Map<String, dynamic>?,
     );
@@ -405,45 +463,38 @@ class NotificationService extends ChangeNotifier {
       return '/feed/echo/${Uri.encodeComponent(echoId)}';
     }
 
-    if (item.type == 'follow_request') return '/notifications';
+    if (item.type == 'follow_request' ||
+        item.type == 'account_device_login_attempt') {
+      return '/notifications';
+    }
     return null;
   }
 
   (IconData, Color) _iconFor(String type) => switch (type) {
-        'echo_verified' => (Icons.verified_outlined, AppColors.fernGreen),
-        'identity_verified' => (
-            Icons.verified_user_rounded,
-            AppColors.fernGreen
-          ),
-        'echo_supported' => (Icons.thumb_up_alt_outlined, AppColors.fernGreen),
-        'echo_challenged' => (
-            Icons.report_problem_outlined,
-            AppColors.sunsetCoral
-          ),
-        'context_like' => (Icons.favorite_border_rounded, AppColors.fernGreen),
-        'echo_reply' || 'reply_reply' => (
-            Icons.reply_outlined,
-            AppColors.fernGreen
-          ),
-        'reply_like' => (Icons.favorite_outline_rounded, AppColors.fernGreen),
-        'follow_request' => (
-            Icons.person_add_alt_1_rounded,
-            AppColors.fernGreen
-          ),
-        'follow_request_accepted' || 'new_follower' => (
-            Icons.how_to_reg_rounded,
-            AppColors.fernGreen
-          ),
-        'new_follower_echo' => (
-            Icons.dynamic_feed_outlined,
-            AppColors.fernGreen
-          ),
-        'content_removed' || 'echo_moderation' => (
-            Icons.shield_outlined,
-            AppColors.sunsetCoral
-          ),
-        _ => (Icons.notifications_outlined, AppColors.fernGreen),
-      };
+    'echo_verified' => (Icons.verified_outlined, AppColors.fernGreen),
+    'identity_verified' => (Icons.verified_user_rounded, AppColors.fernGreen),
+    'echo_supported' => (Icons.thumb_up_alt_outlined, AppColors.fernGreen),
+    'echo_challenged' => (Icons.report_problem_outlined, AppColors.sunsetCoral),
+    'context_requested' => (
+      Icons.fact_check_outlined,
+      AppColors.statusUnderReview,
+    ),
+    'context_like' => (Icons.favorite_border_rounded, AppColors.fernGreen),
+    'echo_reply' ||
+    'reply_reply' => (Icons.reply_outlined, AppColors.fernGreen),
+    'reply_like' => (Icons.favorite_outline_rounded, AppColors.fernGreen),
+    'follow_request' => (Icons.person_add_alt_1_rounded, AppColors.fernGreen),
+    'follow_request_accepted' ||
+    'new_follower' => (Icons.how_to_reg_rounded, AppColors.fernGreen),
+    'new_follower_echo' => (Icons.dynamic_feed_outlined, AppColors.fernGreen),
+    'account_device_login_attempt' => (
+      Icons.phonelink_lock_rounded,
+      AppColors.sunsetCoral,
+    ),
+    'content_removed' ||
+    'echo_moderation' => (Icons.shield_outlined, AppColors.sunsetCoral),
+    _ => (Icons.notifications_outlined, AppColors.fernGreen),
+  };
 
   @override
   void dispose() {

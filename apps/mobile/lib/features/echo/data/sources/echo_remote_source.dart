@@ -11,8 +11,10 @@ class EchoRemoteSource {
   const EchoRemoteSource(this._client);
   final SupabaseClient _client;
 
-  Future<List<EchoEntity>> fetchFeed(
-      {required int offset, required int limit}) async {
+  Future<List<EchoEntity>> fetchFeed({
+    required int offset,
+    required int limit,
+  }) async {
     AppLogger.debug('remote: fetch feed offset=$offset limit=$limit');
 
     final response = await _client
@@ -35,14 +37,28 @@ class EchoRemoteSource {
         .order('trust_score', ascending: false)
         .range(offset, offset + limit - 1);
 
-    return (response as List).map((row) {
-      final user = row['users_public'] as Map<String, dynamic>;
-      return EchoModel.fromRow(row as Map<String, dynamic>, user);
-    }).toList();
+    final userId = _client.auth.currentUser?.id;
+
+    return (response as List)
+        .where((row) {
+          final r = row as Map<String, dynamic>;
+          final authorId = r['user_id'] as String? ?? '';
+          final verdict = r['public_verdict'] as String? ?? 'open';
+          final isOwnEcho = userId != null && authorId == userId;
+          return isOwnEcho ||
+              (verdict != 'not_supported' && verdict != 'insufficient_context');
+        })
+        .map((row) {
+          final user = row['users_public'] as Map<String, dynamic>;
+          return EchoModel.fromRow(row as Map<String, dynamic>, user);
+        })
+        .toList();
   }
 
   Future<EchoEntity> fetchById(String id) async {
-    final row = await _client.from('echoes').select('''
+    final row = await _client
+        .from('echoes')
+        .select('''
           id, user_id, title, content, category, category_detail, status, version,
           media_urls, reply_count, proof_count, bond_count,
           trust_score, confidence_score, controversy_score,
@@ -54,7 +70,9 @@ class EchoRemoteSource {
           verified_record_tx, verified_record_at,
           verified_record_status, verified_record_error,
           users_public!inner(username, display_name, avatar_url, trust_tier, is_pro)
-        ''').eq('id', id).single();
+        ''')
+        .eq('id', id)
+        .single();
 
     final user = row['users_public'] as Map<String, dynamic>;
     return EchoModel.fromRow(row, user);
@@ -69,15 +87,18 @@ class EchoRemoteSource {
     final userId = _client.auth.currentUser?.id;
     if (userId == null) throw Exception('not authenticated');
 
-    final inserted = await _client.from('echoes').insert({
-      'user_id': userId,
-      'title': title.trim(),
-      'content': content.trim(),
-      'category': category.dbValue,
-      'category_detail': null,
-      'verification_required': verificationRequired,
-      'status': 'pending_verification',
-    }).select('''
+    final inserted = await _client
+        .from('echoes')
+        .insert({
+          'user_id': userId,
+          'title': title.trim(),
+          'content': content.trim(),
+          'category': category.dbValue,
+          'category_detail': null,
+          'verification_required': verificationRequired,
+          'status': 'pending_verification',
+        })
+        .select('''
       id, user_id, title, content, category, category_detail, status, version,
       media_urls, reply_count, proof_count, bond_count,
       trust_score, confidence_score, controversy_score,
@@ -89,7 +110,8 @@ class EchoRemoteSource {
       verified_record_tx, verified_record_at,
       verified_record_status, verified_record_error,
       users_public!inner(username, display_name, avatar_url, trust_tier, is_pro)
-    ''').single();
+    ''')
+        .single();
 
     unawaited(_anchorEchoOnChain(inserted['id'] as String));
 
@@ -101,10 +123,7 @@ class EchoRemoteSource {
     try {
       await _client.functions.invoke(
         'solana-memo',
-        body: {
-          'kind': 'echo_created',
-          'echo_id': echoId,
-        },
+        body: {'kind': 'echo_created', 'echo_id': echoId},
       );
       AppLogger.info('remote: echo anchored on solana echo=$echoId');
     } catch (e) {

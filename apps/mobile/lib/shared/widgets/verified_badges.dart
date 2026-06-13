@@ -7,13 +7,10 @@ import 'safe_circle_avatar.dart';
 
 enum BadgeType { none, verified, pro, verifiedPro }
 
-BadgeType resolveBadgeType({
-  required bool isVerified,
-  required bool isPro,
-}) {
+BadgeType resolveBadgeType({required bool isVerified, required bool isPro}) {
   if (isVerified && isPro) return BadgeType.verifiedPro;
-  if (isVerified) return BadgeType.verified;
   if (isPro) return BadgeType.pro;
+  if (isVerified) return BadgeType.verified;
   return BadgeType.none;
 }
 
@@ -46,10 +43,8 @@ class AvatarWithBadge extends StatelessWidget {
               height: size,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: badgeType == BadgeType.verifiedPro
-                      ? [const Color(0xFF1DA1F2), const Color(0xFF0D47A1)]
-                      : [AppColors.fernGreen, AppColors.fernGreenDark],
+                gradient: const LinearGradient(
+                  colors: [AppColors.fernGreen, AppColors.fernGreenDark],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -97,9 +92,10 @@ class _AnimatedBadgeDotState extends State<_AnimatedBadgeDot>
       vsync: this,
       duration: const Duration(milliseconds: 600),
     );
-    _scale = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _c, curve: Curves.easeOutBack),
-    );
+    _scale = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutBack));
     _c.forward();
   }
 
@@ -115,11 +111,11 @@ class _AnimatedBadgeDotState extends State<_AnimatedBadgeDot>
     final IconData badgeIcon;
     switch (widget.type) {
       case BadgeType.verifiedPro:
-        badgeColor = const Color(0xFF1DA1F2); // blue
-        badgeIcon = Icons.star_rounded;
+        badgeColor = AppColors.fernGreen;
+        badgeIcon = Icons.verified_rounded;
       case BadgeType.pro:
-        badgeColor = const Color(0xFFFFB300); // amber gold
-        badgeIcon = Icons.star_rounded;
+        badgeColor = AppColors.fernGreen;
+        badgeIcon = Icons.verified_rounded;
       case BadgeType.verified:
         badgeColor = AppColors.fernGreen;
         badgeIcon = Icons.verified_rounded;
