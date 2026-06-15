@@ -17,6 +17,7 @@
     this theme is only used starting with v2 of flutter's android embedding
 -->
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
-        <item name="android:windowBackground">?android:colorBackground</item>
+        <item name="android:windowBackground">@color/backgroundColor</item>
+        <item name="android:forceDarkAllowed">false</item>
     </style>
 </resources>

@@ -14,6 +14,7 @@ import '../../../../shared/widgets/app_bottom_nav.dart';
 import '../../../../app/app.dart';
 import '../../../../shared/widgets/shimmer_loader.dart';
 import '../../../../shared/widgets/brand_wordmark.dart';
+import '../../../../shared/widgets/avatar_image_provider.dart';
 
 class TrendingSignal {
   const TrendingSignal({
@@ -44,6 +45,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   String? _selectedCountry;
   List<TrendingSignal> _signals = [];
   bool _isLoading = true;
+  late final Future<String?> _avatarFuture;
 
   static const _countries = [
     (code: null, label: 'Global'),
@@ -65,8 +67,25 @@ class _DiscoverScreenState extends State<DiscoverScreen>
       vsync: this,
       duration: const Duration(milliseconds: 400),
     );
+    _avatarFuture = _loadAvatarUrl();
     _detectCountryAndLoad();
     _subscribeRealtime();
+  }
+
+  Future<String?> _loadAvatarUrl() async {
+    final client = Supabase.instance.client;
+    final userId = client.auth.currentUser?.id;
+    if (userId == null) return null;
+    try {
+      final row = await client
+          .from('users_public')
+          .select('avatar_url')
+          .eq('id', userId)
+          .maybeSingle();
+      return row?['avatar_url'] as String?;
+    } catch (_) {
+      return null;
+    }
   }
 
   void _subscribeRealtime() {
@@ -193,7 +212,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const _DiscoverTopBar(),
+                _DiscoverTopBar(avatarFuture: _avatarFuture),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
                     AppSpacing.xl,
@@ -360,7 +379,9 @@ extension _DiscoverNullableIterable<T> on Iterable<T?> {
 }
 
 class _DiscoverTopBar extends StatelessWidget {
-  const _DiscoverTopBar();
+  const _DiscoverTopBar({required this.avatarFuture});
+
+  final Future<String?> avatarFuture;
 
   @override
   Widget build(BuildContext context) {
@@ -385,19 +406,61 @@ class _DiscoverTopBar extends StatelessWidget {
             color: AppColors.charcoal,
             onPressed: () => context.push('/search'),
           ),
-          IconButton(
-            tooltip: context.l('Notifications'),
-            icon: const Icon(Icons.notifications_none_rounded),
-            color: AppColors.charcoal,
-            onPressed: () => context.push('/notifications'),
-          ),
-          IconButton(
-            tooltip: context.l('Profile'),
-            icon: const Icon(Icons.account_circle_outlined),
-            color: AppColors.charcoal,
-            onPressed: () => context.push('/profile'),
+          FutureBuilder<String?>(
+            future: avatarFuture,
+            builder: (context, snapshot) => _DiscoverAvatarButton(
+              avatarUrl: snapshot.data,
+              onPressed: () => context.push('/profile'),
+            ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _DiscoverAvatarButton extends StatelessWidget {
+  const _DiscoverAvatarButton({
+    required this.avatarUrl,
+    required this.onPressed,
+  });
+
+  final String? avatarUrl;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final imageProvider = avatarImageProvider(avatarUrl);
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          width: 38,
+          height: 38,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: AppColors.surfaceSecondary,
+            shape: BoxShape.circle,
+            border: Border.all(color: AppColors.borderSubtle),
+          ),
+          child: imageProvider == null
+              ? const Icon(
+                  Icons.person_rounded,
+                  color: AppColors.textSecondary,
+                  size: 21,
+                )
+              : Image(
+                  image: imageProvider,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => const Icon(
+                    Icons.person_rounded,
+                    color: AppColors.textSecondary,
+                    size: 21,
+                  ),
+                ),
+        ),
       ),
     );
   }

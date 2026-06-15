@@ -12,6 +12,7 @@ import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../core/utils/media_file_safety.dart';
+import '../../../../core/utils/ai_slop_guard.dart';
 
 void showSignalResponseSheet({
   required BuildContext context,
@@ -100,6 +101,16 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
       return;
     }
 
+    final aiSlop = AiSlopGuard.assess(body: content, allowShort: true);
+    if (aiSlop.isBlocked) {
+      showErrorSnack(context, aiSlop.message);
+      return;
+    }
+    if (aiSlop.shouldWarn) {
+      final proceed = await _showAiSlopDialog(aiSlop);
+      if (proceed != true) return;
+    }
+
     setState(() => _submitting = true);
     HapticFeedback.lightImpact();
 
@@ -144,6 +155,27 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
         setState(() => _submitting = false);
       }
     }
+  }
+
+  Future<bool?> _showAiSlopDialog(AiSlopAssessment result) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Make it more specific?'),
+        content: Text(result.message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Edit'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Post anyway'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _loadExistingResponse() async {

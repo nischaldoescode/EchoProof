@@ -30,7 +30,7 @@ class EchoRemoteSource {
           created_record_tx, created_record_at, solana_status, solana_error,
           verified_record_tx, verified_record_at,
           verified_record_status, verified_record_error,
-          users_public!inner(username, display_name, avatar_url, trust_tier, is_pro, is_public)
+          users_public!echoes_user_id_fkey!inner(username, display_name, avatar_url, trust_tier, is_pro, is_public)
         ''')
         .not('status', 'in', '("hidden","rejected")')
         .eq('users_public.is_public', true)
@@ -69,7 +69,7 @@ class EchoRemoteSource {
           created_record_tx, created_record_at, solana_status, solana_error,
           verified_record_tx, verified_record_at,
           verified_record_status, verified_record_error,
-          users_public!inner(username, display_name, avatar_url, trust_tier, is_pro)
+          users_public!echoes_user_id_fkey!inner(username, display_name, avatar_url, trust_tier, is_pro)
         ''')
         .eq('id', id)
         .single();
@@ -109,7 +109,7 @@ class EchoRemoteSource {
       created_record_tx, created_record_at, solana_status, solana_error,
       verified_record_tx, verified_record_at,
       verified_record_status, verified_record_error,
-      users_public!inner(username, display_name, avatar_url, trust_tier, is_pro)
+      users_public!echoes_user_id_fkey!inner(username, display_name, avatar_url, trust_tier, is_pro)
     ''')
         .single();
 

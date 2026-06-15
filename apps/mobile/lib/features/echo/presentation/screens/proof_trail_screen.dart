@@ -82,7 +82,7 @@ class _ProofTrailScreenState extends State<ProofTrailScreen>
               verified_record_tx, verified_record_at,
               verified_record_status, verified_record_error,
               bond_count,
-              users_public!inner(
+              users_public!echoes_user_id_fkey!inner(
                 username, display_name, avatar_url, trust_tier, is_pro
               )
           ''')

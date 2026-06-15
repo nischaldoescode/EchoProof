@@ -15,8 +15,10 @@ import '../../../../app/theme/typography.dart';
 import '../../../../core/localization/app_copy.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/logger.dart';
+import '../../../../core/utils/ai_slop_guard.dart';
 import '../../../../shared/widgets/avatar_image_provider.dart';
 import '../../../../shared/widgets/rich_text_display.dart';
+import '../../../../shared/widgets/verified_badges.dart';
 import 'package:go_router/go_router.dart';
 import '../widgets/link_preview_card.dart';
 
@@ -153,6 +155,16 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
     final content = _replyKey.currentState?.controller?.text.trim() ?? '';
     if (content.isEmpty || _isSubmitting) return;
 
+    final aiSlop = AiSlopGuard.assess(body: content, allowShort: true);
+    if (aiSlop.isBlocked) {
+      showErrorSnack(context, aiSlop.message);
+      return;
+    }
+    if (aiSlop.shouldWarn) {
+      final proceed = await _showAiSlopDialog(aiSlop);
+      if (proceed != true) return;
+    }
+
     setState(() => _isSubmitting = true);
     HapticFeedback.lightImpact();
 
@@ -206,6 +218,36 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
         showErrorSnack(context, e.toString());
       }
     }
+  }
+
+  Future<bool?> _showAiSlopDialog(AiSlopAssessment result) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          context.l('Make it more yours?'),
+          style: GoogleFonts.josefinSans(fontWeight: FontWeight.w700),
+        ),
+        content: Text(
+          context.l(result.message),
+          style: GoogleFonts.josefinSans(fontSize: 13, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(context.l('Edit'), style: GoogleFonts.josefinSans()),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              context.l('Post anyway'),
+              style: GoogleFonts.josefinSans(color: AppColors.fernGreenDark),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _setReplyingTo(String replyId, String username) {
@@ -1028,22 +1070,11 @@ class _InlineReplyBadge extends StatelessWidget {
 
     if (!isPro && !isTrusted) return const SizedBox.shrink();
 
-    final color = AppColors.fernGreen;
-    final bg = AppColors.fernGreenLight;
-    final icon = Icons.verified_rounded;
-
     return Tooltip(
       message: isPro ? 'Pro' : 'Trusted',
-      child: Container(
-        width: 15,
-        height: 15,
-        margin: const EdgeInsets.only(left: 4),
-        decoration: BoxDecoration(
-          color: bg,
-          shape: BoxShape.circle,
-          border: Border.all(color: color.withValues(alpha: 0.35)),
-        ),
-        child: Icon(icon, size: 10, color: color),
+      child: const Padding(
+        padding: EdgeInsets.only(left: 4),
+        child: AccountVerifiedBadge(size: 15),
       ),
     );
   }
@@ -1207,6 +1238,11 @@ class _ReplyInputState extends State<_ReplyInput> {
                               color: AppColors.textTertiary,
                             ),
                             border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            errorBorder: InputBorder.none,
+                            focusedErrorBorder: InputBorder.none,
+                            disabledBorder: InputBorder.none,
                             isDense: true,
                             contentPadding: const EdgeInsets.symmetric(
                               vertical: 8,

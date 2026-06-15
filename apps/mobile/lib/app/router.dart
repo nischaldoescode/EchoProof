@@ -17,6 +17,7 @@ import '../features/echo/presentation/screens/feed_screen.dart';
 import '../features/echo/presentation/screens/create_echo_screen.dart';
 import '../features/echo/presentation/screens/echo_detail_screen.dart';
 import '../features/echo/presentation/screens/echo_signal_game_screen.dart';
+import '../features/echo/presentation/screens/bookmarks_screen.dart';
 import '../features/echo/presentation/screens/proof_trail_screen.dart';
 import '../features/echo/presentation/screens/echo_video_screen.dart';
 import '../features/echo/presentation/screens/discover_screen.dart';
@@ -72,8 +73,9 @@ String? _secureRoomKeyFromUri(Uri uri) {
   final fragment = uri.fragment.trim();
   if (fragment.isEmpty) return null;
   try {
-    final normalized =
-        fragment.startsWith('?') ? fragment.substring(1) : fragment;
+    final normalized = fragment.startsWith('?')
+        ? fragment.substring(1)
+        : fragment;
     return Uri.splitQueryString(normalized)['key'];
   } catch (_) {
     return null;
@@ -268,7 +270,7 @@ bool _isOnboardingRoute(String location) {
     '/onboarding',
     '/age-gender',
     '/permissions',
-    '/verify-email'
+    '/verify-email',
   ];
   return routes.any((r) => location.startsWith(r));
 }
@@ -382,9 +384,8 @@ GoRouter createRouter({
       ),
       GoRoute(
         path: '/age-gender',
-        pageBuilder: (_, s) => _slidePage(
-          AgeGenderScreen(email: s.extra as String? ?? ''),
-        ),
+        pageBuilder: (_, s) =>
+            _slidePage(AgeGenderScreen(email: s.extra as String? ?? '')),
       ),
       GoRoute(
         path: '/permissions',
@@ -407,9 +408,7 @@ GoRouter createRouter({
               GoRoute(
                 path: 'proof-trail',
                 pageBuilder: (_, s) => _slidePage(
-                  ProofTrailScreen(
-                    echoId: s.pathParameters['id']!,
-                  ),
+                  ProofTrailScreen(echoId: s.pathParameters['id']!),
                 ),
               ),
               GoRoute(
@@ -461,19 +460,19 @@ GoRouter createRouter({
           ),
         ),
       ),
-      GoRoute(
-        path: '/discover',
-        builder: (_, __) => const DiscoverScreen(),
-      ),
+      GoRoute(path: '/discover', builder: (_, __) => const DiscoverScreen()),
       GoRoute(
         path: '/search',
-        pageBuilder: (_, s) => _slidePage(
-          SearchScreen(initialQuery: s.uri.queryParameters['q']),
-        ),
+        pageBuilder: (_, s) =>
+            _slidePage(SearchScreen(initialQuery: s.uri.queryParameters['q'])),
       ),
       GoRoute(
         path: '/profile',
         pageBuilder: (_, __) => _profilePage(const ProfileScreen()),
+      ),
+      GoRoute(
+        path: '/profile/bookmarks',
+        pageBuilder: (_, __) => _profilePage(const BookmarksScreen()),
       ),
       GoRoute(
         path: '/profile/analytics',
@@ -490,11 +489,8 @@ GoRouter createRouter({
       ),
       GoRoute(
         path: '/profile/:username',
-        pageBuilder: (_, s) => _profilePage(
-          ProfileScreen(
-            username: s.pathParameters['username'],
-          ),
-        ),
+        pageBuilder: (_, s) =>
+            _profilePage(ProfileScreen(username: s.pathParameters['username'])),
       ),
       GoRoute(
         path: '/notifications',
@@ -511,9 +507,8 @@ GoRouter createRouter({
       ),
       GoRoute(
         path: '/rooms/:id',
-        pageBuilder: (_, s) => _slidePage(
-          SecureRoomChatScreen(roomId: s.pathParameters['id']!),
-        ),
+        pageBuilder: (_, s) =>
+            _slidePage(SecureRoomChatScreen(roomId: s.pathParameters['id']!)),
       ),
       GoRoute(
         path: '/settings',

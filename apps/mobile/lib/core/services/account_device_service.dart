@@ -45,10 +45,19 @@ class AccountDeviceRecord {
 }
 
 class AccountDeviceConflict implements Exception {
-  const AccountDeviceConflict(this.currentDevice, this.message);
+  const AccountDeviceConflict(
+    this.currentDevice,
+    this.message, {
+    this.kind = 'different_device',
+    this.sameNamedDevice = false,
+    this.lastSeenAgeSeconds,
+  });
 
   final AccountDeviceRecord currentDevice;
   final String message;
+  final String kind;
+  final bool sameNamedDevice;
+  final int? lastSeenAgeSeconds;
 }
 
 class AccountDeviceService extends ChangeNotifier {
@@ -64,6 +73,7 @@ class AccountDeviceService extends ChangeNotifier {
   List<AccountDeviceRecord> _devices = const [];
   bool _registering = false;
   bool _handlingInvalidation = false;
+  int _heartbeatMisses = 0;
 
   AccountDeviceRecord? get currentDevice => _currentDevice;
   AccountDeviceConflict? get pendingConflict => _pendingConflict;
@@ -155,6 +165,9 @@ class AccountDeviceService extends ChangeNotifier {
     _pendingConflict = AccountDeviceConflict(
       AccountDeviceRecord.fromMap(current),
       data['message'] as String? ?? 'Your account is active on another device.',
+      kind: data['conflict_kind'] as String? ?? 'different_device',
+      sameNamedDevice: data['same_named_device'] as bool? ?? false,
+      lastSeenAgeSeconds: (data['last_seen_age_seconds'] as num?)?.toInt(),
     );
     await loadDevices().catchError((_) {});
     notifyListeners();
@@ -179,8 +192,25 @@ class AccountDeviceService extends ChangeNotifier {
         AppLogger.warn(
           'device-session: heartbeat found no active row for this device',
         );
+        final confirmedInactive = await _currentDeviceIsInactive(
+          userId,
+          deviceId,
+        );
+        if (!confirmedInactive) {
+          _heartbeatMisses = 0;
+          return true;
+        }
+
+        _heartbeatMisses += 1;
+        if (_heartbeatMisses < 2) {
+          AppLogger.warn(
+            'device-session: heartbeat miss grace $_heartbeatMisses/2',
+          );
+          return true;
+        }
         return false;
       }
+      _heartbeatMisses = 0;
       _currentDevice = AccountDeviceRecord.fromMap(
         Map<String, dynamic>.from(list.first as Map),
       );
@@ -229,6 +259,13 @@ class AccountDeviceService extends ChangeNotifier {
             final active = row['active'] as bool? ?? true;
             if (active) return;
             AppLogger.warn('device-session: current device was replaced');
+            await Future<void>.delayed(const Duration(milliseconds: 900));
+            if (!authService.isLoggedIn) return;
+            final stillInactive = await _currentDeviceIsInactive(
+              authService.currentUser?.id,
+              deviceId,
+            );
+            if (!stillInactive) return;
             await _handleInvalidatedDevice(
               authService,
               router,
@@ -277,10 +314,33 @@ class AccountDeviceService extends ChangeNotifier {
   Future<void> stopRealtime() async {
     _heartbeatTimer?.cancel();
     _heartbeatTimer = null;
+    _heartbeatMisses = 0;
     final channel = _channel;
     _channel = null;
     if (channel != null) {
       await _client.removeChannel(channel);
+    }
+  }
+
+  Future<bool> _currentDeviceIsInactive(String? userId, String deviceId) async {
+    if (userId == null) return false;
+    try {
+      final row = await _client
+          .from('account_devices')
+          .select('active, replaced_at, last_seen_at')
+          .eq('user_id', userId)
+          .eq('device_id', deviceId)
+          .maybeSingle();
+      if (row == null) {
+        AppLogger.warn(
+          'device-session: current device row missing during confirmation',
+        );
+        return false;
+      }
+      return (row['active'] as bool?) == false;
+    } catch (e) {
+      AppLogger.warn('device-session: inactive confirmation skipped $e');
+      return false;
     }
   }
 

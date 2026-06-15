@@ -31,7 +31,7 @@ export default async function EchoDetailPage({ params }: Props) {
     .select(
       `
       *,
-      users_public(username, trust_tier, avatar_url),
+      users_public!echoes_user_id_fkey(username, trust_tier, avatar_url),
       echo_reports(id, reason, reporter_id, created_at),
       echo_proofs(id, proof_type, proof_url, description),
       signal_responses(

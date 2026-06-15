@@ -107,6 +107,7 @@ class EchoEntity extends Equatable {
     this.requiresVerification = true,
     this.version = 1,
     this.replyCount = 0,
+    this.viewCount = 0,
     this.mediaUrls = const [],
     this.categoryDetail,
     this.userId = '',
@@ -159,6 +160,7 @@ class EchoEntity extends Equatable {
   final int supportCount;
   final int challengeCount;
   final int replyCount;
+  final int viewCount;
   final String userId;
   final String? createdRecordTx;
   final DateTime? createdRecordAt;
@@ -221,6 +223,7 @@ class EchoEntity extends Equatable {
       userIsPro: (json['user_is_pro'] as bool?) ?? false,
       mediaUrls: (json['media_urls'] as List?)?.cast<String>() ?? const [],
       replyCount: (json['reply_count'] as int?) ?? 0,
+      viewCount: (json['view_count'] as num?)?.toInt() ?? 0,
       userId: json['user_id'] as String? ?? '',
       createdRecordTx: json['created_record_tx'] as String?,
       createdRecordAt: _dateFromJson(json['created_record_at']),
@@ -286,6 +289,7 @@ class EchoEntity extends Equatable {
     bool? requiresVerification,
     int? version,
     int? replyCount,
+    int? viewCount,
     bool? userIsPro,
     List<String>? mediaUrls,
     String? userId,
@@ -333,6 +337,7 @@ class EchoEntity extends Equatable {
       requiresVerification: requiresVerification ?? this.requiresVerification,
       version: version ?? this.version,
       userIsPro: userIsPro ?? this.userIsPro,
+      viewCount: viewCount ?? this.viewCount,
       mediaUrls: mediaUrls ?? this.mediaUrls,
       userId: userId ?? this.userId,
       createdRecordTx: createdRecordTx ?? this.createdRecordTx,
@@ -385,6 +390,7 @@ class EchoEntity extends Equatable {
     requiresVerification,
     version,
     replyCount,
+    viewCount,
     userId,
     userIsPro,
     mediaUrls,

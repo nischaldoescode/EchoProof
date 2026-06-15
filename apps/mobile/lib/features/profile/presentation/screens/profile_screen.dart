@@ -1,7 +1,9 @@
 // profile screen
 // @params username opens a public profile when present
 
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
@@ -23,6 +25,7 @@ import '../../../../shared/widgets/avatar_image_provider.dart';
 import '../../../../shared/widgets/rich_text_display.dart';
 import '../../../../shared/widgets/image_viewer.dart';
 import '../../../../shared/widgets/top_flow_loader.dart';
+import '../../../../shared/widgets/verified_badges.dart';
 import '../../../../app/app.dart';
 import 'package:flutter/services.dart';
 import '../../../../core/utils/snack.dart';
@@ -33,6 +36,7 @@ import '../../../../core/utils/sanitizer.dart';
 import '../../../../core/utils/media_file_safety.dart';
 import '../../../../core/services/storage_service.dart';
 import '../widgets/profile_banner_crop_editor.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, this.username});
@@ -55,9 +59,18 @@ class _ProfileScreenState extends State<ProfileScreen>
   bool userIsPro = false;
   bool _isFollowing = false;
   bool _isBlockedByMe = false;
+  bool _profileUnavailable = false;
   String _followRequestStatus = 'none';
   Timer? _debounce;
   bool _isSavingBanner = false;
+  TabController? _profileTabController;
+  final ScrollController _profileOuterScrollController = ScrollController();
+  final ValueNotifier<bool> _repliesTabIsEmpty = ValueNotifier<bool>(true);
+  final ValueNotifier<bool> _mediaTabIsEmpty = ValueNotifier<bool>(true);
+  bool _repliesTabLoaded = false;
+  bool _mediaTabLoaded = false;
+  int _lastProfileTabIndex = 0;
+  final Set<int> _visitedProfileTabs = <int>{0};
 
   late final AnimationController _entranceCtrl;
   late final Animation<double> _fade;
@@ -87,17 +100,66 @@ class _ProfileScreenState extends State<ProfileScreen>
   @override
   void dispose() {
     _entranceCtrl.dispose();
+    _profileTabController?.removeListener(_handleProfileTabChange);
+    _profileTabController?.dispose();
+    _profileOuterScrollController.dispose();
+    _repliesTabIsEmpty.dispose();
+    _mediaTabIsEmpty.dispose();
     _debounce?.cancel();
     super.dispose();
+  }
+
+  TabController _ensureProfileTabController(int length) {
+    final current = _profileTabController;
+    if (current != null && current.length == length) return current;
+
+    final previousIndex = current?.index ?? 0;
+    current?.removeListener(_handleProfileTabChange);
+    current?.dispose();
+    _lastProfileTabIndex = previousIndex.clamp(0, length - 1);
+    _profileTabController = TabController(
+      length: length,
+      vsync: this,
+      initialIndex: _lastProfileTabIndex,
+    )..addListener(_handleProfileTabChange);
+    _visitedProfileTabs.add(_lastProfileTabIndex);
+    return _profileTabController!;
+  }
+
+  void _handleProfileTabChange() {
+    final controller = _profileTabController;
+    if (!mounted || controller == null) return;
+    if (_lastProfileTabIndex == controller.index) return;
+
+    // tab animations can notify more than once per tap
+    // rebuild only when the selected tab changes so scroll state stays calm
+    _lastProfileTabIndex = controller.index;
+    _visitedProfileTabs.add(controller.index);
+    setState(() {});
+  }
+
+  void _setRepliesTabEmpty(bool empty) {
+    final changed = !_repliesTabLoaded || _repliesTabIsEmpty.value != empty;
+    _repliesTabLoaded = true;
+    _repliesTabIsEmpty.value = empty;
+    if (changed && mounted) setState(() {});
+  }
+
+  void _setMediaTabEmpty(bool empty) {
+    final changed = !_mediaTabLoaded || _mediaTabIsEmpty.value != empty;
+    _mediaTabLoaded = true;
+    _mediaTabIsEmpty.value = empty;
+    if (changed && mounted) setState(() {});
   }
 
   bool _isSavingProfile = false;
 
   bool get _canViewProfileContent =>
-      _isOwnProfile || (!_isBlockedByMe && (_isPublic || _isFollowing));
+      _isOwnProfile ||
+      (!_isBlockedByMe && !_profileUnavailable && (_isPublic || _isFollowing));
 
   bool get _canOpenFollowLists =>
-      _isOwnProfile || (!_isBlockedByMe && _isPublic);
+      _isOwnProfile || (!_isBlockedByMe && !_profileUnavailable && _isPublic);
 
   // opens the edit profile bottom sheet
   // covers display name username gender and dob
@@ -107,7 +169,11 @@ class _ProfileScreenState extends State<ProfileScreen>
     final client = Supabase.instance.client;
     final currentUsername = _profile?['username'] as String? ?? '';
     final currentDisplay = _profile?['display_name'] as String? ?? '';
+    final currentBio = _profile?['bio'] as String? ?? '';
     final currentGender = _profile?['gender'] as String?;
+    final currentWebsite = _profile?['website_url'] as String? ?? '';
+    var showBirthdatePublic =
+        _profile?['show_birthdate_public'] as bool? ?? false;
 
     // parse stored dob from postgres yyyy-mm-dd
     DateTime? currentDob;
@@ -118,11 +184,29 @@ class _ProfileScreenState extends State<ProfileScreen>
 
     final usernameCtrl = TextEditingController(text: currentUsername);
     final displayCtrl = TextEditingController(text: currentDisplay);
+    final bioCtrl = TextEditingController(text: currentBio);
+    final websiteCtrl = TextEditingController(text: currentWebsite);
     bool usernameAvailable = true;
     bool isCheckingUsername = false;
     String? usernameError;
     String? selectedGender = currentGender;
     DateTime? selectedDob = currentDob;
+
+    bool sameDate(DateTime? a, DateTime? b) {
+      if (a == null || b == null) return a == b;
+      return a.year == b.year && a.month == b.month && a.day == b.day;
+    }
+
+    bool hasPendingProfileChanges() {
+      return usernameCtrl.text.trim().toLowerCase() != currentUsername ||
+          displayCtrl.text.trim() != currentDisplay ||
+          bioCtrl.text.trim() != currentBio ||
+          websiteCtrl.text.trim() != currentWebsite ||
+          selectedGender != currentGender ||
+          !sameDate(selectedDob, currentDob) ||
+          showBirthdatePublic !=
+              (_profile?['show_birthdate_public'] as bool? ?? false);
+    }
 
     // month labels for display
     const months = [
@@ -185,6 +269,20 @@ class _ProfileScreenState extends State<ProfileScreen>
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setSheet) {
+            final birthdateTint = showBirthdatePublic
+                ? AppColors.fernGreenDark
+                : AppColors.charcoal.withValues(alpha: 0.72);
+            final birthdateSurface = showBirthdatePublic
+                ? AppColors.fernGreenLight.withValues(alpha: 0.45)
+                : AppColors.softSand.withValues(alpha: 0.88);
+            final birthdateBorder = showBirthdatePublic
+                ? AppColors.fernGreen.withValues(alpha: 0.16)
+                : AppColors.borderMedium;
+            final canSave =
+                hasPendingProfileChanges() &&
+                usernameAvailable &&
+                !isCheckingUsername;
+
             return SingleChildScrollView(
               padding: EdgeInsets.only(
                 bottom:
@@ -237,6 +335,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                   TextField(
                     controller: displayCtrl,
                     maxLength: 50,
+                    onChanged: (_) => setSheet(() {}),
                     buildCounter:
                         (
                           _, {
@@ -250,6 +349,10 @@ class _ProfileScreenState extends State<ProfileScreen>
                       filled: true,
                       fillColor: AppColors.softSand,
                       border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide.none,
                       ),
@@ -267,6 +370,107 @@ class _ProfileScreenState extends State<ProfileScreen>
                     ),
                   ),
                   const SizedBox(height: AppSpacing.md),
+
+                  // bio
+                  Text(
+                    context.l('Bio'),
+                    style: GoogleFonts.josefinSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  TextField(
+                    controller: bioCtrl,
+                    maxLength: 160,
+                    maxLines: 3,
+                    onChanged: (_) => setSheet(() {}),
+                    buildCounter:
+                        (
+                          _, {
+                          required currentLength,
+                          required isFocused,
+                          maxLength,
+                        }) => null,
+                    style: AppTypography.textTheme.bodyMedium,
+                    decoration: InputDecoration(
+                      hintText: context.l('A short line about you'),
+                      filled: true,
+                      fillColor: AppColors.softSand,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                          color: AppColors.fernGreen,
+                          width: 1.5,
+                        ),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+
+                  // website
+                  Text(
+                    context.l('Website'),
+                    style: GoogleFonts.josefinSans(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  TextField(
+                    controller: websiteCtrl,
+                    keyboardType: TextInputType.url,
+                    autocorrect: false,
+                    maxLength: 120,
+                    onChanged: (_) => setSheet(() {}),
+                    buildCounter:
+                        (
+                          _, {
+                          required currentLength,
+                          required isFocused,
+                          maxLength,
+                        }) => null,
+                    style: AppTypography.textTheme.bodyMedium,
+                    decoration: InputDecoration(
+                      hintText: context.l('https://your.site'),
+                      filled: true,
+                      fillColor: AppColors.softSand,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                          color: AppColors.fernGreen,
+                          width: 1.5,
+                        ),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
 
                   // username
                   Text(
@@ -316,6 +520,10 @@ class _ProfileScreenState extends State<ProfileScreen>
                       filled: true,
                       fillColor: AppColors.softSand,
                       border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: BorderSide.none,
                       ),
@@ -377,6 +585,101 @@ class _ProfileScreenState extends State<ProfileScreen>
                         },
                       );
                     },
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  // birth date privacy stays close to identity fields
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    decoration: BoxDecoration(
+                      color: birthdateSurface,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: birthdateBorder),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          showBirthdatePublic
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                          size: 18,
+                          color: birthdateTint,
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                context.l('Show birth date'),
+                                style: GoogleFonts.josefinSans(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  color: birthdateTint,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                context.l(
+                                  'Only the month and day are shown publicly.',
+                                ),
+                                style: GoogleFonts.josefinSans(
+                                  fontSize: 12,
+                                  color: showBirthdatePublic
+                                      ? AppColors.textSecondary
+                                      : AppColors.textTertiary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 9,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: showBirthdatePublic
+                                ? AppColors.fernGreen.withValues(alpha: 0.12)
+                                : AppColors.white.withValues(alpha: 0.86),
+                            borderRadius: BorderRadius.circular(
+                              AppSpacing.radiusFull,
+                            ),
+                            border: Border.all(
+                              color: showBirthdatePublic
+                                  ? AppColors.fernGreen.withValues(alpha: 0.22)
+                                  : AppColors.borderSubtle,
+                            ),
+                          ),
+                          child: Text(
+                            context.l(
+                              showBirthdatePublic ? 'Public' : 'Hidden',
+                            ),
+                            style: GoogleFonts.josefinSans(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color: showBirthdatePublic
+                                  ? AppColors.fernGreenDark
+                                  : AppColors.textSecondary,
+                            ),
+                          ),
+                        ),
+                        Switch.adaptive(
+                          value: showBirthdatePublic,
+                          // keep switch contrast independent from the surrounding card tint
+                          // pale green tracks disappeared on some android skins when enabled
+                          activeThumbColor: AppColors.white,
+                          activeTrackColor: AppColors.fernGreen,
+                          inactiveThumbColor: AppColors.white,
+                          inactiveTrackColor: AppColors.textTertiary,
+                          onChanged: (value) {
+                            HapticFeedback.selectionClick();
+                            setSheet(() => showBirthdatePublic = value);
+                          },
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: AppSpacing.lg),
 
@@ -546,7 +849,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: (usernameAvailable && !isCheckingUsername)
+                      onPressed: canSave
                           ? () async {
                               Navigator.pop(ctx);
                               await _saveProfileChanges(
@@ -555,10 +858,13 @@ class _ProfileScreenState extends State<ProfileScreen>
                                     .toLowerCase(),
                                 newDisplayName: displayCtrl.text.trim(),
                                 currentUsername: currentUsername,
+                                newBio: bioCtrl.text.trim(),
+                                newWebsite: websiteCtrl.text.trim(),
                                 newGender:
                                     selectedGender ?? 'prefer_not_to_say',
                                 newDob: selectedDob,
                                 currentDob: currentDob,
+                                showBirthdatePublic: showBirthdatePublic,
                               );
                             }
                           : null,
@@ -595,14 +901,55 @@ class _ProfileScreenState extends State<ProfileScreen>
     required String newUsername,
     required String newDisplayName,
     required String currentUsername,
+    required String newBio,
+    required String newWebsite,
     required String newGender,
     required DateTime? newDob,
     required DateTime? currentDob,
+    required bool showBirthdatePublic,
   }) async {
+    final sanitizedBio = Sanitizer.bio(newBio);
+    final currentWebsite = _profile?['website_url'] as String? ?? '';
+    final hasOptionalProfileColumns =
+        (_profile?.containsKey('website_url') ?? false) &&
+        (_profile?.containsKey('show_birthdate_public') ?? false);
+    final trimmedWebsite = newWebsite.trim();
+    final sanitizedWebsite = trimmedWebsite.isEmpty
+        ? null
+        : Sanitizer.url(trimmedWebsite);
+    if (trimmedWebsite.isNotEmpty && sanitizedWebsite == null) {
+      showErrorSnack(
+        context,
+        context.l('Use a valid public http or https website link.'),
+      );
+      return;
+    }
+    if (showBirthdatePublic && newDob == null && currentDob == null) {
+      showInfoSnack(
+        context,
+        context.l('Add your birth date before making it public.'),
+      );
+      return;
+    }
+    if (!hasOptionalProfileColumns &&
+        (trimmedWebsite.isNotEmpty || showBirthdatePublic)) {
+      showInfoSnack(
+        context,
+        context.l(
+          'Profile link settings will be available after the latest database update is applied.',
+        ),
+      );
+      return;
+    }
     final usernameChanged = newUsername != currentUsername;
     final displayChanged =
         newDisplayName != (_profile?['display_name'] as String? ?? '');
+    final bioChanged = sanitizedBio != (_profile?['bio'] as String? ?? '');
+    final websiteChanged = (sanitizedWebsite ?? '') != currentWebsite;
     final genderChanged = newGender != (_profile?['gender'] as String? ?? '');
+    final birthdatePublicChanged =
+        showBirthdatePublic !=
+        (_profile?['show_birthdate_public'] as bool? ?? false);
     final dobChanged =
         newDob != null &&
         (currentDob == null ||
@@ -610,7 +957,13 @@ class _ProfileScreenState extends State<ProfileScreen>
             newDob.month != currentDob.month ||
             newDob.day != currentDob.day);
 
-    if (usernameChanged || displayChanged || genderChanged || dobChanged) {
+    if (usernameChanged ||
+        displayChanged ||
+        bioChanged ||
+        websiteChanged ||
+        genderChanged ||
+        birthdatePublicChanged ||
+        dobChanged) {
       final retryAfter = await _profileCooldownRemaining();
       if (retryAfter > 0) {
         if (mounted) {
@@ -673,6 +1026,11 @@ class _ProfileScreenState extends State<ProfileScreen>
         'gender': newGender,
       };
       if (usernameChanged) patch['username'] = Sanitizer.username(newUsername);
+      if (bioChanged) patch['bio'] = sanitizedBio;
+      if (websiteChanged) patch['website_url'] = sanitizedWebsite;
+      if (birthdatePublicChanged) {
+        patch['show_birthdate_public'] = showBirthdatePublic;
+      }
 
       if (dobChanged) {
         // calculate age from new dob
@@ -696,7 +1054,10 @@ class _ProfileScreenState extends State<ProfileScreen>
           ..._profile!,
           'username': newUsername,
           'display_name': newDisplayName,
+          'bio': sanitizedBio,
+          'website_url': sanitizedWebsite,
           'gender': newGender,
+          'show_birthdate_public': showBirthdatePublic,
           if (dobChanged)
             'date_of_birth':
                 '${newDob.year.toString().padLeft(4, '0')}-'
@@ -888,41 +1249,78 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Future<void> _loadProfile() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      // replies and media load lazily per profile
+      // reset them so an old empty tab cannot shape the next profile layout
+      _repliesTabLoaded = false;
+      _mediaTabLoaded = false;
+      _repliesTabIsEmpty.value = true;
+      _mediaTabIsEmpty.value = true;
+      _visitedProfileTabs
+        ..clear()
+        ..add(
+          (_profileTabController?.index ?? _lastProfileTabIndex).clamp(0, 2),
+        );
+    });
     final client = Supabase.instance.client;
     final myId = client.auth.currentUser?.id;
+    const profileSelectBase =
+        'id, username, display_name, avatar_url, trust_tier, trust_score, '
+        'echo_count, proof_count, is_public, bio, gender, date_of_birth, '
+        'is_pro, follower_count, following_count, banner_url, created_at';
+    const profileSelectWithLinks =
+        'id, username, display_name, avatar_url, trust_tier, trust_score, '
+        'echo_count, proof_count, is_public, bio, gender, date_of_birth, '
+        'website_url, show_birthdate_public, '
+        'is_pro, follower_count, following_count, banner_url, created_at';
+
+    Future<Map<String, dynamic>?> fetchProfile({
+      required bool byUsername,
+      required String value,
+    }) async {
+      try {
+        final query = client
+            .from('users_public')
+            .select(profileSelectWithLinks);
+        final result = byUsername
+            ? await query.eq('username', value).maybeSingle()
+            : await query.eq('id', value).maybeSingle();
+        return result;
+      } on PostgrestException catch (e) {
+        if (e.code != '42703') rethrow;
+        AppLogger.warn(
+          'profile: optional profile columns missing, using legacy select',
+        );
+        final query = client.from('users_public').select(profileSelectBase);
+        final result = byUsername
+            ? await query.eq('username', value).maybeSingle()
+            : await query.eq('id', value).maybeSingle();
+        return result;
+      }
+    }
 
     try {
       Map<String, dynamic> profile;
 
       if (widget.username != null) {
         _isOwnProfile = false;
-        final result = await client
-            .from('users_public')
-            .select(
-              'id, username, display_name, avatar_url, trust_tier, trust_score, '
-              'echo_count, proof_count, is_public, bio, gender, date_of_birth, '
-              'is_pro, follower_count, following_count, banner_url, created_at',
-            )
-            .eq('username', widget.username!)
-            .maybeSingle();
+        final result = await fetchProfile(
+          byUsername: true,
+          value: widget.username!,
+        );
         if (result == null) {
-          setState(() => _isLoading = false);
+          setState(() {
+            _profileUnavailable = true;
+            _isLoading = false;
+          });
           return;
         }
         final row = result;
         profile = row;
       } else {
         _isOwnProfile = true;
-        final result = await client
-            .from('users_public')
-            .select(
-              'id, username, display_name, avatar_url, trust_tier, trust_score, '
-              'echo_count, proof_count, is_public, bio, gender, date_of_birth, '
-              'is_pro, follower_count, following_count, banner_url, created_at',
-            )
-            .eq('id', myId!)
-            .maybeSingle();
+        final result = await fetchProfile(byUsername: false, value: myId!);
         if (result == null) {
           setState(() => _isLoading = false);
           return;
@@ -942,6 +1340,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       _isOwnProfile = resolvedOwnProfile;
       _isPublic = profile['is_public'] as bool? ?? true;
       userIsPro = profile['is_pro'] as bool? ?? false;
+      _profileUnavailable = false;
 
       if (!_isOwnProfile) {
         await _loadRelationshipState(targetId);
@@ -1379,39 +1778,6 @@ class _ProfileScreenState extends State<ProfileScreen>
     }
   }
 
-  Future<void> _updateBio(String newBio) async {
-    final client = Supabase.instance.client;
-    final userId = client.auth.currentUser?.id;
-    if (userId == null) return;
-    if (newBio == (_profile?['bio'] as String? ?? '')) return;
-    final retryAfter = await _profileCooldownRemaining();
-    if (retryAfter > 0) {
-      if (mounted) {
-        showInfoSnack(
-          context,
-          context.l('Profile changes are cooling down. Try again in {time}.', {
-            'time': _formatCooldown(retryAfter),
-          }),
-        );
-      }
-      return;
-    }
-    try {
-      await client
-          .from('users_public')
-          .update({'bio': newBio})
-          .eq('id', userId);
-      setState(() {
-        _profile = {..._profile!, 'bio': newBio};
-      });
-    } catch (e) {
-      AppLogger.error('profile: bio update failed $e');
-      if (mounted) {
-        showErrorSnack(context, _profileUpdateErrorMessage(e));
-      }
-    }
-  }
-
   Future<void> _pickBanner() async {
     if (!_isOwnProfile || _isSavingBanner) return;
     if (showOfflineSnackIfNeeded(context)) return;
@@ -1533,119 +1899,6 @@ class _ProfileScreenState extends State<ProfileScreen>
     ImageViewer.show(context, urls: [bannerUrl]);
   }
 
-  Future<void> _showEditBioSheet() async {
-    final currentBio = _profile?['bio'] as String? ?? '';
-    final ctrl = TextEditingController(text: currentBio);
-
-    final result = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: AppColors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        final keyboardInset = MediaQuery.viewInsetsOf(ctx).bottom;
-        final safeBottom = MediaQuery.paddingOf(ctx).bottom;
-
-        return SafeArea(
-          top: false,
-          child: AnimatedPadding(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            padding: EdgeInsets.fromLTRB(
-              AppSpacing.xl,
-              AppSpacing.xl,
-              AppSpacing.xl,
-              keyboardInset + safeBottom + AppSpacing.lg,
-            ),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 560),
-                child: SingleChildScrollView(
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Center(
-                        child: Container(
-                          width: 36,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: AppColors.borderMedium,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.lg),
-                      Text(
-                        context.l('Edit bio'),
-                        style: AppTypography.textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: AppSpacing.xs),
-                      Text(
-                        context.l('Visible on your public profile.'),
-                        style: AppTypography.textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: AppSpacing.lg),
-                      TextField(
-                        controller: ctrl,
-                        maxLines: 4,
-                        maxLength: 160,
-                        autofocus: true,
-                        style: AppTypography.textTheme.bodyMedium,
-                        decoration: InputDecoration(
-                          hintText: context.l(
-                            'Write something about yourself...',
-                          ),
-                          hintStyle: GoogleFonts.josefinSans(
-                            fontSize: 14,
-                            color: AppColors.textTertiary,
-                          ),
-                          filled: true,
-                          fillColor: AppColors.softSand,
-                        ),
-                      ),
-                      const SizedBox(height: AppSpacing.lg),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.charcoal,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            elevation: 0,
-                          ),
-                          child: Text(
-                            context.l('Save bio'),
-                            style: GoogleFonts.josefinSans(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-
-    if (result != null) {
-      await _updateBio(result);
-    }
-  }
-
   Widget _refreshableProfileState(Widget child) {
     final minHeight =
         MediaQuery.sizeOf(context).height -
@@ -1678,10 +1931,12 @@ class _ProfileScreenState extends State<ProfileScreen>
 
     if (_profile == null) {
       return _refreshableProfileState(
-        Text(
-          context.l('Could not load profile'),
-          style: AppTypography.textTheme.bodyMedium,
-        ),
+        widget.username == null
+            ? Text(
+                context.l('Could not load profile'),
+                style: AppTypography.textTheme.bodyMedium,
+              )
+            : _UnavailableProfileNotice(username: widget.username!),
       );
     }
 
@@ -1694,113 +1949,131 @@ class _ProfileScreenState extends State<ProfileScreen>
             Tab(text: context.l('Media')),
           ];
 
-    final tabViews = locked
+    final profileTabController = _ensureProfileTabController(tabs.length);
+    final selectedTabIndex = _lastProfileTabIndex.clamp(0, tabs.length - 1);
+    _visitedProfileTabs.add(selectedTabIndex);
+    final tabBodies = locked
         ? <Widget>[_LockedProfileTab(username: _profile!['username'] as String)]
         : <Widget>[
             _EchoesTab(echoes: _echoes),
-            _RepliesTab(userId: _profile!['id']),
-            _MediaTab(userId: _profile!['id']),
+            _visitedProfileTabs.contains(1)
+                ? _RepliesTab(
+                    userId: _profile!['id'],
+                    onEmptyChanged: _setRepliesTabEmpty,
+                  )
+                : const SizedBox.shrink(),
+            _visitedProfileTabs.contains(2)
+                ? _MediaTab(
+                    userId: _profile!['id'],
+                    onEmptyChanged: _setMediaTabEmpty,
+                  )
+                : const SizedBox.shrink(),
           ];
-
-    return DefaultTabController(
-      length: tabs.length,
-      child: FadeTransition(
-        opacity: _fade,
-        child: SlideTransition(
-          position: _slide,
-          child: RefreshIndicator(
-            color: AppColors.fernGreen,
-            onRefresh: _loadProfile,
-            child: NestedScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              headerSliverBuilder: (context, innerBoxIsScrolled) => [
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: AppSpacing.xl),
-                    child: Column(
-                      children: [
-                        _AvatarCard(
-                          profile: _profile!,
-                          isIdentityVerified: _isIdentityVerified,
-                          isOwnProfile: _isOwnProfile,
-                          isSavingBanner: _isSavingBanner,
-                          showStats: _canViewProfileContent,
-                          onOpenFollowers: _canOpenFollowLists
-                              ? () => _openFollowList(mode: 'followers')
-                              : null,
-                          onOpenFollowing: _canOpenFollowLists
-                              ? () => _openFollowList(mode: 'following')
-                              : null,
-                          onEditBio: _showEditBioSheet,
-                          onEditBanner: _pickBanner,
-                          onOpenBanner: _openBannerViewer,
-                        ),
-                        if (_isOwnProfile) ...[
-                          const SizedBox(height: AppSpacing.md),
-                          _ProfileOwnerControlPanel(
-                            isPublic: _isPublic,
-                            isIdentityVerified: _isIdentityVerified,
-                            isVerificationPending: _isVerificationPending,
-                            onPublicToggle: _setPublic,
-                          ),
-                        ],
-                        if (_isOwnProfile && userIsPro) ...[
-                          const SizedBox(height: AppSpacing.md),
-                          _AnalyticsShortcutCard(
-                            onTap: () => context.push('/profile/analytics'),
-                          ),
-                        ],
-                        if (!_isOwnProfile) ...[
-                          const SizedBox(height: AppSpacing.md),
-                          SizedBox(
-                            width: double.infinity,
-                            child: _isBlockedByMe
-                                ? _UnblockButton(
-                                    onPressed: () => _unblockProfileUser(),
-                                  )
-                                : _ProfileFollowButton(
-                                    isFollowing: _isFollowing,
-                                    requestStatus: _followRequestStatus,
-                                    isPrivate: !_isPublic,
-                                    onPressed: _toggleFollow,
-                                  ),
-                          ),
-                        ],
-                        const SizedBox(height: AppSpacing.md),
-                        if (_isOwnProfile)
-                          _VisibilityToggle(
-                            isPublic: _isPublic,
-                            onToggle: _setPublic,
-                          ),
-                        if (!_isOwnProfile && !_isPublic && !_isBlockedByMe)
-                          _PrivateProfileNotice(
-                            username: _profile!['username'] as String,
-                            requestStatus: _followRequestStatus,
-                          ),
-                        if (!_isOwnProfile && _isBlockedByMe)
-                          _BlockedProfileNotice(
-                            username: _profile!['username'] as String,
-                            onUnblock: () => _unblockProfileUser(),
-                          ),
-                        const SizedBox(height: AppSpacing.lg),
-                      ],
-                    ),
-                  ),
-                ),
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: _TabBarDelegate(
-                    TabBar(
-                      tabs: tabs,
-                      isScrollable: tabs.length > 4,
-                      tabAlignment: tabs.length > 4 ? TabAlignment.start : null,
-                    ),
-                  ),
+    List<Widget> profileHeaderSlivers() => [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.xl),
+          child: Column(
+            children: [
+              _AvatarCard(
+                profile: _profile!,
+                isIdentityVerified: _isIdentityVerified,
+                isOwnProfile: _isOwnProfile,
+                isSavingBanner: _isSavingBanner,
+                showStats: _canViewProfileContent,
+                onOpenFollowers: _canOpenFollowLists
+                    ? () => _openFollowList(mode: 'followers')
+                    : null,
+                onOpenFollowing: _canOpenFollowLists
+                    ? () => _openFollowList(mode: 'following')
+                    : null,
+                onEditProfile: _showEditProfileSheet,
+                onEditBanner: _pickBanner,
+                onOpenBanner: _openBannerViewer,
+              ),
+              if (_isOwnProfile) ...[
+                const SizedBox(height: AppSpacing.md),
+                _ProfileOwnerControlPanel(
+                  isPublic: _isPublic,
+                  isIdentityVerified: _isIdentityVerified,
+                  isVerificationPending: _isVerificationPending,
+                  onPublicToggle: _setPublic,
                 ),
               ],
-              body: TabBarView(children: tabViews),
-            ),
+              if (_isOwnProfile && userIsPro) ...[
+                const SizedBox(height: AppSpacing.md),
+                _AnalyticsShortcutCard(
+                  onTap: () => context.push('/profile/analytics'),
+                ),
+              ],
+              if (!_isOwnProfile) ...[
+                const SizedBox(height: AppSpacing.md),
+                SizedBox(
+                  width: double.infinity,
+                  child: _isBlockedByMe
+                      ? _UnblockButton(onPressed: () => _unblockProfileUser())
+                      : _ProfileFollowButton(
+                          isFollowing: _isFollowing,
+                          requestStatus: _followRequestStatus,
+                          isPrivate: !_isPublic,
+                          onPressed: _toggleFollow,
+                        ),
+                ),
+              ],
+              const SizedBox(height: AppSpacing.md),
+              if (!_isOwnProfile && !_isPublic && !_isBlockedByMe)
+                _PrivateProfileNotice(
+                  username: _profile!['username'] as String,
+                  requestStatus: _followRequestStatus,
+                ),
+              if (!_isOwnProfile && _isBlockedByMe)
+                _BlockedProfileNotice(
+                  username: _profile!['username'] as String,
+                  onUnblock: () => _unblockProfileUser(),
+                ),
+              const SizedBox(height: AppSpacing.lg),
+            ],
           ),
+        ),
+      ),
+      SliverPersistentHeader(
+        pinned: true,
+        delegate: _TabBarDelegate(
+          TabBar(
+            controller: profileTabController,
+            tabs: tabs,
+            isScrollable: tabs.length > 4,
+            tabAlignment: tabs.length > 4 ? TabAlignment.start : null,
+          ),
+        ),
+      ),
+    ];
+
+    final profileScroll = CustomScrollView(
+      key: const PageStorageKey<String>('profile-scroll'),
+      controller: _profileOuterScrollController,
+      physics: const ClampingScrollPhysics(),
+      slivers: [
+        ...profileHeaderSlivers(),
+        SliverToBoxAdapter(
+          child: _ProfileTabBodyStack(
+            selectedIndex: selectedTabIndex,
+            profileId: _profile!['id'] as String,
+            children: tabBodies,
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 96)),
+      ],
+    );
+
+    return FadeTransition(
+      opacity: _fade,
+      child: SlideTransition(
+        position: _slide,
+        child: RefreshIndicator(
+          color: AppColors.fernGreen,
+          onRefresh: _loadProfile,
+          child: profileScroll,
         ),
       ),
     );
@@ -1872,6 +2145,15 @@ class _ProfileScreenState extends State<ProfileScreen>
                   },
                 ),
                 _ProfileMenuTile(
+                  icon: Icons.bookmark_border_rounded,
+                  title: context.l('Bookmarks'),
+                  subtitle: context.l('Saved echoes to revisit later'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    context.push('/profile/bookmarks');
+                  },
+                ),
+                _ProfileMenuTile(
                   icon: _isPublic
                       ? Icons.public_rounded
                       : Icons.lock_outline_rounded,
@@ -1883,10 +2165,12 @@ class _ProfileScreenState extends State<ProfileScreen>
                       : context.l('Only accepted followers can view it'),
                   trailing: Switch.adaptive(
                     value: _isPublic,
-                    activeThumbColor: AppColors.fernGreen,
-                    activeTrackColor: AppColors.fernGreen.withValues(
-                      alpha: 0.35,
-                    ),
+                    // explicit on and off colors avoid invisible native defaults
+                    // especially when the sheet background is also light
+                    activeThumbColor: AppColors.white,
+                    activeTrackColor: AppColors.fernGreen,
+                    inactiveThumbColor: AppColors.white,
+                    inactiveTrackColor: AppColors.textTertiary,
                     onChanged: (value) {
                       setSheetState(() => _isPublic = value);
                       _setPublic(value);
@@ -1994,15 +2278,6 @@ class _ProfileScreenState extends State<ProfileScreen>
             ),
             actions: [
               if (_isOwnProfile) ...[
-                IconButton(
-                  icon: const Icon(Icons.edit_outlined, size: 20),
-                  onPressed: profileReady ? _showEditProfileSheet : null,
-                  color: profileReady
-                      ? AppColors.charcoal
-                      : AppColors.textTertiary,
-                  disabledColor: AppColors.textTertiary,
-                  tooltip: context.l('Edit profile'),
-                ),
                 IconButton(
                   icon: const Icon(Icons.more_horiz_rounded, size: 24),
                   onPressed: profileReady ? _showOwnProfileMenu : null,
@@ -2412,6 +2687,65 @@ class _BlockedProfileNotice extends StatelessWidget {
   }
 }
 
+class _UnavailableProfileNotice extends StatelessWidget {
+  const _UnavailableProfileNotice({required this.username});
+
+  final String username;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xxl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: AppColors.surfaceSecondary,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.borderSubtle),
+              ),
+              child: const Icon(
+                Icons.person_off_rounded,
+                size: 34,
+                color: AppColors.textTertiary,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Text(
+              '@$username',
+              style: AppTypography.textTheme.labelLarge?.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              context.l('This profile is unavailable'),
+              style: AppTypography.textTheme.headlineSmall?.copyWith(
+                color: AppColors.charcoal,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              context.l(
+                'You cannot view this profile, follow list, echoes, or rooms right now.',
+              ),
+              style: AppTypography.textTheme.bodyMedium?.copyWith(
+                color: AppColors.textSecondary,
+                height: 1.35,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 Future<String?> _currentUserId(SupabaseClient client) async {
   final cached =
       client.auth.currentSession?.user.id ?? client.auth.currentUser?.id;
@@ -2569,6 +2903,8 @@ class _ProfileFollowsScreenState extends State<ProfileFollowsScreen> {
                   mode: 'followers',
                   isOwner: state.isOwnProfile,
                   ownerId: profile['id'] as String,
+                  expectedCount:
+                      (profile['follower_count'] as num?)?.toInt() ?? 0,
                   loadUsers: () => _loadFollowUsers(
                     client: Supabase.instance.client,
                     username: username,
@@ -2580,6 +2916,8 @@ class _ProfileFollowsScreenState extends State<ProfileFollowsScreen> {
                   mode: 'following',
                   isOwner: state.isOwnProfile,
                   ownerId: profile['id'] as String,
+                  expectedCount:
+                      (profile['following_count'] as num?)?.toInt() ?? 0,
                   loadUsers: () => _loadFollowUsers(
                     client: Supabase.instance.client,
                     username: username,
@@ -3029,7 +3367,7 @@ class _AvatarCard extends StatelessWidget {
     required this.showStats,
     required this.onOpenFollowers,
     required this.onOpenFollowing,
-    required this.onEditBio,
+    required this.onEditProfile,
     required this.onEditBanner,
     required this.onOpenBanner,
   });
@@ -3041,7 +3379,7 @@ class _AvatarCard extends StatelessWidget {
   final bool showStats;
   final VoidCallback? onOpenFollowers;
   final VoidCallback? onOpenFollowing;
-  final VoidCallback onEditBio;
+  final VoidCallback onEditProfile;
   final VoidCallback onEditBanner;
   final VoidCallback onOpenBanner;
 
@@ -3052,11 +3390,19 @@ class _AvatarCard extends StatelessWidget {
     final username = profile['username'] as String? ?? '';
     final displayName = profile['display_name'] as String? ?? '';
     final bio = profile['bio'] as String?;
+    final websiteUrl = profile['website_url'] as String?;
+    final showBirthdatePublic =
+        profile['show_birthdate_public'] as bool? ?? false;
     final hasBio = bio != null && bio.isNotEmpty;
+    final hasWebsite = websiteUrl != null && websiteUrl.trim().isNotEmpty;
     final echoCount = (profile['echo_count'] as num?)?.toInt() ?? 0;
     final followerCount = (profile['follower_count'] as num?)?.toInt() ?? 0;
     final followingCount = (profile['following_count'] as num?)?.toInt() ?? 0;
     final joined = _formatJoinedMonth(profile['created_at'] as String?);
+    final birthdate = _formatBirthdate(
+      profile['date_of_birth'] as String?,
+      includeYear: isOwnProfile,
+    );
     final heroTag = 'profile-avatar:${profile['id'] ?? username}';
 
     final maxWidth = MediaQuery.sizeOf(context).width;
@@ -3106,7 +3452,6 @@ class _AvatarCard extends StatelessWidget {
                     tag: heroTag,
                     child: _ProfileAvatarWithBadge(
                       avatarUrl: avatarUrl,
-                      isIdentityVerified: isIdentityVerified,
                       radius: 43,
                     ),
                   ),
@@ -3150,11 +3495,7 @@ class _AvatarCard extends StatelessWidget {
                               ),
                               if (isIdentityVerified) ...[
                                 const SizedBox(width: 7),
-                                const Icon(
-                                  Icons.verified_rounded,
-                                  size: 20,
-                                  color: AppColors.fernGreen,
-                                ),
+                                const AccountVerifiedBadge(size: 20),
                               ],
                             ],
                           ),
@@ -3190,11 +3531,41 @@ class _AvatarCard extends StatelessWidget {
                               ],
                             ),
                           ],
+                          if ((isOwnProfile || showBirthdatePublic) &&
+                              birthdate != null) ...[
+                            const SizedBox(height: 7),
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.cake_outlined,
+                                  size: 15,
+                                  color: AppColors.textSecondary,
+                                ),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    isOwnProfile
+                                        ? context.l('Born {date}', {
+                                            'date': birthdate,
+                                          })
+                                        : birthdate,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.josefinSans(
+                                      fontSize: 13,
+                                      color: AppColors.textSecondary,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                     ),
                     if (isOwnProfile)
-                      _InlineProfileEditButton(onTap: onEditBio),
+                      _InlineProfileEditButton(onTap: onEditProfile),
                   ],
                 ),
                 if (hasBio) ...[
@@ -3205,6 +3576,36 @@ class _AvatarCard extends StatelessWidget {
                       fontSize: 14,
                       height: 1.5,
                       color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+                if (hasWebsite) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _openWebsiteSheet(context, websiteUrl),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.link_rounded,
+                          size: 16,
+                          color: AppColors.fernGreenDark,
+                        ),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            _displayWebsite(websiteUrl),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.josefinSans(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.fernGreenDark,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -3276,6 +3677,111 @@ class _AvatarCard extends StatelessWidget {
       'Dec',
     ];
     return '${months[date.month - 1]} ${date.year}';
+  }
+
+  String? _formatBirthdate(String? value, {required bool includeYear}) {
+    final date = DateTime.tryParse(value ?? '');
+    if (date == null) return null;
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final base = '${months[date.month - 1]} ${date.day}';
+    return includeYear ? '$base, ${date.year}' : base;
+  }
+
+  static String _displayWebsite(String value) {
+    return value
+        .replaceFirst(RegExp(r'^https?://', caseSensitive: false), '')
+        .replaceFirst(RegExp(r'/$'), '');
+  }
+
+  static Future<void> _openWebsiteSheet(
+    BuildContext context,
+    String websiteUrl,
+  ) async {
+    final uri = Uri.tryParse(websiteUrl);
+    if (uri == null) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.xl,
+            AppSpacing.lg,
+            AppSpacing.xl,
+            AppSpacing.xl,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.borderMedium,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.lg),
+              Text(
+                _displayWebsite(websiteUrl),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.textTheme.titleSmall,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        Navigator.pop(ctx);
+                        await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+                      },
+                      icon: const Icon(Icons.open_in_new_rounded, size: 17),
+                      label: Text(context.l('Open here')),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        Navigator.pop(ctx);
+                        await launchUrl(
+                          uri,
+                          mode: LaunchMode.externalApplication,
+                        );
+                      },
+                      icon: const Icon(Icons.public_rounded, size: 17),
+                      label: Text(context.l('Browser')),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   static void _showAvatarZoom(
@@ -3804,159 +4310,52 @@ class _StatDivider extends StatelessWidget {
   }
 }
 
-class _ProfileAvatarWithBadge extends StatefulWidget {
+class _ProfileAvatarWithBadge extends StatelessWidget {
   const _ProfileAvatarWithBadge({
     required this.avatarUrl,
-    required this.isIdentityVerified,
     required this.radius,
   });
 
   final String? avatarUrl;
-  final bool isIdentityVerified;
   final double radius;
 
   @override
-  State<_ProfileAvatarWithBadge> createState() =>
-      _ProfileAvatarWithBadgeState();
-}
-
-class _ProfileAvatarWithBadgeState extends State<_ProfileAvatarWithBadge>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _badgeCtrl;
-  late final Animation<double> _badgeScale;
-
-  @override
-  void initState() {
-    super.initState();
-    _badgeCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    );
-    _badgeScale = Tween<double>(
-      begin: 0,
-      end: 1,
-    ).animate(CurvedAnimation(parent: _badgeCtrl, curve: Curves.easeOutBack));
-    if (widget.isIdentityVerified) {
-      // delay slightly so the badge appears after avatar load
-      Future.delayed(const Duration(milliseconds: 300), () {
-        if (mounted) _badgeCtrl.forward();
-      });
-    }
-  }
-
-  @override
-  void didUpdateWidget(_ProfileAvatarWithBadge old) {
-    super.didUpdateWidget(old);
-    if (!old.isIdentityVerified && widget.isIdentityVerified) {
-      _badgeCtrl.forward();
-    }
-  }
-
-  @override
-  void dispose() {
-    _badgeCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final diameter = widget.radius * 2;
-    // ring thickness is larger for the profile avatar
-    const ringWidth = 2.5;
-    // total size includes diameter ring and gap
-    final containerSize = diameter + (ringWidth + 2) * 2;
+    final diameter = radius * 2;
 
-    return SizedBox(
-      width: containerSize,
-      height: containerSize,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          // animated verified ring
-          if (widget.isIdentityVerified)
-            ScaleTransition(
-              scale: _badgeScale,
-              child: Container(
-                width: containerSize,
-                height: containerSize,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: const LinearGradient(
-                    colors: [AppColors.fernGreen, AppColors.fernGreenDark],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-              ),
-            ),
-
-          // avatar inset from the ring
-          Positioned(
-            left: widget.isIdentityVerified ? ringWidth + 2 : 0,
-            top: widget.isIdentityVerified ? ringWidth + 2 : 0,
-            child: CircleAvatar(
-              radius: widget.radius,
-              backgroundColor: AppColors.softSand,
-              child: ClipOval(
-                child:
-                    (widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty)
-                    ? widget.avatarUrl!.endsWith('.svg')
-                          ? SvgPicture.network(
-                              widget.avatarUrl!,
-                              width: diameter,
-                              height: diameter,
-                              fit: BoxFit.cover,
-                              placeholderBuilder: (_) => const Icon(
-                                Icons.person_outline,
-                                size: 28,
-                                color: AppColors.textTertiary,
-                              ),
-                            )
-                          : Image.network(
-                              widget.avatarUrl!,
-                              width: diameter,
-                              height: diameter,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Icon(
-                                    Icons.person_outline,
-                                    size: widget.radius * 0.77,
-                                    color: AppColors.textTertiary,
-                                  ),
-                            )
-                    : Icon(
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: AppColors.softSand,
+      child: ClipOval(
+        child: (avatarUrl != null && avatarUrl!.isNotEmpty)
+            ? avatarUrl!.endsWith('.svg')
+                  ? SvgPicture.network(
+                      avatarUrl!,
+                      width: diameter,
+                      height: diameter,
+                      fit: BoxFit.cover,
+                      placeholderBuilder: (_) => const Icon(
                         Icons.person_outline,
-                        size: widget.radius * 0.77,
+                        size: 28,
                         color: AppColors.textTertiary,
                       ),
+                    )
+                  : Image.network(
+                      avatarUrl!,
+                      width: diameter,
+                      height: diameter,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Icon(
+                        Icons.person_outline,
+                        size: radius * 0.77,
+                        color: AppColors.textTertiary,
+                      ),
+                    )
+            : Icon(
+                Icons.person_outline,
+                size: radius * 0.77,
+                color: AppColors.textTertiary,
               ),
-            ),
-          ),
-
-          // verified checkmark dot with pop-in
-          if (widget.isIdentityVerified)
-            Positioned(
-              right: 2,
-              bottom: 2,
-              child: ScaleTransition(
-                scale: _badgeScale,
-                child: Container(
-                  width: 22,
-                  height: 22,
-                  decoration: const BoxDecoration(
-                    color: AppColors.fernGreen,
-                    shape: BoxShape.circle,
-                    // white border separates the dot from the ring
-                  ),
-                  child: const Icon(
-                    Icons.verified_rounded,
-                    size: 14,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
-        ],
       ),
     );
   }
@@ -4037,10 +4436,148 @@ class _ProfileOwnerControlPanel extends StatelessWidget {
               'Anchored echoes can be reviewed from proof trails',
             ),
             color: AppColors.fernGreenDark,
-            onTap: () => context.push('/settings'),
+            onTap: () => _showSolanaRecordLayerSheet(context),
           ),
         ],
       ),
+    );
+  }
+}
+
+void _showSolanaRecordLayerSheet(BuildContext context) {
+  showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    backgroundColor: AppColors.white,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+    ),
+    builder: (sheetContext) => Padding(
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.xl,
+        AppSpacing.lg,
+        AppSpacing.xl,
+        AppSpacing.xl + MediaQuery.paddingOf(sheetContext).bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.borderMedium,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          Row(
+            children: [
+              const Icon(Icons.link_rounded, color: AppColors.fernGreenDark),
+              const SizedBox(width: AppSpacing.sm),
+              Text(
+                context.l('Solana record layer'),
+                style: AppTypography.textTheme.titleMedium,
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          _SolanaStep(
+            number: '1',
+            title: context.l('Claim is created'),
+            body: context.l('EchoProof stores the claim and its media safely.'),
+          ),
+          _SolanaStep(
+            number: '2',
+            title: context.l('Public window closes'),
+            body: context.l('The final context result becomes eligible.'),
+          ),
+          _SolanaStep(
+            number: '3',
+            title: context.l('Hash is anchored'),
+            body: context.l(
+              'Only the proof hash is written, not private data.',
+            ),
+            isLast: true,
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _SolanaStep extends StatelessWidget {
+  const _SolanaStep({
+    required this.number,
+    required this.title,
+    required this.body,
+    this.isLast = false,
+  });
+
+  final String number;
+  final String title;
+  final String body;
+  final bool isLast;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Column(
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(
+                color: AppColors.fernGreenLight,
+                shape: BoxShape.circle,
+              ),
+              child: Text(
+                number,
+                style: GoogleFonts.josefinSans(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.fernGreenDark,
+                ),
+              ),
+            ),
+            if (!isLast)
+              Container(width: 1.5, height: 42, color: AppColors.borderSubtle),
+          ],
+        ),
+        const SizedBox(width: AppSpacing.md),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: AppSpacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.josefinSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.charcoal,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  body,
+                  style: AppTypography.textTheme.bodySmall?.copyWith(
+                    color: AppColors.textSecondary,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -4170,8 +4707,11 @@ class _VisibilityToggle extends StatelessWidget {
           Switch.adaptive(
             value: isPublic,
             onChanged: onToggle,
-            activeThumbColor: AppColors.fernGreen,
-            activeTrackColor: AppColors.fernGreen.withValues(alpha: 0.35),
+            // match the profile menu switch so public/private is legible in both states
+            activeThumbColor: AppColors.white,
+            activeTrackColor: AppColors.fernGreen,
+            inactiveThumbColor: AppColors.white,
+            inactiveTrackColor: AppColors.textTertiary,
           ),
         ],
       ),
@@ -4299,6 +4839,50 @@ class _VerifyPrompt extends StatelessWidget {
 // profile tab widgets
 // placed outside the state class
 
+class _ProfileTabBodyStack extends StatelessWidget {
+  const _ProfileTabBodyStack({
+    required this.selectedIndex,
+    required this.profileId,
+    required this.children,
+  });
+
+  final int selectedIndex;
+  final String profileId;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          for (var i = 0; i < children.length; i++)
+            Offstage(
+              offstage: i != selectedIndex,
+              child: TickerMode(
+                enabled: i == selectedIndex,
+                child: KeyedSubtree(
+                  key: PageStorageKey<String>('profile-tab-$profileId-$i'),
+                  // visited tabs stay alive but only the selected tab takes space
+                  // this keeps replies and media from refetching on every tap
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 150),
+                    curve: Curves.easeOutCubic,
+                    opacity: i == selectedIndex ? 1 : 0,
+                    child: children[i],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _EchoesTab extends StatelessWidget {
   const _EchoesTab({required this.echoes});
   final List<EchoEntity> echoes;
@@ -4306,7 +4890,8 @@ class _EchoesTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (echoes.isEmpty) {
-      return _ProfileEmptyTab(
+      return _ProfileEmptyStateBody(
+        storageKey: 'profile-empty-echoes',
         icon: Icons.record_voice_over_outlined,
         title: context.l('No echoes yet.'),
         message: context.l('Published echoes will appear here.'),
@@ -4314,7 +4899,8 @@ class _EchoesTab extends StatelessWidget {
     }
 
     return ListView.builder(
-      physics: const AlwaysScrollableScrollPhysics(),
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.only(top: 8, bottom: 80),
       itemCount: echoes.length,
       itemBuilder: (ctx, i) => Padding(
@@ -4329,8 +4915,9 @@ class _EchoesTab extends StatelessWidget {
 }
 
 class _RepliesTab extends StatefulWidget {
-  const _RepliesTab({required this.userId});
+  const _RepliesTab({required this.userId, required this.onEmptyChanged});
   final String userId;
+  final ValueChanged<bool> onEmptyChanged;
 
   @override
   State<_RepliesTab> createState() => _RepliesTabState();
@@ -4368,8 +4955,10 @@ class _RepliesTabState extends State<_RepliesTab>
         _replies = List<Map<String, dynamic>>.from(rows as List);
         _isLoading = false;
       });
+      widget.onEmptyChanged(_replies.isEmpty);
     } catch (e) {
       setState(() => _isLoading = false);
+      widget.onEmptyChanged(true);
     }
   }
 
@@ -4387,7 +4976,8 @@ class _RepliesTabState extends State<_RepliesTab>
     }
 
     if (_replies.isEmpty) {
-      return _ProfileEmptyTab(
+      return _ProfileEmptyStateBody(
+        storageKey: 'profile-empty-replies',
         icon: Icons.chat_bubble_outline_rounded,
         title: context.l('No replies yet.'),
         message: context.l('Replies to other echoes will appear here.'),
@@ -4395,7 +4985,8 @@ class _RepliesTabState extends State<_RepliesTab>
     }
 
     return ListView.builder(
-      physics: const AlwaysScrollableScrollPhysics(),
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.only(top: 8, bottom: 80),
       itemCount: _replies.length,
       itemBuilder: (ctx, i) {
@@ -4479,59 +5070,120 @@ class _ProfileEmptyTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      minimum: const EdgeInsets.only(bottom: 96),
-      child: Center(
-        child: TweenAnimationBuilder<double>(
-          tween: Tween(begin: 0, end: 1),
-          duration: const Duration(milliseconds: 320),
-          curve: Curves.easeOutCubic,
-          builder: (context, value, child) {
-            return Opacity(
-              opacity: value,
-              child: Transform.translate(
-                offset: Offset(0, (1 - value) * 12),
-                child: Transform.scale(
-                  scale: 0.97 + (value * 0.03),
-                  child: child,
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, (1 - value) * 10),
+            child: child,
+          ),
+        );
+      },
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final tightHeight =
+              constraints.hasBoundedHeight && constraints.maxHeight < 180;
+          final veryTight =
+              constraints.hasBoundedHeight && constraints.maxHeight < 110;
+          final iconSize = tightHeight ? 44.0 : 58.0;
+          final iconGlyph = tightHeight ? 22.0 : 27.0;
+
+          return Center(
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: AppSpacing.xl,
+                vertical: tightHeight ? AppSpacing.sm : AppSpacing.xl,
+              ),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 360),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (!veryTight) ...[
+                        Container(
+                          width: iconSize,
+                          height: iconSize,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppColors.fernGreenLight.withValues(
+                              alpha: 0.62,
+                            ),
+                            border: Border.all(
+                              color: AppColors.fernGreen.withValues(
+                                alpha: 0.14,
+                              ),
+                            ),
+                          ),
+                          child: Icon(
+                            icon,
+                            size: iconGlyph,
+                            color: AppColors.fernGreen,
+                          ),
+                        ),
+                        SizedBox(height: tightHeight ? 8 : AppSpacing.md),
+                      ],
+                      Text(
+                        context.l(title),
+                        textAlign: TextAlign.center,
+                        style: AppTypography.textTheme.titleSmall,
+                      ),
+                      if (!veryTight) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          context.l(message),
+                          textAlign: TextAlign.center,
+                          style: AppTypography.textTheme.bodySmall?.copyWith(
+                            color: AppColors.textTertiary,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
-            );
-          },
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.xxl),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 68,
-                  height: 68,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.fernGreenLight.withValues(alpha: 0.7),
-                    border: Border.all(
-                      color: AppColors.fernGreen.withValues(alpha: 0.16),
-                    ),
-                  ),
-                  child: Icon(icon, size: 32, color: AppColors.fernGreen),
-                ),
-                const SizedBox(height: AppSpacing.md),
-                Text(
-                  context.l(title),
-                  textAlign: TextAlign.center,
-                  style: AppTypography.textTheme.titleSmall,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  context.l(message),
-                  textAlign: TextAlign.center,
-                  style: AppTypography.textTheme.bodySmall?.copyWith(
-                    color: AppColors.textTertiary,
-                  ),
-                ),
-              ],
             ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ProfileEmptyStateBody extends StatelessWidget {
+  const _ProfileEmptyStateBody({
+    required this.storageKey,
+    required this.icon,
+    required this.title,
+    required this.message,
+  });
+
+  final String storageKey;
+  final IconData icon;
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final height = (MediaQuery.sizeOf(context).height * 0.30)
+        .clamp(210.0, 300.0)
+        .toDouble();
+    return KeyedSubtree(
+      key: PageStorageKey<String>(storageKey),
+      child: ColoredBox(
+        color: AppColors.white,
+        child: Align(
+          alignment: Alignment.topCenter,
+          // empty profile tabs are states not feeds
+          // no inner scrollable means the profile header can move but the tab cannot drift
+          child: SizedBox(
+            height: height,
+            child: _ProfileEmptyTab(icon: icon, title: title, message: message),
           ),
         ),
       ),
@@ -4545,60 +5197,58 @@ class _LockedProfileTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CustomScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      slivers: [
-        SliverFillRemaining(
-          hasScrollBody: false,
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.xxl),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 68,
-                    height: 68,
-                    decoration: BoxDecoration(
-                      color: AppColors.softSand,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.borderSubtle),
-                    ),
-                    child: const Icon(
-                      Icons.lock_outline_rounded,
-                      size: 32,
-                      color: AppColors.textTertiary,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  Text(
-                    context.l('@{username} is private', {'username': username}),
-                    style: AppTypography.textTheme.titleSmall,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    context.l(
-                      'Accepted followers can view echoes, replies, media, followers, and following.',
-                    ),
-                    style: AppTypography.textTheme.bodySmall?.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
+    return SizedBox(
+      height: (MediaQuery.sizeOf(context).height * 0.34)
+          .clamp(240.0, 360.0)
+          .toDouble(),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.xxl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 68,
+                height: 68,
+                decoration: BoxDecoration(
+                  color: AppColors.softSand,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.borderSubtle),
+                ),
+                child: const Icon(
+                  Icons.lock_outline_rounded,
+                  size: 32,
+                  color: AppColors.textTertiary,
+                ),
               ),
-            ),
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                context.l('@{username} is private', {'username': username}),
+                style: AppTypography.textTheme.titleSmall,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                context.l(
+                  'Accepted followers can view echoes, replies, media, followers, and following.',
+                ),
+                style: AppTypography.textTheme.bodySmall?.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
           ),
         ),
-      ],
+      ),
     );
   }
 }
 
 class _MediaTab extends StatefulWidget {
-  const _MediaTab({required this.userId});
+  const _MediaTab({required this.userId, required this.onEmptyChanged});
   final String userId;
+  final ValueChanged<bool> onEmptyChanged;
 
   @override
   State<_MediaTab> createState() => _MediaTabState();
@@ -4606,7 +5256,7 @@ class _MediaTab extends StatefulWidget {
 
 class _MediaTabState extends State<_MediaTab>
     with AutomaticKeepAliveClientMixin {
-  List<Map<String, dynamic>> _mediaEchoes = [];
+  List<_ProfileMediaItem> _mediaItems = [];
   bool _isLoading = true;
 
   @override
@@ -4631,12 +5281,25 @@ class _MediaTabState extends State<_MediaTab>
           .order('created_at', ascending: false)
           .limit(30);
 
+      final echoes = List<Map<String, dynamic>>.from(rows as List);
+      final items = <_ProfileMediaItem>[];
+      for (final echo in echoes) {
+        final echoId = echo['id'] as String? ?? '';
+        if (echoId.isEmpty) continue;
+        final title = echo['title'] as String? ?? '';
+        for (final url in _mediaUrls(echo['media_urls'])) {
+          items.add(_ProfileMediaItem(echoId: echoId, title: title, url: url));
+        }
+      }
+
       setState(() {
-        _mediaEchoes = List<Map<String, dynamic>>.from(rows as List);
+        _mediaItems = items;
         _isLoading = false;
       });
+      widget.onEmptyChanged(_mediaItems.isEmpty);
     } catch (e) {
       setState(() => _isLoading = false);
+      widget.onEmptyChanged(true);
     }
   }
 
@@ -4653,52 +5316,156 @@ class _MediaTabState extends State<_MediaTab>
       );
     }
 
-    if (_mediaEchoes.isEmpty) {
-      return _ProfileEmptyTab(
+    if (_mediaItems.isEmpty) {
+      return _ProfileEmptyStateBody(
+        storageKey: 'profile-empty-media',
         icon: Icons.photo_library_outlined,
         title: context.l('No media yet.'),
         message: context.l('Echoes with photos or videos will appear here.'),
       );
     }
 
+    final imageUrls = _mediaItems
+        .where((item) => !_looksLikeVideo(item.url))
+        .map((item) => item.url)
+        .toList();
+
     // three-column media grid
     return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(2, 2, 2, 96),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
         crossAxisSpacing: 2,
         mainAxisSpacing: 2,
       ),
-      itemCount: _mediaEchoes.length,
+      itemCount: _mediaItems.length,
       itemBuilder: (ctx, i) {
-        final e = _mediaEchoes[i];
-        final echoId = e['id'] as String;
-        final urls = (e['media_urls'] as List?)?.cast<String>() ?? [];
-        final firstUrl = urls.isNotEmpty ? urls.first : '';
+        final item = _mediaItems[i];
+        final isVideo = _looksLikeVideo(item.url);
+        final imageIndex = isVideo
+            ? -1
+            : imageUrls.indexWhere((url) => url == item.url);
 
         return GestureDetector(
-          onTap: () => ctx.push('/feed/echo/$echoId'),
-          child: firstUrl.isNotEmpty
-              ? Image.network(
-                  firstUrl,
+          onTap: () {
+            if (isVideo || imageIndex < 0) {
+              ctx.push('/feed/echo/${item.echoId}');
+              return;
+            }
+            ImageViewer.show(ctx, urls: imageUrls, initialIndex: imageIndex);
+          },
+          child: isVideo
+              ? _ProfileVideoTile(title: item.title)
+              : CachedNetworkImage(
+                  imageUrl: item.url,
+                  cacheKey: item.url,
                   fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => Container(
+                  placeholder: (context, url) => Container(
+                    color: AppColors.softSand,
+                    child: const Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.fernGreen,
+                        ),
+                      ),
+                    ),
+                  ),
+                  errorWidget: (context, error, stackTrace) => Container(
                     color: AppColors.softSand,
                     child: const Icon(
                       Icons.broken_image_outlined,
                       color: AppColors.textTertiary,
                     ),
                   ),
-                )
-              : Container(
-                  color: AppColors.softSand,
-                  child: const Icon(
-                    Icons.image_outlined,
-                    color: AppColors.textTertiary,
-                  ),
                 ),
         );
       },
+    );
+  }
+
+  List<String> _mediaUrls(Object? value) {
+    if (value is List) {
+      return value
+          .whereType<String>()
+          .where((url) => url.trim().isNotEmpty)
+          .toList();
+    }
+    if (value is String && value.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(value);
+        if (decoded is List) {
+          return decoded
+              .whereType<String>()
+              .where((url) => url.trim().isNotEmpty)
+              .toList();
+        }
+      } catch (_) {
+        return [value];
+      }
+    }
+    return const [];
+  }
+
+  bool _looksLikeVideo(String url) {
+    final lower = url.toLowerCase();
+    return lower.contains('.mp4') ||
+        lower.contains('.mov') ||
+        lower.contains('.webm') ||
+        lower.contains('.m4v');
+  }
+}
+
+class _ProfileMediaItem {
+  const _ProfileMediaItem({
+    required this.echoId,
+    required this.title,
+    required this.url,
+  });
+
+  final String echoId;
+  final String title;
+  final String url;
+}
+
+class _ProfileVideoTile extends StatelessWidget {
+  const _ProfileVideoTile({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppColors.softSand,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          const Icon(
+            Icons.play_circle_fill_rounded,
+            color: AppColors.fernGreen,
+            size: 32,
+          ),
+          if (title.trim().isNotEmpty)
+            Positioned(
+              left: 6,
+              right: 6,
+              bottom: 6,
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.textTheme.labelSmall?.copyWith(
+                  color: AppColors.charcoal,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -4708,12 +5475,14 @@ class _FollowUsersTab extends StatefulWidget {
     required this.mode,
     required this.isOwner,
     required this.ownerId,
+    required this.expectedCount,
     required this.loadUsers,
   });
 
   final String mode;
   final bool isOwner;
   final String ownerId;
+  final int expectedCount;
   final Future<List<Map<String, dynamic>>> Function() loadUsers;
 
   @override
@@ -4733,7 +5502,9 @@ class _FollowUsersTabState extends State<_FollowUsersTab>
   @override
   void initState() {
     super.initState();
-    _future = widget.loadUsers();
+    _future = widget.expectedCount == 0
+        ? Future<List<Map<String, dynamic>>>.value(const [])
+        : _loadUsers();
   }
 
   @override
@@ -4743,8 +5514,15 @@ class _FollowUsersTabState extends State<_FollowUsersTab>
   }
 
   Future<void> _refresh() async {
-    setState(() => _future = widget.loadUsers());
-    await _future;
+    final next = _loadUsers();
+    setState(() => _future = next);
+    try {
+      await next;
+    } catch (_) {}
+  }
+
+  Future<List<Map<String, dynamic>>> _loadUsers() {
+    return widget.loadUsers().timeout(const Duration(seconds: 12));
   }
 
   Future<bool> _confirmAction({
@@ -5007,42 +5785,22 @@ class _FollowUsersTabState extends State<_FollowUsersTab>
           );
         }
         if (snapshot.hasError) {
-          return RefreshIndicator(
-            color: AppColors.fernGreen,
-            onRefresh: _refresh,
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              children: [
-                SizedBox(
-                  height: MediaQuery.sizeOf(context).height * 0.45,
-                  child: _ProfileEmptyTab(
-                    icon: Icons.lock_outline_rounded,
-                    title: context.l('Could not load list.'),
-                    message: context.l(
-                      'Follower lists are visible only on public profiles.',
-                    ),
-                  ),
-                ),
-              ],
+          return Center(
+            child: _ProfileEmptyTab(
+              icon: Icons.wifi_off_rounded,
+              title: context.l('Could not load list.'),
+              message: context.l(
+                'Check your connection and try again from this screen.',
+              ),
             ),
           );
         }
         if (users.isEmpty) {
-          return RefreshIndicator(
-            color: AppColors.fernGreen,
-            onRefresh: _refresh,
-            child: ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              children: [
-                SizedBox(
-                  height: MediaQuery.sizeOf(context).height * 0.45,
-                  child: _ProfileEmptyTab(
-                    icon: Icons.people_alt_outlined,
-                    title: title,
-                    message: message,
-                  ),
-                ),
-              ],
+          return Center(
+            child: _ProfileEmptyTab(
+              icon: Icons.people_alt_outlined,
+              title: title,
+              message: message,
             ),
           );
         }
@@ -5083,6 +5841,7 @@ class _FollowUsersTabState extends State<_FollowUsersTab>
                   ? user['display_name'] as String
                   : username;
               final avatarUrl = user['avatar_url'] as String?;
+              final isPro = user['is_pro'] as bool? ?? false;
               final image = avatarImageProvider(avatarUrl);
 
               return Container(
@@ -5103,11 +5862,21 @@ class _FollowUsersTabState extends State<_FollowUsersTab>
                           )
                         : null,
                   ),
-                  title: Text(
-                    displayName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.textTheme.titleSmall,
+                  title: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.textTheme.titleSmall,
+                        ),
+                      ),
+                      if (isPro) ...[
+                        const SizedBox(width: 5),
+                        const AccountVerifiedBadge(size: 14),
+                      ],
+                    ],
                   ),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
