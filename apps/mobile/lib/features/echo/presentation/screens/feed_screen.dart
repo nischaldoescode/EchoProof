@@ -415,6 +415,18 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
                 )
               : const SizedBox.shrink(),
         ),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 260),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          child: filtered.isEmpty
+              ? const SizedBox.shrink()
+              : _FeedPulseBar(
+                  key: ValueKey('${filtered.length}_${_filter.hashCode}'),
+                  echoes: filtered,
+                  onTap: _refreshFeed,
+                ),
+        ),
         Expanded(
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 120),

@@ -604,6 +604,19 @@ bool _isContextWindowEndedOpen(EchoEntity echo) {
       !closesAt.isAfter(DateTime.now());
 }
 
+bool _shouldShowSolanaRecord({
+  required EchoEntity echo,
+  required String? signature,
+}) {
+  if (echo.publicVerdict == 'open') return false;
+  final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+  final isOwnEcho = currentUserId != null && currentUserId == echo.userId;
+  if (signature != null && signature.isNotEmpty) {
+    return echo.publicVerdict == 'supported' || isOwnEcho;
+  }
+  return isOwnEcho;
+}
+
 bool _isChallengeHeavy(EchoEntity echo) {
   if (echo.publicVerdict == 'not_supported' ||
       echo.publicVerdict == 'needs_context') {
