@@ -3,15 +3,253 @@
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
+import '../../../../app/theme/typography.dart';
 import '../../../../core/localization/app_copy.dart';
+import '../../../../core/utils/logger.dart';
+import '../../../../shared/widgets/shimmer_loader.dart';
+
+class ProfileAnalyticsScreen extends StatefulWidget {
+  const ProfileAnalyticsScreen({super.key});
+
+  @override
+  State<ProfileAnalyticsScreen> createState() => _ProfileAnalyticsScreenState();
+}
+
+class _ProfileAnalyticsScreenState extends State<ProfileAnalyticsScreen> {
+  bool _checking = true;
+  bool _isPro = false;
+  String? _userId;
+  String? _message;
+
+  @override
+  void initState() {
+    super.initState();
+    _verifyAccess();
+  }
+
+  Future<void> _verifyAccess() async {
+    setState(() {
+      _checking = true;
+      _message = null;
+    });
+
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
+    if (user == null) {
+      if (mounted) context.go('/login');
+      return;
+    }
+
+    try {
+      final res = await client.functions.invoke('check-subscription');
+      final data = res.data as Map<String, dynamic>?;
+      final serverPro = data?['is_pro'] as bool? ?? false;
+      final expiresAt = DateTime.tryParse(data?['expires_at'] as String? ?? '');
+
+      final profile = await client
+          .from('users_public')
+          .select('is_pro, pro_expires_at, pro_plan')
+          .eq('id', user.id)
+          .maybeSingle();
+
+      final dbPro = profile?['is_pro'] as bool? ?? false;
+      final dbExpiresAt =
+          DateTime.tryParse(profile?['pro_expires_at'] as String? ?? '');
+      final now = DateTime.now().toUtc();
+      final serverActive = expiresAt == null || expiresAt.toUtc().isAfter(now);
+      final dbActive = dbExpiresAt == null || dbExpiresAt.toUtc().isAfter(now);
+      final allowed = serverPro && dbPro && serverActive && dbActive;
+
+      if (!mounted) return;
+      setState(() {
+        _userId = user.id;
+        _isPro = allowed;
+        _checking = false;
+        _message = allowed
+            ? null
+            : context.l('Analytics are available with EchoProof Pro.');
+      });
+    } catch (e) {
+      AppLogger.warn('analytics access check failed $e');
+      if (!mounted) return;
+      setState(() {
+        _userId = user.id;
+        _isPro = false;
+        _checking = false;
+        _message = context.l('Could not verify Pro access. Try again.');
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.paddingOf(context).bottom;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5FAF7),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        elevation: 0,
+        centerTitle: false,
+        title: Text(
+          context.l('Analytics'),
+          style: AppTypography.textTheme.titleMedium,
+        ),
+      ),
+      body: SafeArea(
+        top: false,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 240),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          child: _checking
+              ? EchoLogoLoader(
+                  key: const ValueKey('checking'),
+                  label: context.l('Checking Pro access'),
+                )
+              : _isPro && _userId != null
+                  ? AnalyticsTab(
+                      key: ValueKey('analytics_$_userId'),
+                      userId: _userId!,
+                      isStandalone: true,
+                    )
+                  : _AnalyticsLockedState(
+                      key: const ValueKey('locked'),
+                      message: _message,
+                      bottomPadding: bottom,
+                      onRetry: _verifyAccess,
+                      onUpgrade: () => context.push('/subscribe'),
+                    ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AnalyticsLockedState extends StatelessWidget {
+  const _AnalyticsLockedState({
+    super.key,
+    required this.message,
+    required this.bottomPadding,
+    required this.onRetry,
+    required this.onUpgrade,
+  });
+
+  final String? message;
+  final double bottomPadding;
+  final VoidCallback onRetry;
+  final VoidCallback onUpgrade;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.xl,
+        AppSpacing.xl,
+        AppSpacing.xl,
+        AppSpacing.xl + bottomPadding,
+      ),
+      children: [
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: 1),
+              duration: const Duration(milliseconds: 320),
+              curve: Curves.easeOutCubic,
+              builder: (context, value, child) {
+                return Opacity(
+                  opacity: value,
+                  child: Transform.translate(
+                    offset: Offset(0, 12 * (1 - value)),
+                    child: child,
+                  ),
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.all(AppSpacing.xl),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: AppColors.borderSubtle),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 54,
+                      height: 54,
+                      decoration: BoxDecoration(
+                        color: AppColors.fernGreenLight,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: const Icon(
+                        Icons.lock_outline_rounded,
+                        color: AppColors.fernGreenDark,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
+                    Text(
+                      context.l('Pro analytics'),
+                      style: AppTypography.textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: AppSpacing.sm),
+                    Text(
+                      message ??
+                          context.l(
+                            'Upgrade to view private profile analytics.',
+                          ),
+                      textAlign: TextAlign.center,
+                      style: AppTypography.textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: AppSpacing.xl),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: onRetry,
+                            child: Text(context.l('Retry')),
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.sm),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: onUpgrade,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.charcoal,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                            ),
+                            child: Text(context.l('View Pro')),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 class AnalyticsTab extends StatefulWidget {
-  const AnalyticsTab({super.key, required this.userId});
+  const AnalyticsTab({
+    super.key,
+    required this.userId,
+    this.isStandalone = false,
+  });
   final String userId;
+  final bool isStandalone;
 
   @override
   State<AnalyticsTab> createState() => _AnalyticsTabState();
@@ -58,7 +296,7 @@ class _AnalyticsTabState extends State<AnalyticsTab>
           )
           .eq('user_id', widget.userId)
           .order('trust_score', ascending: false)
-          .limit(20);
+          .limit(100);
 
       final profile = await client
           .from('users_public')
@@ -68,11 +306,18 @@ class _AnalyticsTabState extends State<AnalyticsTab>
           .maybeSingle();
 
       final echoList = List<Map<String, dynamic>>.from(echoes as List);
+      final now = DateTime.now().toUtc();
+      final recentCutoff = now.subtract(const Duration(days: 7));
+      final previousCutoff = now.subtract(const Duration(days: 14));
 
       int totalSupport = 0,
           totalChallenge = 0,
           totalReplies = 0,
           totalBonds = 0;
+      var recentEchoes = 0;
+      var previousEchoes = 0;
+      var recentEngagements = 0;
+      var previousEngagements = 0;
       var totalConfidence = 0.0;
       var mediaEchoes = 0;
       var verifiedEchoes = 0;
@@ -91,8 +336,20 @@ class _AnalyticsTabState extends State<AnalyticsTab>
                 0;
         totalSupport += contextSupport;
         totalChallenge += contextChallenge;
-        totalReplies += (e['reply_count'] as num?)?.toInt() ?? 0;
-        totalBonds += (e['bond_count'] as num?)?.toInt() ?? 0;
+        final replies = (e['reply_count'] as num?)?.toInt() ?? 0;
+        final bonds = (e['bond_count'] as num?)?.toInt() ?? 0;
+        totalReplies += replies;
+        totalBonds += bonds;
+        final engagement = contextSupport + contextChallenge + replies + bonds;
+        final createdAt =
+            DateTime.tryParse(e['created_at'] as String? ?? '')?.toUtc();
+        if (createdAt != null && createdAt.isAfter(recentCutoff)) {
+          recentEchoes++;
+          recentEngagements += engagement;
+        } else if (createdAt != null && createdAt.isAfter(previousCutoff)) {
+          previousEchoes++;
+          previousEngagements += engagement;
+        }
         totalConfidence += (e['confidence_score'] as num?)?.toDouble() ?? 0;
         final media = e['media_urls'];
         if (media is List && media.isNotEmpty) mediaEchoes++;
@@ -118,6 +375,15 @@ class _AnalyticsTabState extends State<AnalyticsTab>
       }
       final totalReactions = totalSupport + totalChallenge;
       final totalEngagements = totalReactions + totalReplies + totalBonds;
+      final engagementDelta = previousEngagements == 0
+          ? (recentEngagements > 0 ? 1.0 : 0.0)
+          : (recentEngagements - previousEngagements) / previousEngagements;
+      final proofCount = (profile?['proof_count'] as num?)?.toInt() ?? 0;
+      final echoCount = (profile?['echo_count'] as num?)?.toInt() ??
+          (echoList.isEmpty ? 0 : echoList.length);
+      final proofRatio = echoCount == 0 ? 0.0 : proofCount / echoCount;
+      final challengeRate =
+          totalReactions == 0 ? 0.0 : totalChallenge / totalReactions;
 
       setState(() {
         _stats = {
@@ -127,6 +393,15 @@ class _AnalyticsTabState extends State<AnalyticsTab>
           'total_replies': totalReplies,
           'total_bonds': totalBonds,
           'total_engagements': totalEngagements,
+          'recent_echoes': recentEchoes,
+          'previous_echoes': previousEchoes,
+          'recent_engagements': recentEngagements,
+          'previous_engagements': previousEngagements,
+          'engagement_delta': engagementDelta,
+          'engagement_per_echo':
+              echoList.isEmpty ? 0.0 : totalEngagements / echoList.length,
+          'challenge_rate': challengeRate,
+          'proof_ratio': proofRatio,
           'support_ratio':
               totalReactions == 0 ? 0.0 : totalSupport / totalReactions,
           'avg_confidence':
@@ -188,40 +463,71 @@ class _AnalyticsTabState extends State<AnalyticsTab>
     }
 
     final stats = _stats ?? {};
+    final bottom = MediaQuery.paddingOf(context).bottom;
 
     return RefreshIndicator(
       color: AppColors.fernGreen,
       onRefresh: _loadStats,
-      child: ListView(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        children: [
-          _AnalyticsHero(stats: stats),
-          const SizedBox(height: AppSpacing.xl),
-          _SectionHeader(label: context.l('Account Overview')),
-          const SizedBox(height: AppSpacing.md),
-          _StatsGrid(stats: stats),
-          const SizedBox(height: AppSpacing.xl),
-          _SectionHeader(label: context.l('Engagement Summary')),
-          const SizedBox(height: AppSpacing.md),
-          _EngagementRow(
-            totalSupport: (stats['total_support'] as num?)?.toInt() ?? 0,
-            totalChallenge: (stats['total_challenge'] as num?)?.toInt() ?? 0,
-            totalReplies: (stats['total_replies'] as num?)?.toInt() ?? 0,
-            totalBonds: (stats['total_bonds'] as num?)?.toInt() ?? 0,
-          ),
-          const SizedBox(height: AppSpacing.md),
-          _PublicContextMixCard(stats: stats),
-          const SizedBox(height: AppSpacing.md),
-          _StatusMixCard(stats: stats),
-          const SizedBox(height: AppSpacing.xl),
-          _SectionHeader(label: context.l('Top Echoes by Trust Score')),
-          const SizedBox(height: AppSpacing.md),
-          ..._topEchoes.asMap().entries.map((e) => _TopEchoCard(
-                echo: e.value,
-                rank: e.key + 1,
-              )),
-          const SizedBox(height: 80),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final horizontal =
+              constraints.maxWidth >= 720 ? AppSpacing.xl : AppSpacing.lg;
+          return ListView(
+            padding: EdgeInsets.fromLTRB(
+              horizontal,
+              AppSpacing.lg,
+              horizontal,
+              AppSpacing.xl + bottom,
+            ),
+            children: [
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 820),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _AnalyticsHero(stats: stats),
+                      const SizedBox(height: AppSpacing.lg),
+                      _MomentumCard(stats: stats),
+                      const SizedBox(height: AppSpacing.md),
+                      _InsightActionCard(stats: stats),
+                      const SizedBox(height: AppSpacing.xl),
+                      _SectionHeader(label: context.l('Account Overview')),
+                      const SizedBox(height: AppSpacing.md),
+                      _StatsGrid(stats: stats),
+                      const SizedBox(height: AppSpacing.xl),
+                      _SectionHeader(label: context.l('Engagement Summary')),
+                      const SizedBox(height: AppSpacing.md),
+                      _EngagementRow(
+                        totalSupport:
+                            (stats['total_support'] as num?)?.toInt() ?? 0,
+                        totalChallenge:
+                            (stats['total_challenge'] as num?)?.toInt() ?? 0,
+                        totalReplies:
+                            (stats['total_replies'] as num?)?.toInt() ?? 0,
+                        totalBonds:
+                            (stats['total_bonds'] as num?)?.toInt() ?? 0,
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      _PublicContextMixCard(stats: stats),
+                      const SizedBox(height: AppSpacing.md),
+                      _StatusMixCard(stats: stats),
+                      const SizedBox(height: AppSpacing.xl),
+                      _SectionHeader(
+                        label: context.l('Top Echoes by Trust Score'),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      ..._topEchoes.asMap().entries.map((e) => _TopEchoCard(
+                            echo: e.value,
+                            rank: e.key + 1,
+                          )),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -374,6 +680,294 @@ class _HeroMetric extends StatelessWidget {
   }
 }
 
+class _MomentumCard extends StatelessWidget {
+  const _MomentumCard({required this.stats});
+
+  final Map<String, dynamic> stats;
+
+  @override
+  Widget build(BuildContext context) {
+    final recent = (stats['recent_engagements'] as num?)?.toInt() ?? 0;
+    final previous = (stats['previous_engagements'] as num?)?.toInt() ?? 0;
+    final delta = (stats['engagement_delta'] as num?)?.toDouble() ?? 0;
+    final perEcho = (stats['engagement_per_echo'] as num?)?.toDouble() ?? 0;
+    final recentEchoes = (stats['recent_echoes'] as num?)?.toInt() ?? 0;
+    final isUp = delta >= 0;
+    final capped = delta.abs().clamp(0.0, 1.0).toDouble();
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 480),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, 10 * (1 - value)),
+            child: child,
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.borderSubtle),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  isUp ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                  color: isUp ? AppColors.fernGreen : AppColors.sunsetCoral,
+                  size: 20,
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    context.l('7-day momentum'),
+                    style: GoogleFonts.josefinSans(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.charcoal,
+                    ),
+                  ),
+                ),
+                Text(
+                  '${isUp ? '+' : '-'}${(delta.abs() * 100).round()}%',
+                  style: GoogleFonts.josefinSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color:
+                        isUp ? AppColors.fernGreenDark : AppColors.sunsetCoral,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.md),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: capped == 0 ? 0.04 : capped,
+                minHeight: 8,
+                backgroundColor: AppColors.surfaceSecondary,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  isUp ? AppColors.fernGreen : AppColors.sunsetCoral,
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Row(
+              children: [
+                Expanded(
+                  child: _TinyMetric(
+                    label: context.l('This week'),
+                    value: '$recent',
+                  ),
+                ),
+                Expanded(
+                  child: _TinyMetric(
+                    label: context.l('Last week'),
+                    value: '$previous',
+                  ),
+                ),
+                Expanded(
+                  child: _TinyMetric(
+                    label: context.l('Per echo'),
+                    value: perEcho.toStringAsFixed(1),
+                  ),
+                ),
+                Expanded(
+                  child: _TinyMetric(
+                    label: context.l('New echoes'),
+                    value: '$recentEchoes',
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InsightActionCard extends StatelessWidget {
+  const _InsightActionCard({required this.stats});
+
+  final Map<String, dynamic> stats;
+
+  @override
+  Widget build(BuildContext context) {
+    final supportRatio = (stats['support_ratio'] as num?)?.toDouble() ?? 0;
+    final challengeRate = (stats['challenge_rate'] as num?)?.toDouble() ?? 0;
+    final proofRatio = (stats['proof_ratio'] as num?)?.toDouble() ?? 0;
+    final avgConfidence = (stats['avg_confidence'] as num?)?.toDouble() ?? 0;
+    final recentEchoes = (stats['recent_echoes'] as num?)?.toInt() ?? 0;
+
+    final title = recentEchoes == 0
+        ? context.l('Post once this week')
+        : challengeRate > 0.45
+            ? context.l('Reduce challenge pressure')
+            : avgConfidence < 60
+                ? context.l('Raise confidence')
+                : supportRatio > 0.7
+                    ? context.l('Lean into trusted topics')
+                    : context.l('Strengthen your next echo');
+    final body = recentEchoes == 0
+        ? context.l('Fresh activity keeps your trust graph alive.')
+        : challengeRate > 0.45
+            ? context.l('Add clearer source context before claims spread.')
+            : avgConfidence < 60
+                ? context.l('Use specific evidence and shorter wording.')
+                : supportRatio > 0.7
+                    ? context.l('Your audience is responding with support.')
+                    : context.l('Proof coverage and clarity move the score.');
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.fernGreenLight,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppColors.fernGreen.withValues(alpha: 0.18),
+        ),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final stacked = constraints.maxWidth < 520;
+          final metrics = [
+            _TinyMetric(
+              label: context.l('Support'),
+              value: '${(supportRatio * 100).round()}%',
+            ),
+            _TinyMetric(
+              label: context.l('Challenge'),
+              value: '${(challengeRate * 100).round()}%',
+            ),
+            _TinyMetric(
+              label: context.l('Proof cover'),
+              value: '${(proofRatio * 100).round()}%',
+            ),
+          ];
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.auto_graph_rounded,
+                    color: AppColors.fernGreenDark,
+                    size: 21,
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: GoogleFonts.josefinSans(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.charcoal,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          body,
+                          style: GoogleFonts.josefinSans(
+                            fontSize: 12,
+                            height: 1.3,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.md),
+              if (stacked)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: metrics
+                      .map(
+                        (metric) => Padding(
+                          padding:
+                              const EdgeInsets.only(bottom: AppSpacing.xs),
+                          child: metric,
+                        ),
+                      )
+                      .toList(),
+                )
+              else
+                Row(
+                  children: metrics
+                      .map((metric) => Expanded(child: metric))
+                      .toList(),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _TinyMetric extends StatelessWidget {
+  const _TinyMetric({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
+      margin: const EdgeInsets.only(right: AppSpacing.xs),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.josefinSans(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: AppColors.charcoal,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.josefinSans(
+              fontSize: 10,
+              color: AppColors.textTertiary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.label});
   final String label;
@@ -434,14 +1028,19 @@ class _StatsGrid extends StatelessWidget {
           AppColors.textSecondary),
     ];
 
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisSpacing: AppSpacing.sm,
-      mainAxisSpacing: AppSpacing.sm,
-      childAspectRatio: 1.6,
-      children: items.map((item) => _StatCard(stat: item)).toList(),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 680 ? 4 : 2;
+        return GridView.count(
+          crossAxisCount: columns,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: AppSpacing.sm,
+          mainAxisSpacing: AppSpacing.sm,
+          childAspectRatio: columns == 4 ? 1.25 : 1.6,
+          children: items.map((item) => _StatCard(stat: item)).toList(),
+        );
+      },
     );
   }
 }

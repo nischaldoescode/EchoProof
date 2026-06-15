@@ -20,12 +20,16 @@ import 'core/security/device_security_gate.dart';
 import 'core/security/secure_screen.dart';
 import 'core/services/ad_service.dart';
 import 'core/services/account_device_service.dart';
+import 'core/services/app_update_service.dart';
+import 'core/services/quick_action_service.dart';
 import 'core/services/push_notification_service.dart';
+import 'core/utils/app_haptics.dart';
 import 'core/utils/logger.dart';
 import 'core/utils/snack.dart';
 import 'features/auth/presentation/services/auth_service.dart';
 import 'features/onboarding/presentation/services/onboarding_service.dart';
 import 'features/echo/presentation/services/echo_feed_service.dart';
+import 'features/echo/presentation/services/bookmark_service.dart';
 import 'features/echo/presentation/services/create_echo_service.dart';
 import 'features/notifications/presentation/services/notification_service.dart';
 import 'features/subscription/presentation/services/subscription_service.dart';
@@ -39,6 +43,17 @@ import 'package:hyper_snackbar/hyper_snackbar.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      systemNavigationBarColor: Colors.white,
+      systemNavigationBarIconBrightness: Brightness.dark,
+      systemNavigationBarDividerColor: Colors.white,
+      systemNavigationBarContrastEnforced: true,
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      systemStatusBarContrastEnforced: false,
+    ),
+  );
 
   // initialize firebase first required before any firebase service
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -48,8 +63,11 @@ Future<void> main() async {
     debugPrint = (String? message, {int? wrapWidth}) {};
   }
 
-  // block rooted devices in release mode
-  if (DeviceSecurity.isCompromised && kReleaseMode) {
+  await DeviceSecurity.enforceSecureWindow();
+
+  // block rooted hooked repackaged or sideloaded release builds before app state loads
+  final securityReport = await DeviceSecurity.inspect();
+  if (securityReport.compromised && kReleaseMode) {
     runApp(const SecurityWarningApp());
     return;
   }
@@ -79,17 +97,20 @@ Future<void> main() async {
   final authService = AuthService();
   final onboardingService = OnboardingService();
   final echoFeedService = EchoFeedService();
+  final bookmarkService = BookmarkService();
   final createEchoService = CreateEchoService();
   final notificationService = NotificationService();
   final subscriptionService = SubscriptionService();
   final adService = AdService();
   final accountDeviceService = AccountDeviceService();
+  final appUpdateService = AppUpdateService();
 
   await authService.checkUsername();
   // pre-load notification count for badge
   if (authService.isLoggedIn) {
     notificationService.loadNotifications();
     notificationService.startRealtime();
+    unawaited(bookmarkService.loadBookmarks());
     unawaited(_startPushIfEnabled());
   }
 
@@ -97,6 +118,12 @@ Future<void> main() async {
     authService: authService,
     onboardingService: onboardingService,
     subscriptionService: subscriptionService,
+  );
+  unawaited(
+    QuickActionService.attach(
+      router,
+      profileEnabled: _quickActionsAllowed(authService),
+    ),
   );
 
   var wasLoggedIn = authService.isLoggedIn;
@@ -112,8 +139,14 @@ Future<void> main() async {
     final isLoggedIn = authService.isLoggedIn;
     if (isLoggedIn && !wasLoggedIn) {
       adService.onUserLoggedIn();
+      unawaited(
+        QuickActionService.syncForAuth(
+          profileEnabled: _quickActionsAllowed(authService),
+        ),
+      );
       notificationService.loadNotifications();
       notificationService.startRealtime();
+      unawaited(bookmarkService.loadBookmarks());
       unawaited(_startPushIfEnabled());
       unawaited(
         _registerAccountDevice(accountDeviceService, authService, router),
@@ -128,10 +161,17 @@ Future<void> main() async {
       }
     } else if (!isLoggedIn && wasLoggedIn) {
       adService.onUserLoggedOut();
+      unawaited(QuickActionService.syncForAuth(profileEnabled: false));
       notificationService.stopRealtime();
+      bookmarkService.clearForLogout();
       accountDeviceService.stopRealtime();
       unawaited(PushNotificationService.instance.removeToken());
     }
+    unawaited(
+      QuickActionService.syncForAuth(
+        profileEnabled: _quickActionsAllowed(authService),
+      ),
+    );
     wasLoggedIn = isLoggedIn;
   });
 
@@ -205,6 +245,7 @@ Future<void> main() async {
     subscriptionService,
     authService,
     accountDeviceService,
+    appUpdateService,
     router,
   );
   WidgetsBinding.instance.addObserver(lifecycleObserver);
@@ -218,6 +259,7 @@ Future<void> main() async {
             value: onboardingService,
           ),
           ChangeNotifierProvider<EchoFeedService>.value(value: echoFeedService),
+          ChangeNotifierProvider<BookmarkService>.value(value: bookmarkService),
           ChangeNotifierProvider<CreateEchoService>.value(
             value: createEchoService,
           ),
@@ -250,6 +292,16 @@ Future<void> main() async {
       unawaited(_maybeShowAccountRecoveryDialog(authService, router));
     });
   }
+
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    Future.delayed(const Duration(milliseconds: 900), () {
+      unawaited(
+        appUpdateService.checkForRequiredUpdate(
+          reason: AppUpdateCheckReason.launch,
+        ),
+      );
+    });
+  });
 }
 
 String? _lastHandledLink;
@@ -277,18 +329,36 @@ Future<void> _registerAccountDevice(
     await deviceService.register();
     await deviceService.startRealtime(authService, router);
   } on AccountDeviceConflict catch (conflict) {
-    final context = HyperSnackbar.navigatorKey.currentContext;
+    if (_canAutoRecoverDeviceConflict(conflict)) {
+      AppLogger.info(
+        'device-session: auto recovering likely reinstall on same device',
+      );
+      await deviceService.register(force: true);
+      await deviceService.startRealtime(authService, router);
+      return;
+    }
+
+    final context = await _waitForAppContext();
     if (context == null || !context.mounted) {
       AppLogger.warn('device-session: conflict but no context available');
       return;
     }
+    if (!authService.isLoggedIn) return;
+    final likelySamePhone =
+        conflict.sameNamedDevice || conflict.kind == 'possibly_same_device';
+    final lastSeen = _formatDeviceConflictSeen(conflict.lastSeenAgeSeconds);
+    unawaited(AppHaptics.criticalOpen(key: 'device_conflict_dialog'));
     final proceed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Account active elsewhere'),
+        title: Text(
+          likelySamePhone ? 'Confirm this phone' : 'Account active elsewhere',
+        ),
         content: Text(
-          '${conflict.message}\n\nCurrent device: ${conflict.currentDevice.deviceName}\n\nContinuing here will log out that device.',
+          likelySamePhone
+              ? 'This looks like your previous Echoproof install on ${conflict.currentDevice.deviceName}. It was last active $lastSeen.\n\nContinue here only if this is you. The old install will be logged out.'
+              : '${conflict.message}\n\nActive device: ${conflict.currentDevice.deviceName}\nLast active: $lastSeen\n\nContinue here only if this is you. The other device will be logged out.',
         ),
         actions: [
           TextButton(
@@ -303,19 +373,51 @@ Future<void> _registerAccountDevice(
       ),
     );
 
-    if (!context.mounted) return;
+    if (!context.mounted || !authService.isLoggedIn) return;
     if (proceed == true) {
+      unawaited(AppHaptics.criticalConfirm(key: 'device_conflict_continue'));
       await deviceService.register(force: true);
       await deviceService.startRealtime(authService, router);
       if (!context.mounted) return;
       showInfoSnack(context, 'This device is now the active session.');
     } else {
+      if (proceed != false) return;
+      unawaited(AppHaptics.caution(key: 'device_conflict_cancel'));
       await authService.signOut(enforceCooldown: false);
       router.go('/login');
     }
   } catch (e) {
     AppLogger.warn('device-session: registration skipped $e');
   }
+}
+
+bool _canAutoRecoverDeviceConflict(AccountDeviceConflict conflict) {
+  final age = conflict.lastSeenAgeSeconds;
+  if (age == null || age < 120) return false;
+  return conflict.kind == 'possibly_same_device' && conflict.sameNamedDevice;
+}
+
+Future<BuildContext?> _waitForAppContext({
+  Duration timeout = const Duration(seconds: 5),
+}) async {
+  final deadline = DateTime.now().add(timeout);
+  while (DateTime.now().isBefore(deadline)) {
+    final context = HyperSnackbar.navigatorKey.currentContext;
+    if (context != null && context.mounted) return context;
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+  }
+  return HyperSnackbar.navigatorKey.currentContext;
+}
+
+String _formatDeviceConflictSeen(int? seconds) {
+  if (seconds == null || seconds < 0) return 'recently';
+  if (seconds < 60) return 'just now';
+  final minutes = seconds ~/ 60;
+  if (minutes < 60) return '$minutes min ago';
+  final hours = minutes ~/ 60;
+  if (hours < 24) return '$hours hr ago';
+  final days = hours ~/ 24;
+  return '$days day${days == 1 ? '' : 's'} ago';
 }
 
 Future<void> _maybeShowAccountRecoveryDialog(
@@ -336,6 +438,7 @@ Future<void> _maybeShowAccountRecoveryDialog(
   if (context == null || !context.mounted) return;
 
   _accountRecoveryDialogOpen = true;
+  unawaited(AppHaptics.criticalOpen(key: 'account_recovery_dialog'));
   final keepAccount = await showGeneralDialog<bool>(
     context: context,
     barrierDismissible: false,
@@ -402,6 +505,7 @@ Future<void> _maybeShowAccountRecoveryDialog(
   if (!authService.isLoggedIn) return;
 
   if (keepAccount == true) {
+    unawaited(AppHaptics.criticalConfirm(key: 'account_recovery_keep'));
     final restored = await authService.restorePendingAccountDeletion();
     if (restored) {
       router.go('/feed');
@@ -421,6 +525,7 @@ Future<void> _maybeShowAccountRecoveryDialog(
     return;
   }
 
+  unawaited(AppHaptics.caution(key: 'account_recovery_dismiss'));
   await authService.signOut(enforceCooldown: false);
   router.go('/login');
 }
@@ -520,6 +625,114 @@ void _handleDeepLink(Uri uri, GoRouter router, [AuthService? auth]) {
       return;
     }
   }
+
+  final host = uri.host.toLowerCase();
+  final isEchoProofLink =
+      uri.scheme == 'echoproof' ||
+      host == 'echoproof.online' ||
+      host == 'www.echoproof.online' ||
+      host == 'join.echoproof.online' ||
+      host == 'www.join.echoproof.online';
+  if (isEchoProofLink) {
+    AppLogger.warn('deep link: unsupported link ignored $uri');
+    _safeGo(router, '/feed?notice=unsupported-link', auth: auth);
+  }
+}
+
+String? _internalLocationForUri(Uri uri) {
+  final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+
+  if (uri.scheme == 'echoproof') {
+    if (uri.host == 'room' && (segments.isEmpty || segments.first == 'join')) {
+      return _roomInviteLocation(uri);
+    }
+    if (uri.host == 'echo') {
+      final id = segments.isNotEmpty
+          ? segments.first
+          : uri.queryParameters['id'];
+      if (id != null && id.trim().isNotEmpty) {
+        return _withOriginalQuery(
+          '/feed/echo/${Uri.encodeComponent(id.trim())}',
+          uri,
+        );
+      }
+    }
+    if (uri.host == 'user') {
+      final username = segments.isNotEmpty
+          ? segments.first
+          : uri.queryParameters['username'];
+      if (username != null && username.trim().isNotEmpty) {
+        return _withOriginalQuery(
+          '/profile/${Uri.encodeComponent(username.trim())}',
+          uri,
+        );
+      }
+    }
+  }
+
+  final host = uri.host.toLowerCase();
+  final isMainHost =
+      uri.scheme == 'https' &&
+      (host == 'echoproof.online' || host == 'www.echoproof.online');
+  final isJoinHost =
+      uri.scheme == 'https' &&
+      (host == 'join.echoproof.online' || host == 'www.join.echoproof.online');
+
+  if (isJoinHost && (segments.isEmpty || segments.first == 'room')) {
+    return _roomInviteLocation(uri);
+  }
+
+  if (isMainHost || uri.scheme.isEmpty) {
+    if (segments.isNotEmpty && segments.first == 'room') {
+      return _roomInviteLocation(uri);
+    }
+    if (segments.length >= 2 && (segments[0] == 'echo' || segments[0] == 'e')) {
+      return _withOriginalQuery(
+        '/feed/echo/${Uri.encodeComponent(segments[1])}',
+        uri,
+      );
+    }
+    if (segments.length >= 2 && (segments[0] == 'user' || segments[0] == 'u')) {
+      return _withOriginalQuery(
+        '/profile/${Uri.encodeComponent(segments[1])}',
+        uri,
+      );
+    }
+  }
+
+  return null;
+}
+
+String _withOriginalQuery(String path, Uri uri) {
+  return uri.hasQuery ? '$path?${uri.query}' : path;
+}
+
+String _normalizedRouteLocation(String rawLocation) {
+  final location = rawLocation.trim();
+  if (location.isEmpty) return '/feed';
+
+  try {
+    final uri = Uri.parse(location);
+    final internal = _internalLocationForUri(uri);
+    if (internal != null) return internal;
+  } catch (e) {
+    AppLogger.warn('deep link: could not parse route $e');
+  }
+
+  if (!location.startsWith('/')) return '/feed';
+
+  final uri = Uri.parse(location);
+  final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+  if (segments.length == 2 && (segments[0] == 'echo' || segments[0] == 'e')) {
+    return Uri(
+      path: '/feed/echo/${segments[1]}',
+      queryParameters: uri.queryParameters.isEmpty ? null : uri.queryParameters,
+    ).toString();
+  }
+  if (segments.length == 1 && segments.first == 'room') {
+    return _roomInviteLocation(uri);
+  }
+  return location;
 }
 
 String? _internalLocationForUri(Uri uri) {
@@ -624,10 +837,9 @@ String _roomInviteLocation(Uri uri) {
   final code = _normalizedRoomCode(rawCode);
   final key = (uri.queryParameters['key'] ?? fragmentParams['key'] ?? '')
       .trim();
-  final query = {
-    if (code != null) 'code': code,
-    if (key.isNotEmpty) 'key': key,
-  };
+  final query = <String, String>{};
+  if (code != null) query['code'] = code;
+  if (key.isNotEmpty) query['key'] = key;
   return Uri(
     path: '/rooms',
     queryParameters: query.isEmpty ? null : query,
@@ -654,31 +866,11 @@ String? _normalizedRoomCode(String raw) {
   return null;
 }
 
-Map<String, String> _safeFragmentParams(Uri uri) {
-  if (uri.fragment.trim().isEmpty) return const <String, String>{};
-
-  try {
-    return Uri.splitQueryString(uri.fragment);
-  } catch (e) {
-    AppLogger.warn('deep link: invalid fragment ignored $e');
-    return const <String, String>{};
-  }
-}
-
-String? _normalizedRoomCode(String raw) {
-  final code = raw.trim().toUpperCase();
-  if (RegExp(r'^[A-Z2-9]{8}$').hasMatch(code)) return code;
-  if (code.isNotEmpty) {
-    AppLogger.warn('deep link: invalid room code ignored');
-  }
-  return null;
-}
-
 void _safeGo(GoRouter router, String location, {AuthService? auth}) {
   final normalized = _normalizedRouteLocation(location);
   if (auth != null && !auth.isLoggedIn) {
     _pendingDeepLinkLocation = normalized;
-    router.go('/login');
+    router.go('/login?continue=1');
     return;
   }
 
@@ -686,10 +878,10 @@ void _safeGo(GoRouter router, String location, {AuthService? auth}) {
     router.go(normalized);
   } on GoException catch (e) {
     AppLogger.warn('deep link: route failed for $normalized: $e');
-    router.go('/feed');
+    router.go('/feed?notice=unsupported-link');
   } catch (e) {
     AppLogger.warn('deep link: route failed for $normalized: $e');
-    router.go('/feed');
+    router.go('/feed?notice=unsupported-link');
   }
 }
 
@@ -739,19 +931,51 @@ bool _isSupabaseAuthLink(Uri uri) {
   return (isCustomAuth || isHttpsAuth) && hasAuthPayload;
 }
 
+bool _quickActionsAllowed(AuthService auth) {
+  return auth.isLoggedIn && auth.hasUsername && !auth.needsAgeGender;
+}
+
 class _AppLifecycleObserver extends WidgetsBindingObserver {
-  _AppLifecycleObserver(this._sub, this._auth, this._devices, this._router);
+  _AppLifecycleObserver(
+    this._sub,
+    this._auth,
+    this._devices,
+    this._updates,
+    this._router,
+  );
   final SubscriptionService _sub;
   final AuthService _auth;
   final AccountDeviceService _devices;
+  final AppUpdateService _updates;
   final GoRouter _router;
+  DateTime? _backgroundedAt;
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden) {
+      _backgroundedAt ??= DateTime.now();
+      return;
+    }
+
     if (state == AppLifecycleState.resumed) {
+      final backgroundedAt = _backgroundedAt;
+      _backgroundedAt = null;
+      final backgroundedFor = backgroundedAt == null
+          ? Duration.zero
+          : DateTime.now().difference(backgroundedAt);
       AppLogger.info('subscription: app resumed, checking checkout state');
       unawaited(_sub.recoverCheckoutAfterResume());
       unawaited(_verifyAccountAfterResume());
+      if (backgroundedFor >= const Duration(seconds: 8)) {
+        unawaited(
+          _updates.checkForRequiredUpdate(
+            reason: AppUpdateCheckReason.resume,
+            force: backgroundedFor >= const Duration(seconds: 30),
+          ),
+        );
+      }
     }
   }
 

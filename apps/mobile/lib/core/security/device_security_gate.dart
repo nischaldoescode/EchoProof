@@ -25,6 +25,7 @@ class _DeviceSecurityGateState extends State<DeviceSecurityGate>
     with WidgetsBindingObserver {
   Timer? _timer;
   bool _blocked = false;
+  bool _checking = false;
 
   @override
   void initState() {
@@ -53,10 +54,17 @@ class _DeviceSecurityGateState extends State<DeviceSecurityGate>
     }
   }
 
-  void _checkDevice() {
-    if (!mounted || !kReleaseMode || _blocked) return;
-    if (DeviceSecurity.isCompromised) {
-      setState(() => _blocked = true);
+  Future<void> _checkDevice() async {
+    if (!mounted || !kReleaseMode || _blocked || _checking) return;
+    _checking = true;
+    try {
+      final report = await DeviceSecurity.inspect();
+      if (!mounted) return;
+      if (report.compromised) {
+        setState(() => _blocked = true);
+      }
+    } finally {
+      _checking = false;
     }
   }
 

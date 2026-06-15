@@ -68,7 +68,9 @@ class _ProofTrailScreenState extends State<ProofTrailScreen>
       final currentUserId = client.auth.currentUser?.id;
 
       final results = await Future.wait<dynamic>([
-        client.from('echoes').select('''
+        client
+            .from('echoes')
+            .select('''
               id, user_id, title, content, category, category_detail, status, media_urls, reply_count,
               trust_score, confidence_score, controversy_score,
               support_count, challenge_count, created_at,
@@ -80,10 +82,12 @@ class _ProofTrailScreenState extends State<ProofTrailScreen>
               verified_record_tx, verified_record_at,
               verified_record_status, verified_record_error,
               bond_count,
-              users_public!inner(
+              users_public!echoes_user_id_fkey!inner(
                 username, display_name, avatar_url, trust_tier, is_pro
               )
-          ''').eq('id', widget.echoId).single(),
+          ''')
+            .eq('id', widget.echoId)
+            .single(),
         client
             .from('echo_proofs')
             .select('''
@@ -159,8 +163,8 @@ class _ProofTrailScreenState extends State<ProofTrailScreen>
       username: user['username'] as String? ?? 'unknown',
       userDisplayName:
           (user['display_name'] as String?)?.trim().isNotEmpty == true
-              ? user['display_name'] as String
-              : user['username'] as String? ?? 'unknown',
+          ? user['display_name'] as String
+          : user['username'] as String? ?? 'unknown',
       userTrustTier: trustTier,
       userIsVerified: trustTier == 'high' || trustTier == 'elite',
       userAvatarUrl: user['avatar_url'] as String?,
@@ -172,10 +176,12 @@ class _ProofTrailScreenState extends State<ProofTrailScreen>
       confidenceScore: (row['confidence_score'] as num?)?.toDouble() ?? 0,
       trustScore: (row['trust_score'] as num?)?.toInt() ?? 0,
       controversyScore: (row['controversy_score'] as num?)?.toDouble() ?? 0,
-      supportCount: (row['context_support_count'] as num?)?.toInt() ??
+      supportCount:
+          (row['context_support_count'] as num?)?.toInt() ??
           (row['support_count'] as num?)?.toInt() ??
           0,
-      challengeCount: (row['context_challenge_count'] as num?)?.toInt() ??
+      challengeCount:
+          (row['context_challenge_count'] as num?)?.toInt() ??
           (row['challenge_count'] as num?)?.toInt() ??
           0,
       contextSupportCount: (row['context_support_count'] as num?)?.toInt() ?? 0,
@@ -230,11 +236,13 @@ class _ProofTrailScreenState extends State<ProofTrailScreen>
 
     final echo = _echo!;
     final events = _buildEvents(echo);
-    final hasCommunityTrail = _proofs.isNotEmpty ||
+    final hasCommunityTrail =
+        _proofs.isNotEmpty ||
         _contexts.isNotEmpty ||
         _shouldShowEchoRecord(echo) ||
         _shouldShowVerifiedRecord(echo) ||
-        echo.publicVerdict != 'open' ||
+        (echo.publicVerdict != 'open' &&
+            echo.publicVerdict != 'needs_context') ||
         echo.bondCount > 0 ||
         _ownBond != null;
 
@@ -258,8 +266,9 @@ class _ProofTrailScreenState extends State<ProofTrailScreen>
         onRefresh: _loadTrail,
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final maxWidth =
-                constraints.maxWidth >= 760 ? 720.0 : double.infinity;
+            final maxWidth = constraints.maxWidth >= 760
+                ? 720.0
+                : double.infinity;
             return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: EdgeInsets.fromLTRB(
@@ -322,7 +331,9 @@ class _ProofTrailScreenState extends State<ProofTrailScreen>
   }
 
   bool _shouldShowEchoRecord(EchoEntity echo) {
-    if (echo.publicVerdict == 'open') return false;
+    if (echo.publicVerdict == 'open' || echo.publicVerdict == 'needs_context') {
+      return false;
+    }
     if (_hasAnchoredRecord(echo.solanaStatus, echo.createdRecordTx)) {
       return echo.publicVerdict == 'supported' || _isOwnEcho(echo);
     }
@@ -332,17 +343,11 @@ class _ProofTrailScreenState extends State<ProofTrailScreen>
 
   bool _shouldShowVerifiedRecord(EchoEntity echo) {
     if (echo.publicVerdict != 'supported') return false;
-    if (_hasAnchoredRecord(
-      echo.verifiedRecordStatus,
-      echo.verifiedRecordTx,
-    )) {
+    if (_hasAnchoredRecord(echo.verifiedRecordStatus, echo.verifiedRecordTx)) {
       return true;
     }
     return _isOwnEcho(echo) &&
-        _hasMeaningfulRecord(
-          echo.verifiedRecordStatus,
-          echo.verifiedRecordTx,
-        );
+        _hasMeaningfulRecord(echo.verifiedRecordStatus, echo.verifiedRecordTx);
   }
 
   bool _hasAnchoredRecord(String status, String? signature) {
@@ -429,8 +434,9 @@ class _ProofTrailScreenState extends State<ProofTrailScreen>
     }
 
     for (final row in _contexts) {
-      final stance =
-          (row['stance'] as String?) == 'challenge' ? 'challenge' : 'support';
+      final stance = (row['stance'] as String?) == 'challenge'
+          ? 'challenge'
+          : 'support';
       final user = row['users_public'] as Map<String, dynamic>? ?? {};
       final created = _parseDate(row['created_at']);
       final likeCount = (row['like_count'] as num?)?.toInt() ?? 0;
@@ -472,14 +478,15 @@ class _ProofTrailScreenState extends State<ProofTrailScreen>
       );
     }
 
-    if (echo.publicVerdict != 'open') {
+    if (echo.publicVerdict != 'open' && echo.publicVerdict != 'needs_context') {
       events.add(
         _ProofTrailEvent(
           title: context.l('Public context decided'),
           body: _verdictBody(echo),
           time: echo.publicVerdictAt ?? echo.publicContextClosesAt,
-          displayTime:
-              _timeLabel(echo.publicVerdictAt ?? echo.publicContextClosesAt),
+          displayTime: _timeLabel(
+            echo.publicVerdictAt ?? echo.publicContextClosesAt,
+          ),
           icon: Icons.balance_rounded,
           color: _publicVerdictColor(echo.publicVerdict),
           chips: [
@@ -522,10 +529,7 @@ class _ProofTrailScreenState extends State<ProofTrailScreen>
           title: context.l('Truth bonds attached'),
           body: context.l(
             '{count} bond{suffix} currently stand behind this verified echo.',
-            {
-              'count': echo.bondCount,
-              'suffix': echo.bondCount == 1 ? '' : 's',
-            },
+            {'count': echo.bondCount, 'suffix': echo.bondCount == 1 ? '' : 's'},
           ),
           time: null,
           displayTime: null,
@@ -550,10 +554,9 @@ class _ProofTrailScreenState extends State<ProofTrailScreen>
       events.add(
         _ProofTrailEvent(
           title: context.l('Your truth bond'),
-          body: context.l(
-            'Your account has a {status} bond on this echo.',
-            {'status': status.replaceAll('_', ' ')},
-          ),
+          body: context.l('Your account has a {status} bond on this echo.', {
+            'status': status.replaceAll('_', ' '),
+          }),
           time: created,
           displayTime: _timeLabel(created),
           icon: Icons.person_pin_circle_outlined,
@@ -663,18 +666,22 @@ class _ProofTrailScreenState extends State<ProofTrailScreen>
   }
 
   String _publicVerdictLabel(String verdict) => switch (verdict) {
-        'supported' => context.l('Supported'),
-        'not_supported' => context.l('Not supported'),
-        'contested' => context.l('Contested'),
-        _ => context.l('Open'),
-      };
+    'supported' => context.l('Supported'),
+    'not_supported' => context.l('Not supported'),
+    'contested' => context.l('Contested'),
+    'insufficient_context' => context.l('Insufficient context'),
+    'needs_context' => context.l('Needs context'),
+    _ => context.l('Open'),
+  };
 
   Color _publicVerdictColor(String verdict) => switch (verdict) {
-        'supported' => AppColors.fernGreenDark,
-        'not_supported' => AppColors.sunsetCoralDark,
-        'contested' => AppColors.statusControversial,
-        _ => AppColors.textTertiary,
-      };
+    'supported' => AppColors.fernGreenDark,
+    'not_supported' => AppColors.sunsetCoralDark,
+    'contested' => AppColors.statusControversial,
+    'insufficient_context' => AppColors.textSecondary,
+    'needs_context' => AppColors.statusUnderReview,
+    _ => AppColors.textTertiary,
+  };
 }
 
 class _ProofTrailHeader extends StatelessWidget {
@@ -910,10 +917,7 @@ class _AnimatedTrailItem extends StatelessWidget {
 }
 
 class _ProofTrailEventTile extends StatelessWidget {
-  const _ProofTrailEventTile({
-    required this.event,
-    required this.isLast,
-  });
+  const _ProofTrailEventTile({required this.event, required this.isLast});
 
   final _ProofTrailEvent event;
   final bool isLast;
@@ -1066,10 +1070,8 @@ class _TrailMediaPreview extends StatelessWidget {
         width: double.infinity,
         height: 128,
         fit: BoxFit.cover,
-        placeholder: (_, __) => Container(
-          height: 128,
-          color: AppColors.softSand,
-        ),
+        placeholder: (_, __) =>
+            Container(height: 128, color: AppColors.softSand),
         errorWidget: (_, __, ___) => Container(
           height: 68,
           color: AppColors.softSand,

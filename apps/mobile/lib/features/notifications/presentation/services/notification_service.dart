@@ -5,7 +5,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:hyper_snackbar/hyper_snackbar.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
@@ -51,19 +53,62 @@ class NotificationService extends ChangeNotifier {
   bool _isLoading = false;
   bool get isLoading => _isLoading;
 
+  final Set<String> _pendingSwipeDeleteIds = {};
+  final Set<String> _locallyDeletedIds = {};
+
   RealtimeChannel? _channel;
   String? _subscribedUserId;
+  bool _notifyQueued = false;
+  bool _disposed = false;
 
   int get unreadCount => _notifications.where((n) => !n.read).length;
 
-  bool get hasUnreadFollowerEcho => _notifications.any(
-        (n) => !n.read && n.type == 'new_follower_echo',
-      );
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    final phase = SchedulerBinding.instance.schedulerPhase;
+    final canNotifyNow =
+        phase == SchedulerPhase.idle ||
+        phase == SchedulerPhase.postFrameCallbacks;
+    if (canNotifyNow) {
+      super.notifyListeners();
+      return;
+    }
+    if (_notifyQueued) return;
+    _notifyQueued = true;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _notifyQueued = false;
+      if (_disposed) return;
+      super.notifyListeners();
+    });
+  }
+
+  bool get hasUnreadFollowerEcho =>
+      _notifications.any((n) => !n.read && n.type == 'new_follower_echo');
+
+  String _localDeletedKey(String userId) => 'notifications_deleted_v1_$userId';
+
+  void _loadLocalDeletedIds(String userId) {
+    if (!Hive.isBoxOpen('app_settings')) return;
+    final raw = Hive.box('app_settings').get(_localDeletedKey(userId));
+    _locallyDeletedIds
+      ..clear()
+      ..addAll(raw is List ? raw.whereType<String>() : const <String>[]);
+  }
+
+  void _rememberLocalDelete(String userId, String notificationId) {
+    if (notificationId.isEmpty) return;
+    _locallyDeletedIds.add(notificationId);
+    if (!Hive.isBoxOpen('app_settings')) return;
+    final compact = _locallyDeletedIds.take(200).toList(growable: false);
+    unawaited(Hive.box('app_settings').put(_localDeletedKey(userId), compact));
+  }
 
   Future<void> loadNotifications() async {
     final client = Supabase.instance.client;
     final userId = client.auth.currentUser?.id;
     if (userId == null) return;
+    _loadLocalDeletedIds(userId);
 
     _isLoading = true;
     notifyListeners();
@@ -78,6 +123,7 @@ class NotificationService extends ChangeNotifier {
 
       _notifications = (rows as List)
           .map((row) => _mapRow(row as Map<String, dynamic>))
+          .where((item) => !_locallyDeletedIds.contains(item.id))
           .toList();
       startRealtime();
 
@@ -103,6 +149,161 @@ class NotificationService extends ChangeNotifier {
 
     _notifications = _notifications.map((n) => n.copyWith(read: true)).toList();
     notifyListeners();
+  }
+
+  Future<bool> deleteNotification(
+    NotificationItem item, {
+    bool optimistic = true,
+  }) async {
+    final userId = _currentUserId();
+    final index = _notifications.indexWhere((n) => n.id == item.id);
+    if (index < 0) return true;
+
+    if (optimistic) {
+      final next = [..._notifications]..removeAt(index);
+      _notifications = next;
+      notifyListeners();
+    }
+
+    if (userId == null) {
+      if (!optimistic) {
+        final next = [..._notifications]..removeAt(index);
+        _notifications = next;
+        notifyListeners();
+      }
+      return true;
+    }
+    _rememberLocalDelete(userId, item.id);
+
+    try {
+      final deleted = await _deleteRemoteRow(item, userId);
+      if (!deleted) {
+        AppLogger.warn('notifications: remote delete returned no rows');
+      }
+      if (!optimistic) {
+        final currentIndex = _notifications.indexWhere((n) => n.id == item.id);
+        if (currentIndex >= 0) {
+          final next = [..._notifications]..removeAt(currentIndex);
+          _notifications = next;
+          notifyListeners();
+        }
+      }
+      return true;
+    } catch (e) {
+      AppLogger.warn('notifications: delete failed $e');
+      if (optimistic && !_locallyDeletedIds.contains(item.id)) {
+        final restored = [..._notifications];
+        final restoreIndex = index.clamp(0, restored.length).toInt();
+        restored.insert(restoreIndex, item);
+        _notifications = restored;
+        notifyListeners();
+      }
+      return false;
+    }
+  }
+
+  void beginSwipeDelete(String notificationId) {
+    _pendingSwipeDeleteIds.add(notificationId);
+  }
+
+  void cancelSwipeDelete(String notificationId) {
+    _pendingSwipeDeleteIds.remove(notificationId);
+  }
+
+  void finishSwipeDelete(NotificationItem item) {
+    _pendingSwipeDeleteIds.remove(item.id);
+    final index = _notifications.indexWhere((n) => n.id == item.id);
+    if (index < 0) return;
+
+    final next = [..._notifications]..removeAt(index);
+    _notifications = next;
+    notifyListeners();
+  }
+
+  Future<bool> deleteNotificationRemote(NotificationItem item) async {
+    final userId = _currentUserId();
+    if (userId == null) return true;
+    _rememberLocalDelete(userId, item.id);
+
+    try {
+      final deleted = await _deleteRemoteRow(item, userId);
+      if (!deleted) {
+        AppLogger.warn('notifications: remote delete returned no rows');
+      }
+      return true;
+    } catch (e) {
+      AppLogger.warn('notifications: remote delete failed $e');
+      return true;
+    }
+  }
+
+  Future<bool> _deleteRemoteRow(NotificationItem item, String userId) async {
+    final client = Supabase.instance.client;
+    try {
+      final rpcDeleted =
+          await client.rpc(
+                'delete_own_notification',
+                params: {'p_notification_id': item.id},
+              )
+              as bool?;
+      if (rpcDeleted == true) return true;
+      if (rpcDeleted == false) {
+        return _notificationIsAlreadyGone(item.id, userId);
+      }
+    } catch (e) {
+      AppLogger.warn('notifications: delete rpc unavailable $e');
+    }
+
+    // fallback for older schemas while the migration rolls out
+    final rows = await client
+        .from('notifications')
+        .delete()
+        .eq('id', item.id)
+        .eq('user_id', userId)
+        .select('id');
+    if (rows.isNotEmpty) return true;
+    return _notificationIsAlreadyGone(item.id, userId);
+  }
+
+  Future<bool> _notificationIsAlreadyGone(
+    String notificationId,
+    String userId,
+  ) async {
+    final rows = await Supabase.instance.client
+        .from('notifications')
+        .select('id')
+        .eq('id', notificationId)
+        .eq('user_id', userId)
+        .limit(1);
+    final alreadyGone = (rows as List).isEmpty;
+    if (alreadyGone) {
+      AppLogger.info('notifications: delete already absent $notificationId');
+    }
+    return alreadyGone;
+  }
+
+  Future<void> openNotification(
+    BuildContext context,
+    NotificationItem item,
+  ) async {
+    if (!item.read) {
+      try {
+        await Supabase.instance.client
+            .from('notifications')
+            .update({'read': true})
+            .eq('id', item.id);
+        _notifications = _notifications
+            .map((n) => n.id == item.id ? n.copyWith(read: true) : n)
+            .toList();
+        notifyListeners();
+      } catch (e) {
+        AppLogger.warn('notifications: mark single read failed $e');
+      }
+    }
+
+    final route = _routeFor(item);
+    if (route == null || !context.mounted) return;
+    GoRouter.of(context).push(route);
   }
 
   Future<void> markFollowerEchoesRead() async {
@@ -136,6 +337,35 @@ class NotificationService extends ChangeNotifier {
     await _resolveFollowRequest(item, 'rejected');
   }
 
+  Future<void> markDeviceAlertHandled(
+    NotificationItem item,
+    String status,
+  ) async {
+    final nextData = {...?item.data, 'handled': true, 'status': status};
+
+    await Supabase.instance.client
+        .from('notifications')
+        .update({'read': true, 'data': nextData})
+        .eq('id', item.id);
+
+    _notifications = _notifications
+        .map(
+          (n) => n.id == item.id
+              ? NotificationItem(
+                  id: n.id,
+                  type: n.type,
+                  title: n.title,
+                  body: n.body,
+                  read: true,
+                  createdAt: n.createdAt,
+                  data: nextData,
+                )
+              : n,
+        )
+        .toList();
+    notifyListeners();
+  }
+
   Future<bool> isFollowingActor(NotificationItem item) async {
     final actorId = _actorIdFor(item);
     final userId = _currentUserId();
@@ -164,15 +394,15 @@ class NotificationService extends ChangeNotifier {
 
     final client = Supabase.instance.client;
     final alreadyFollowing = await isFollowingActor(item);
-    final nextData = {
-      ...?item.data,
-      'followed_back': true,
-    };
+    final nextData = {...?item.data, 'followed_back': true};
 
     if (alreadyFollowing) {
-      await client.from('notifications').update({
-        'data': {...nextData, 'follow_back_status': 'following'},
-      }).eq('id', item.id);
+      await client
+          .from('notifications')
+          .update({
+            'data': {...nextData, 'follow_back_status': 'following'},
+          })
+          .eq('id', item.id);
       await loadNotifications();
       return 'following';
     }
@@ -190,9 +420,12 @@ class NotificationService extends ChangeNotifier {
         'following_id': actorId,
       }, onConflict: 'follower_id,following_id');
       unawaited(_notifySocialEvent('new_follower', {'target_id': actorId}));
-      await client.from('notifications').update({
-        'data': {...nextData, 'follow_back_status': 'following'},
-      }).eq('id', item.id);
+      await client
+          .from('notifications')
+          .update({
+            'data': {...nextData, 'follow_back_status': 'following'},
+          })
+          .eq('id', item.id);
       await loadNotifications();
       return 'following';
     }
@@ -208,13 +441,16 @@ class NotificationService extends ChangeNotifier {
         .single();
     final requestId = row['id'] as String?;
     if (requestId != null) {
-      unawaited(_notifySocialEvent('follow_request', {
-        'request_id': requestId,
-      }));
+      unawaited(
+        _notifySocialEvent('follow_request', {'request_id': requestId}),
+      );
     }
-    await client.from('notifications').update({
-      'data': {...nextData, 'follow_back_status': 'requested'},
-    }).eq('id', item.id);
+    await client
+        .from('notifications')
+        .update({
+          'data': {...nextData, 'follow_back_status': 'requested'},
+        })
+        .eq('id', item.id);
     await loadNotifications();
     return 'requested';
   }
@@ -229,25 +465,24 @@ class NotificationService extends ChangeNotifier {
     }
 
     final client = Supabase.instance.client;
-    final nextData = {
-      ...?item.data,
-      'handled': true,
-      'status': status,
-    };
+    final nextData = {...?item.data, 'handled': true, 'status': status};
 
     await client
         .from('follow_requests')
-        .update({'status': status}).eq('id', requestId);
+        .update({'status': status})
+        .eq('id', requestId);
 
     await client
         .from('notifications')
-        .update({'read': true, 'data': nextData}).eq('id', item.id);
+        .update({'read': true, 'data': nextData})
+        .eq('id', item.id);
 
     if (status == 'accepted') {
-      unawaited(_notifySocialEvent(
-        'follow_request_accepted',
-        {'request_id': requestId},
-      ));
+      unawaited(
+        _notifySocialEvent('follow_request_accepted', {
+          'request_id': requestId,
+        }),
+      );
     }
 
     await loadNotifications();
@@ -290,6 +525,7 @@ class NotificationService extends ChangeNotifier {
           ),
           callback: (payload) {
             final item = _mapRow(payload.newRecord);
+            if (_locallyDeletedIds.contains(item.id)) return;
             if (_notifications.any((n) => n.id == item.id)) return;
             _notifications = [item, ..._notifications].take(50).toList();
             notifyListeners();
@@ -313,6 +549,25 @@ class NotificationService extends ChangeNotifier {
             notifyListeners();
           },
         )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.delete,
+          schema: 'public',
+          table: 'notifications',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: userId,
+          ),
+          callback: (payload) {
+            final id = payload.oldRecord['id'];
+            if (id is! String || id.isEmpty) return;
+            if (_pendingSwipeDeleteIds.contains(id)) return;
+            _notifications = _notifications
+                .where((notification) => notification.id != id)
+                .toList();
+            notifyListeners();
+          },
+        )
         .subscribe();
   }
 
@@ -332,7 +587,8 @@ class NotificationService extends ChangeNotifier {
       title: row['title'] as String,
       body: row['body'] as String,
       read: row['read'] as bool? ?? false,
-      createdAt: DateTime.tryParse(row['created_at'] as String? ?? '') ??
+      createdAt:
+          DateTime.tryParse(row['created_at'] as String? ?? '') ??
           DateTime.now(),
       data: row['data'] as Map<String, dynamic>?,
     );
@@ -405,48 +661,42 @@ class NotificationService extends ChangeNotifier {
       return '/feed/echo/${Uri.encodeComponent(echoId)}';
     }
 
-    if (item.type == 'follow_request') return '/notifications';
+    if (item.type == 'follow_request' ||
+        item.type == 'account_device_login_attempt') {
+      return '/notifications';
+    }
     return null;
   }
 
   (IconData, Color) _iconFor(String type) => switch (type) {
-        'echo_verified' => (Icons.verified_outlined, AppColors.fernGreen),
-        'identity_verified' => (
-            Icons.verified_user_rounded,
-            AppColors.fernGreen
-          ),
-        'echo_supported' => (Icons.thumb_up_alt_outlined, AppColors.fernGreen),
-        'echo_challenged' => (
-            Icons.report_problem_outlined,
-            AppColors.sunsetCoral
-          ),
-        'context_like' => (Icons.favorite_border_rounded, AppColors.fernGreen),
-        'echo_reply' || 'reply_reply' => (
-            Icons.reply_outlined,
-            AppColors.fernGreen
-          ),
-        'reply_like' => (Icons.favorite_outline_rounded, AppColors.fernGreen),
-        'follow_request' => (
-            Icons.person_add_alt_1_rounded,
-            AppColors.fernGreen
-          ),
-        'follow_request_accepted' || 'new_follower' => (
-            Icons.how_to_reg_rounded,
-            AppColors.fernGreen
-          ),
-        'new_follower_echo' => (
-            Icons.dynamic_feed_outlined,
-            AppColors.fernGreen
-          ),
-        'content_removed' || 'echo_moderation' => (
-            Icons.shield_outlined,
-            AppColors.sunsetCoral
-          ),
-        _ => (Icons.notifications_outlined, AppColors.fernGreen),
-      };
+    'echo_verified' => (Icons.verified_outlined, AppColors.fernGreen),
+    'identity_verified' => (Icons.verified_user_rounded, AppColors.fernGreen),
+    'echo_supported' => (Icons.thumb_up_alt_outlined, AppColors.fernGreen),
+    'echo_challenged' => (Icons.report_problem_outlined, AppColors.sunsetCoral),
+    'context_requested' => (
+      Icons.fact_check_outlined,
+      AppColors.statusUnderReview,
+    ),
+    'context_like' => (Icons.favorite_border_rounded, AppColors.fernGreen),
+    'echo_reply' ||
+    'reply_reply' => (Icons.reply_outlined, AppColors.fernGreen),
+    'reply_like' => (Icons.favorite_outline_rounded, AppColors.fernGreen),
+    'follow_request' => (Icons.person_add_alt_1_rounded, AppColors.fernGreen),
+    'follow_request_accepted' ||
+    'new_follower' => (Icons.how_to_reg_rounded, AppColors.fernGreen),
+    'new_follower_echo' => (Icons.dynamic_feed_outlined, AppColors.fernGreen),
+    'account_device_login_attempt' => (
+      Icons.phonelink_lock_rounded,
+      AppColors.sunsetCoral,
+    ),
+    'content_removed' ||
+    'echo_moderation' => (Icons.shield_outlined, AppColors.sunsetCoral),
+    _ => (Icons.notifications_outlined, AppColors.fernGreen),
+  };
 
   @override
   void dispose() {
+    _disposed = true;
     stopRealtime();
     super.dispose();
   }

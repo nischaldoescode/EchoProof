@@ -19,6 +19,16 @@ class EchoProofApp extends StatelessWidget {
   const EchoProofApp({super.key, required this.router});
   final GoRouter router;
 
+  static const _systemBars = SystemUiOverlayStyle(
+    systemNavigationBarColor: Colors.white,
+    systemNavigationBarIconBrightness: Brightness.dark,
+    systemNavigationBarDividerColor: Colors.white,
+    systemNavigationBarContrastEnforced: true,
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.dark,
+    systemStatusBarContrastEnforced: false,
+  );
+
   static const _localeMap = {
     'en': Locale('en'),
     'hi': Locale('hi'),
@@ -57,8 +67,9 @@ class EchoProofApp extends StatelessWidget {
         FlutterQuillLocalizations.delegate,
       ],
       routerConfig: router,
-      builder: (context, child) => ConnectivityWrapper(
-        child: child ?? const SizedBox.shrink(),
+      builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+        value: _systemBars,
+        child: ConnectivityWrapper(child: child ?? const SizedBox.shrink()),
       ),
     );
   }
@@ -135,7 +146,8 @@ class _ExitConfirmWrapperState extends State<ExitConfirmWrapper> {
       return true;
     }
 
-    final isDoubleTap = _lastBackPress != null &&
+    final isDoubleTap =
+        _lastBackPress != null &&
         now.difference(_lastBackPress!) < const Duration(seconds: 2);
 
     if (isDoubleTap) {

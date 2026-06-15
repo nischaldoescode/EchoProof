@@ -43,12 +43,8 @@ class _SecureScreenState extends State<SecureScreen> {
     if (_activeLocks > 0) {
       _activeLocks -= 1;
     }
-    if (_activeLocks > 0) return;
-    try {
-      await FlutterWindowManagerPlus.clearFlags(
-        FlutterWindowManagerPlus.FLAG_SECURE,
-      );
-    } catch (_) {}
+    // screenshot blocking is global now
+    // never clear the secure flag from a route dispose
   }
 
   @override

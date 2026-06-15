@@ -22,11 +22,7 @@ abstract final class Sanitizer {
 
   static String _basicClean(String input) {
     return _collapseWhitespace(
-      _normalizeNewlines(
-        _stripZeroWidth(
-          _stripNulls(input),
-        ),
-      ),
+      _normalizeNewlines(_stripZeroWidth(_stripNulls(input))),
     );
   }
 
@@ -49,10 +45,9 @@ abstract final class Sanitizer {
   }
 
   static String username(String input) {
-    final cleaned = _basicClean(input)
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9_]'), '')
-        .trim();
+    final cleaned = _basicClean(
+      input,
+    ).toLowerCase().replaceAll(RegExp(r'[^a-z0-9_]'), '').trim();
     return _safeSubstring(cleaned, 20);
   }
 
@@ -60,6 +55,8 @@ abstract final class Sanitizer {
     final cleaned = _basicClean(input).trim();
 
     if (cleaned.isEmpty) return null;
+    if (cleaned.length > 240) return null;
+    if (RegExp(r'\s').hasMatch(cleaned)) return null;
 
     final lower = cleaned.toLowerCase();
     if (!lower.startsWith('http://') && !lower.startsWith('https://')) {
@@ -79,6 +76,29 @@ abstract final class Sanitizer {
 
       if (uri.host.isEmpty) return null;
       if (!uri.hasScheme) return null;
+      if (uri.userInfo.isNotEmpty) return null;
+      final host = uri.host.toLowerCase();
+      if (host == 'localhost' || host.endsWith('.local')) return null;
+      if (!host.contains('.')) return null;
+      if (RegExp(r'^\d{1,3}(\.\d{1,3}){3}$').hasMatch(host)) return null;
+      final labels = host.split('.');
+      final validLabel = RegExp(r'^[a-z0-9-]{1,63}$');
+      if (labels.any((label) {
+        return label.isEmpty ||
+            !validLabel.hasMatch(label) ||
+            label.startsWith('-') ||
+            label.endsWith('-');
+      })) {
+        return null;
+      }
+      final suffix = labels.last;
+      final isClassicSuffix = RegExp(r'^[a-z]{2,63}$').hasMatch(suffix);
+      final isPunycodeSuffix =
+          suffix.startsWith('xn--') &&
+          RegExp(r'^xn--[a-z0-9-]{2,59}$').hasMatch(suffix);
+      if (suffix.length < 2 || (!isClassicSuffix && !isPunycodeSuffix)) {
+        return null;
+      }
 
       // normalize url (important for dedup + sql storage)
       return uri.normalizePath().toString();
@@ -88,10 +108,23 @@ abstract final class Sanitizer {
   }
 
   static String displayName(String input) {
-    final cleaned =
-        _basicClean(input).replaceAll(RegExp(r'[<>"\\/]'), '').trim();
+    final cleaned = _basicClean(
+      input,
+    ).replaceAll(RegExp(r'[<>"\\/]'), '').trim();
 
     return _safeSubstring(cleaned, 50);
+  }
+
+  static String bio(String input) {
+    final cleaned = _basicClean(input)
+        .replaceAll(RegExp(r'[<>]'), '')
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .join('\n')
+        .trim();
+
+    return _safeSubstring(cleaned, 160);
   }
 
   static String stripMarkdown(String input) {

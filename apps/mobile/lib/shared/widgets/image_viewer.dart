@@ -1,17 +1,15 @@
 // image viewer
 // @params none
 
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../app/theme/colors.dart';
 import 'dart:io' show Platform;
 import 'package:flutter_windowmanager_plus/flutter_windowmanager_plus.dart';
 
 class ImageViewer extends StatefulWidget {
-  const ImageViewer({
-    super.key,
-    required this.urls,
-    this.initialIndex = 0,
-  });
+  const ImageViewer({super.key, required this.urls, this.initialIndex = 0});
 
   final List<String> urls;
   final int initialIndex;
@@ -21,19 +19,16 @@ class ImageViewer extends StatefulWidget {
     required List<String> urls,
     int initialIndex = 0,
   }) {
+    if (urls.isEmpty) return Future.value();
+    final safeInitialIndex = initialIndex.clamp(0, urls.length - 1).toInt();
     return Navigator.of(context).push(
       PageRouteBuilder(
         opaque: false,
         barrierColor: Colors.black,
-        pageBuilder: (_, __, ___) => ImageViewer(
-          urls: urls,
-          initialIndex: initialIndex,
-        ),
-        transitionsBuilder: (_, animation, __, child) {
-          return FadeTransition(
-            opacity: animation,
-            child: child,
-          );
+        pageBuilder: (_, _, _) =>
+            ImageViewer(urls: urls, initialIndex: safeInitialIndex),
+        transitionsBuilder: (_, animation, _, child) {
+          return FadeTransition(opacity: animation, child: child);
         },
         transitionDuration: const Duration(milliseconds: 200),
       ),
@@ -60,20 +55,24 @@ class _ImageViewerState extends State<ImageViewer> {
   }
 
   Future<void> _unlockScreen() async {
-    if (!Platform.isAndroid) return;
-    try {
-      await FlutterWindowManagerPlus.clearFlags(
-        FlutterWindowManagerPlus.FLAG_SECURE,
-      );
-    } catch (_) {}
+    // image routes used to clear flag_secure on dispose
+    // keep it sticky so one viewer cannot reopen screenshots globally
   }
 
   @override
   void initState() {
     super.initState();
-    _current = widget.initialIndex;
-    _pageController = PageController(initialPage: widget.initialIndex);
+    _current = widget.urls.isEmpty
+        ? 0
+        : widget.initialIndex.clamp(0, widget.urls.length - 1).toInt();
+    _pageController = PageController(initialPage: _current);
     _lockScreen();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _precacheAround(_current);
   }
 
   @override
@@ -89,8 +88,25 @@ class _ImageViewerState extends State<ImageViewer> {
     setState(() => _isZoomed = false);
   }
 
+  void _precacheAround(int index) {
+    for (final i in [index - 1, index, index + 1]) {
+      if (i < 0 || i >= widget.urls.length) continue;
+      // keep swipes feeling instant without fetching the whole gallery
+      unawaited(
+        precacheImage(
+          CachedNetworkImageProvider(widget.urls[i], cacheKey: widget.urls[i]),
+          context,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.urls.isEmpty) {
+      return const Scaffold(backgroundColor: Colors.black);
+    }
+
     return Scaffold(
       backgroundColor: Colors.black,
       extendBodyBehindAppBar: true,
@@ -132,7 +148,10 @@ class _ImageViewerState extends State<ImageViewer> {
           physics: _isZoomed
               ? const NeverScrollableScrollPhysics()
               : const BouncingScrollPhysics(),
-          onPageChanged: (i) => setState(() => _current = i),
+          onPageChanged: (i) {
+            setState(() => _current = i);
+            _precacheAround(i);
+          },
           itemCount: widget.urls.length,
           itemBuilder: (context, index) {
             return InteractiveViewer(
@@ -146,29 +165,31 @@ class _ImageViewerState extends State<ImageViewer> {
                 }
               },
               child: Center(
-                child: Image.network(
-                  widget.urls[index],
+                child: CachedNetworkImage(
+                  imageUrl: widget.urls[index],
+                  cacheKey: widget.urls[index],
                   fit: BoxFit.contain,
-                  loadingBuilder: (context, child, progress) {
-                    if (progress == null) return child;
+                  progressIndicatorBuilder: (context, url, progress) {
                     return Center(
                       child: CircularProgressIndicator(
-                        value: progress.expectedTotalBytes != null
-                            ? progress.cumulativeBytesLoaded /
-                                progress.expectedTotalBytes!
-                            : null,
+                        value: progress.progress,
                         color: AppColors.fernGreen,
                         strokeWidth: 2,
                       ),
                     );
                   },
-                  errorBuilder: (_, __, ___) => const Center(
+                  errorWidget: (_, _, _) => const Center(
                     child: Icon(
                       Icons.broken_image_outlined,
                       color: Colors.white54,
                       size: 48,
                     ),
                   ),
+                  imageBuilder: (context, imageProvider) {
+                    return Center(
+                      child: Image(image: imageProvider, fit: BoxFit.contain),
+                    );
+                  },
                 ),
               ),
             );

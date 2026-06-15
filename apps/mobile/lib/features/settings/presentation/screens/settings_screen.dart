@@ -21,6 +21,7 @@ import '../../../../core/services/account_device_service.dart';
 import '../../../../core/services/push_notification_service.dart';
 import '../../../subscription/presentation/services/subscription_service.dart';
 import '../../../../core/localization/app_copy.dart';
+import '../../../../core/utils/app_haptics.dart';
 import 'package:flutter/services.dart';
 import '../../../../core/utils/snack.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -137,8 +138,9 @@ class _SettingsScreenState extends State<SettingsScreen>
         },
       );
 
-      final message =
-          VerificationErrorParser.messageFromResponseData(response.data);
+      final message = VerificationErrorParser.messageFromResponseData(
+        response.data,
+      );
       if (message != null) return message;
 
       return null;
@@ -160,8 +162,9 @@ class _SettingsScreenState extends State<SettingsScreen>
       final cachedUserId = box.get(_verificationBlockUserKey) as String?;
       final message = box.get(_verificationBlockMessageKey) as String?;
       final expiresRaw = box.get(_verificationBlockExpiresKey) as String?;
-      final expiresAt =
-          expiresRaw == null ? null : DateTime.tryParse(expiresRaw);
+      final expiresAt = expiresRaw == null
+          ? null
+          : DateTime.tryParse(expiresRaw);
 
       if (cachedUserId != userId ||
           message == null ||
@@ -278,10 +281,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   String _currentLanguageLabel(BuildContext context) {
     final code = context.read<OnboardingService>().language;
     return _languages
-        .firstWhere(
-          (l) => l.$2 == code,
-          orElse: () => ('English', 'en'),
-        )
+        .firstWhere((l) => l.$2 == code, orElse: () => ('English', 'en'))
         .$1;
   }
 
@@ -418,9 +418,10 @@ class _SettingsScreenState extends State<SettingsScreen>
         return ScaleTransition(
           scale: Tween<double>(begin: 0.85, end: 1.0).animate(curve),
           child: FadeTransition(
-            opacity: Tween<double>(begin: 0, end: 1).animate(
-              CurvedAnimation(parent: anim, curve: Curves.easeOut),
-            ),
+            opacity: Tween<double>(
+              begin: 0,
+              end: 1,
+            ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOut)),
             child: child,
           ),
         );
@@ -610,8 +611,10 @@ class _SettingsScreenState extends State<SettingsScreen>
       // revoke notification permission is not possible programmatically on android/ios
       // show guidance instead
       if (mounted) {
-        showInfoSnack(context,
-            'To fully disable notifications, go to System Settings > Apps > Echoproof > Notifications.');
+        showInfoSnack(
+          context,
+          'To fully disable notifications, go to System Settings > Apps > Echoproof > Notifications.',
+        );
       }
     } else {
       unawaited(PushNotificationService.instance.initialize());
@@ -630,14 +633,11 @@ class _SettingsScreenState extends State<SettingsScreen>
       final client = Supabase.instance.client;
       final userId = client.auth.currentUser?.id;
       if (userId == null) return;
-      await client.from('notification_preferences').upsert(
-        {
-          'user_id': userId,
-          ...values,
-          'updated_at': DateTime.now().toIso8601String(),
-        },
-        onConflict: 'user_id',
-      );
+      await client.from('notification_preferences').upsert({
+        'user_id': userId,
+        ...values,
+        'updated_at': DateTime.now().toIso8601String(),
+      }, onConflict: 'user_id');
     } catch (e) {
       AppLogger.warn('settings: notification preferences save failed $e');
     }
@@ -689,265 +689,294 @@ class _SettingsScreenState extends State<SettingsScreen>
       ),
       body: ListView(
         children: [
-          _Section(title: context.l('Language'), tiles: [
-            _Tile(
-              icon: Icons.language_rounded,
-              label: context.l('App language'),
-              subtitle: _currentLanguageLabel(context),
-              onTap: () => _showLanguageSheet(context),
-            ),
-          ]),
-          _Section(title: context.l('Account'), tiles: [
-            _Tile(
-              icon: Icons.person_outline_rounded,
-              label: context.l('Edit profile'),
-              onTap: () => context.push('/profile'),
-            ),
-            _Tile(
-              icon: _isVerified
-                  ? Icons.verified_rounded
-                  : _isCheckingVerification
-                      ? Icons.hourglass_top_rounded
-                      : _isVerificationPending
-                          ? Icons.pending_outlined
-                          : Icons.verified_user_outlined,
-              label: _isVerified
-                  ? context.l('Identity verified')
-                  : _isCheckingVerification
-                      ? context.l('Checking verification...')
-                      : _isVerificationPending
-                          ? context.l('Verification in progress...')
-                          : context.l('Verify identity'),
-              subtitle: _isVerified
-                  ? context.l('Your identity has been confirmed')
-                  : _isCheckingVerification
-                      ? context.l('Please wait')
-                      : _isVerificationPending
-                          ? context.l('Usually takes a few minutes')
-                          : _verificationBlockedMessage,
-              color: _isVerified ? AppColors.fernGreen : null,
-              showChevron: !_isVerified &&
-                  !_isCheckingVerification &&
-                  !_isVerificationPending &&
-                  _verificationBlockedMessage == null,
-              onTap: _isVerified
-                  ? () => showInfoSnack(
+          _Section(
+            title: context.l('Language'),
+            tiles: [
+              _Tile(
+                icon: Icons.language_rounded,
+                label: context.l('App language'),
+                subtitle: _currentLanguageLabel(context),
+                onTap: () => _showLanguageSheet(context),
+              ),
+            ],
+          ),
+          _Section(
+            title: context.l('Account'),
+            tiles: [
+              _Tile(
+                icon: Icons.person_outline_rounded,
+                label: context.l('Edit profile'),
+                onTap: () => context.push('/profile'),
+              ),
+              _Tile(
+                icon: _isVerified
+                    ? Icons.verified_rounded
+                    : _isCheckingVerification
+                    ? Icons.hourglass_top_rounded
+                    : _isVerificationPending
+                    ? Icons.pending_outlined
+                    : Icons.verified_user_outlined,
+                label: _isVerified
+                    ? context.l('Identity verified')
+                    : _isCheckingVerification
+                    ? context.l('Checking verification...')
+                    : _isVerificationPending
+                    ? context.l('Verification in progress...')
+                    : context.l('Verify identity'),
+                subtitle: _isVerified
+                    ? context.l('Your identity has been confirmed')
+                    : _isCheckingVerification
+                    ? context.l('Please wait')
+                    : _isVerificationPending
+                    ? context.l('Usually takes a few minutes')
+                    : _verificationBlockedMessage,
+                color: _isVerified ? AppColors.fernGreen : null,
+                showChevron:
+                    !_isVerified &&
+                    !_isCheckingVerification &&
+                    !_isVerificationPending &&
+                    _verificationBlockedMessage == null,
+                onTap: _isVerified
+                    ? () => showInfoSnack(
                         context,
                         context.l('Your identity has been confirmed'),
                       )
-                  : _isVerificationPending
-                      ? () => showInfoSnack(
-                            context,
-                            context.l('Verification in progress...'),
-                          )
-                      : _isCheckingVerification
-                          ? () {}
-                          : _openIdentityVerification,
-            ),
-            Consumer<AccountDeviceService>(
-              builder: (context, devices, _) {
-                final current = devices.currentDevice;
-                final conflict = devices.pendingConflict;
-                final activeCount =
-                    devices.devices.where((device) => device.active).length;
-                return _Tile(
-                  icon: Icons.phone_android_rounded,
-                  label: conflict == null
-                      ? context.l('Active device')
-                      : context.l('Device action needed'),
-                  subtitle: conflict != null
-                      ? '${conflict.currentDevice.deviceName} · ${context.l('active elsewhere')}'
-                      : current == null
-                          ? context.l('Registering this device...')
-                          : '${current.deviceName} · ${context.l('This device')}',
-                  trailing: _DeviceCountBadge(
-                    count: activeCount,
-                    alert: conflict != null,
-                  ),
-                  onTap: () => _showAccountDevicesSheet(context),
-                );
-              },
-            ),
-            // tile(
-            // icon: icons.receipt_long_outlined,
-            // label: 'purchase history',
-            // ontap: () {
-            // final sub = context.read<subscriptionservice>();
-            // if (!sub.haseverattemptedpurchase && !sub.ispro) {
-            // showinfosnack(context, 'no purchase history yet.');
-            // return;
-            // }
-            // context.push('/purchase-history');
-            // },
-            // ),
-          ]),
-          _Section(title: context.l('Subscription'), tiles: [
-            _Tile(
-              icon: subscription.isPro
-                  ? Icons.receipt_long_outlined
-                  : Icons.star_outline_rounded,
-              label: subscription.isPro
-                  ? context.l('Subscription history')
-                  : context.l('Echoproof Pro'),
-              subtitle: subscription.isPro
-                  ? _subscriptionStatusText(subscription)
-                  : context.l('Ad-free feed and pro tools'),
-              trailing: subscription.isPro
-                  ? _SubscriptionStatusBadge(
-                      status: subscription.subscriptionStatus)
-                  : const _ProBadge(),
-              onTap: () => showInfoSnack(
-                context,
-                // prod checkout stays hidden until billing is fully patched
-                context.l('Coming soon'),
+                    : _isVerificationPending
+                    ? () => showInfoSnack(
+                        context,
+                        context.l('Verification in progress...'),
+                      )
+                    : _isCheckingVerification
+                    ? () {}
+                    : _openIdentityVerification,
               ),
-            ),
-          ]),
-          _Section(title: context.l('Notifications'), tiles: [
-            _SwitchTile(
-              icon: Icons.notifications_outlined,
-              label: context.l('Push notifications'),
-              value: _pushEnabled,
-              onChanged: _setPushEnabled,
-            ),
-            // in-app notifications are always on shown greyed out
-            _Tile(
-              icon: Icons.notifications_active_outlined,
-              label: context.l('In-app notifications'),
-              subtitle: context.l('Always enabled (required)'),
-              color: AppColors.textTertiary,
-              onTap: () => showInfoSnack(context,
-                  context.l('In-app notifications cannot be disabled.')),
-            ),
-            if (_pushEnabled) ...[
-              _SwitchTile(
-                icon: Icons.verified_outlined,
-                label: context.l('Echo verified'),
-                value: _notifPrefs['echo_verified'] ?? true,
-                onChanged: (v) => _setNotifPref('echo_verified', v),
+              Consumer<AccountDeviceService>(
+                builder: (context, devices, _) {
+                  final current = devices.currentDevice;
+                  final conflict = devices.pendingConflict;
+                  final activeCount = devices.devices
+                      .where((device) => device.active)
+                      .length;
+                  return _Tile(
+                    icon: Icons.phone_android_rounded,
+                    label: conflict == null
+                        ? context.l('Active device')
+                        : context.l('Device action needed'),
+                    subtitle: conflict != null
+                        ? '${conflict.currentDevice.deviceName} · ${context.l('active elsewhere')}'
+                        : current == null
+                        ? context.l('Registering this device...')
+                        : '${current.deviceName} · ${context.l('This device')}',
+                    trailing: _DeviceCountBadge(
+                      count: activeCount,
+                      alert: conflict != null,
+                    ),
+                    onTap: () => _showAccountDevicesSheet(context),
+                  );
+                },
               ),
-              _SwitchTile(
-                icon: Icons.people_outline,
-                label: context.l('New echo from someone I follow'),
-                value: _notifPrefs['new_follower_echo'] ?? true,
-                onChanged: (v) => _setNotifPref('new_follower_echo', v),
-              ),
-              _SwitchTile(
-                icon: Icons.arrow_upward_rounded,
-                label: context.l('Support or challenge on my echo'),
-                value: _notifPrefs['echo_context'] ?? true,
-                onChanged: (v) => _setNotifPref('echo_context', v),
-              ),
-              _SwitchTile(
-                icon: Icons.favorite_border_rounded,
-                label: context.l('Likes on my context'),
-                value: _notifPrefs['context_like'] ?? true,
-                onChanged: (v) => _setNotifPref('context_like', v),
-              ),
-              _SwitchTile(
-                icon: Icons.reply_outlined,
-                label: context.l('Replies to my echoes or replies'),
-                value: _notifPrefs['reply'] ?? true,
-                onChanged: (v) => _setNotifPref('reply', v),
-              ),
-              _SwitchTile(
-                icon: Icons.favorite_outline_rounded,
-                label: context.l('Likes on my replies'),
-                value: _notifPrefs['reply_like'] ?? true,
-                onChanged: (v) => _setNotifPref('reply_like', v),
-              ),
-              _SwitchTile(
-                icon: Icons.person_add_alt_1_outlined,
-                label: context.l('Follow requests'),
-                value: _notifPrefs['follow_request'] ?? true,
-                onChanged: (v) => _setNotifPref('follow_request', v),
-              ),
-              _SwitchTile(
-                icon: Icons.how_to_reg_outlined,
-                label: context.l('Accepted follow requests'),
-                value: _notifPrefs['follow_request_accepted'] ?? true,
-                onChanged: (v) => _setNotifPref('follow_request_accepted', v),
-              ),
-              _SwitchTile(
-                icon: Icons.group_add_outlined,
-                label: context.l('New followers'),
-                value: _notifPrefs['new_follower'] ?? true,
-                onChanged: (v) => _setNotifPref('new_follower', v),
+              // tile(
+              // icon: icons.receipt_long_outlined,
+              // label: 'purchase history',
+              // ontap: () {
+              // final sub = context.read<subscriptionservice>();
+              // if (!sub.haseverattemptedpurchase && !sub.ispro) {
+              // showinfosnack(context, 'no purchase history yet.');
+              // return;
+              // }
+              // context.push('/purchase-history');
+              // },
+              // ),
+            ],
+          ),
+          _Section(
+            title: context.l('Subscription'),
+            tiles: [
+              _Tile(
+                icon: subscription.isPro
+                    ? Icons.receipt_long_outlined
+                    : Icons.star_outline_rounded,
+                label: subscription.isPro
+                    ? context.l('Subscription history')
+                    : 'EchoProof Pro',
+                subtitle: subscription.isPro
+                    ? _subscriptionStatusText(subscription)
+                    : context.l('Ad-free feed and pro tools'),
+                color: subscription.isPro ? null : AppColors.fernGreenDark,
+                trailing: subscription.isPro
+                    ? _SubscriptionStatusBadge(
+                        status: subscription.subscriptionStatus,
+                      )
+                    : const _ProBadge(),
+                onTap: () => showInfoSnack(
+                  context,
+                  // prod checkout stays hidden until billing is fully patched
+                  context.l('Coming soon'),
+                ),
               ),
             ],
-          ]),
+          ),
+          _Section(
+            title: context.l('Notifications'),
+            tiles: [
+              _SwitchTile(
+                icon: Icons.notifications_outlined,
+                label: context.l('Push notifications'),
+                value: _pushEnabled,
+                onChanged: _setPushEnabled,
+              ),
+              // in-app notifications are always on shown greyed out
+              _Tile(
+                icon: Icons.notifications_active_outlined,
+                label: context.l('In-app notifications'),
+                subtitle: context.l('Always enabled (required)'),
+                color: AppColors.textTertiary,
+                onTap: () => showInfoSnack(
+                  context,
+                  context.l('In-app notifications cannot be disabled.'),
+                ),
+              ),
+              if (_pushEnabled) ...[
+                _SwitchTile(
+                  icon: Icons.verified_outlined,
+                  label: context.l('Echo verified'),
+                  value: _notifPrefs['echo_verified'] ?? true,
+                  onChanged: (v) => _setNotifPref('echo_verified', v),
+                ),
+                _SwitchTile(
+                  icon: Icons.people_outline,
+                  label: context.l('New echo from someone I follow'),
+                  value: _notifPrefs['new_follower_echo'] ?? true,
+                  onChanged: (v) => _setNotifPref('new_follower_echo', v),
+                ),
+                _SwitchTile(
+                  icon: Icons.arrow_upward_rounded,
+                  label: context.l('Support or challenge on my echo'),
+                  value: _notifPrefs['echo_context'] ?? true,
+                  onChanged: (v) => _setNotifPref('echo_context', v),
+                ),
+                _SwitchTile(
+                  icon: Icons.favorite_border_rounded,
+                  label: context.l('Likes on my context'),
+                  value: _notifPrefs['context_like'] ?? true,
+                  onChanged: (v) => _setNotifPref('context_like', v),
+                ),
+                _SwitchTile(
+                  icon: Icons.reply_outlined,
+                  label: context.l('Replies to my echoes or replies'),
+                  value: _notifPrefs['reply'] ?? true,
+                  onChanged: (v) => _setNotifPref('reply', v),
+                ),
+                _SwitchTile(
+                  icon: Icons.favorite_outline_rounded,
+                  label: context.l('Likes on my replies'),
+                  value: _notifPrefs['reply_like'] ?? true,
+                  onChanged: (v) => _setNotifPref('reply_like', v),
+                ),
+                _SwitchTile(
+                  icon: Icons.person_add_alt_1_outlined,
+                  label: context.l('Follow requests'),
+                  value: _notifPrefs['follow_request'] ?? true,
+                  onChanged: (v) => _setNotifPref('follow_request', v),
+                ),
+                _SwitchTile(
+                  icon: Icons.how_to_reg_outlined,
+                  label: context.l('Accepted follow requests'),
+                  value: _notifPrefs['follow_request_accepted'] ?? true,
+                  onChanged: (v) => _setNotifPref('follow_request_accepted', v),
+                ),
+                _SwitchTile(
+                  icon: Icons.group_add_outlined,
+                  label: context.l('New followers'),
+                  value: _notifPrefs['new_follower'] ?? true,
+                  onChanged: (v) => _setNotifPref('new_follower', v),
+                ),
+              ],
+            ],
+          ),
 
-          _Section(title: context.l('App Permissions'), tiles: [
-            _PermissionTile(
-              icon: Icons.notifications_outlined,
-              label: context.l('Notifications'),
-              permission: Permission.notification,
-            ),
-            _PermissionTile(
-              icon: Icons.camera_alt_outlined,
-              label: context.l('Camera'),
-              permission: Permission.camera,
-            ),
-          ]),
-          _Section(title: context.l('Privacy'), tiles: [
-            _Tile(
-              icon: Icons.shield_outlined,
-              label: context.l('End-to-end encryption'),
-              subtitle:
-                  context.l('All echoes encrypted in transit and at rest'),
-              showChevron: false,
-              onTap: () {},
-            ),
-            _Tile(
-              icon: Icons.delete_outline_rounded,
-              label: context.l('Delete account'),
-              color: AppColors.sunsetCoral,
-              onTap: () => _showDeleteAccount(context),
-            ),
-          ]),
+          _Section(
+            title: context.l('App Permissions'),
+            tiles: [
+              _PermissionTile(
+                icon: Icons.notifications_outlined,
+                label: context.l('Notifications'),
+                permission: Permission.notification,
+              ),
+              _PermissionTile(
+                icon: Icons.camera_alt_outlined,
+                label: context.l('Camera'),
+                permission: Permission.camera,
+              ),
+            ],
+          ),
+          _Section(
+            title: context.l('Privacy'),
+            tiles: [
+              _Tile(
+                icon: Icons.shield_outlined,
+                label: context.l('End-to-end encryption'),
+                subtitle: context.l(
+                  'All echoes encrypted in transit and at rest',
+                ),
+                showChevron: false,
+                onTap: () {},
+              ),
+              _Tile(
+                icon: Icons.delete_outline_rounded,
+                label: context.l('Delete account'),
+                color: AppColors.sunsetCoral,
+                onTap: () => _showDeleteAccount(context),
+              ),
+            ],
+          ),
           if (!subscription.isPro)
-            _Section(title: context.l('Ads'), tiles: [
-              _AdStatusTile(onTap: () => _showAdInfoModal(context)),
-            ]),
-          _Section(title: context.l('About'), tiles: [
-            _Tile(
-              icon: Icons.info_outline_rounded,
-              label: context.l('About Echoproof'),
-              onTap: () => _showLinkChoiceSheet(
-                url: 'https://echoproof.online/',
-                title: context.l('About Echoproof'),
+            _Section(
+              title: context.l('Ads'),
+              tiles: [_AdStatusTile(onTap: () => _showAdInfoModal(context))],
+            ),
+          _Section(
+            title: context.l('About'),
+            tiles: [
+              _Tile(
+                icon: Icons.info_outline_rounded,
+                label: context.l('About Echoproof'),
+                onTap: () => _showLinkChoiceSheet(
+                  url: 'https://echoproof.online/',
+                  title: context.l('About Echoproof'),
+                ),
               ),
-            ),
-            _Tile(
-              icon: Icons.description_outlined,
-              label: context.l('Terms of service'),
-              onTap: () => _showLinkChoiceSheet(
-                url: 'https://echoproof.online/terms',
-                title: context.l('Terms of service'),
+              _Tile(
+                icon: Icons.description_outlined,
+                label: context.l('Terms of service'),
+                onTap: () => _showLinkChoiceSheet(
+                  url: 'https://echoproof.online/terms',
+                  title: context.l('Terms of service'),
+                ),
               ),
-            ),
-            _Tile(
-              icon: Icons.privacy_tip_outlined,
-              label: context.l('Privacy policy'),
-              onTap: () => _showLinkChoiceSheet(
-                url: 'https://echoproof.online/privacy',
-                title: context.l('Privacy policy'),
+              _Tile(
+                icon: Icons.privacy_tip_outlined,
+                label: context.l('Privacy policy'),
+                onTap: () => _showLinkChoiceSheet(
+                  url: 'https://echoproof.online/privacy',
+                  title: context.l('Privacy policy'),
+                ),
               ),
-            ),
-            _Tile(
-              icon: Icons.support_agent_rounded,
-              label: context.l('Contact support'),
-              onTap: () => _showContactSheet(context),
-            ),
-            _Tile(
-              icon: Icons.code_rounded,
-              label: _version.isEmpty
-                  ? context.l('Version...')
-                  : '${context.l('Version')} $_version',
-              showChevron: false,
-              onTap: () {},
-            ),
-          ]),
+              _Tile(
+                icon: Icons.support_agent_rounded,
+                label: context.l('Contact support'),
+                onTap: () => _showContactSheet(context),
+              ),
+              _Tile(
+                icon: Icons.code_rounded,
+                label: _version.isEmpty
+                    ? context.l('Version...')
+                    : '${context.l('Version')} $_version',
+                showChevron: false,
+                onTap: () {},
+              ),
+            ],
+          ),
           // hidden support panel only visible after 5 quick taps on ?
           AnimatedSize(
             duration: const Duration(milliseconds: 350),
@@ -991,7 +1020,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.sunsetCoral,
                 side: BorderSide(
-                    color: AppColors.sunsetCoral.withValues(alpha: 0.4)),
+                  color: AppColors.sunsetCoral.withValues(alpha: 0.4),
+                ),
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
@@ -1015,10 +1045,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
-  void _showLinkChoiceSheet({
-    required String url,
-    required String title,
-  }) {
+  void _showLinkChoiceSheet({required String url, required String title}) {
     final uri = Uri.parse(url);
 
     showModalBottomSheet<void>(
@@ -1134,14 +1161,20 @@ class _SettingsScreenState extends State<SettingsScreen>
               ),
             ),
             const SizedBox(height: AppSpacing.xl),
-            Text(context.l('Contact support'),
-                style: GoogleFonts.josefinSans(
-                    fontSize: 18, fontWeight: FontWeight.w700)),
+            Text(
+              context.l('Contact support'),
+              style: GoogleFonts.josefinSans(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
             const SizedBox(height: AppSpacing.md),
             Text(
               context.l('For support, bug reports, or general questions:'),
               style: GoogleFonts.josefinSans(
-                  fontSize: 14, color: AppColors.textSecondary),
+                fontSize: 14,
+                color: AppColors.textSecondary,
+              ),
             ),
             const SizedBox(height: AppSpacing.lg),
             GestureDetector(
@@ -1152,19 +1185,25 @@ class _SettingsScreenState extends State<SettingsScreen>
                   color: AppColors.fernGreenLight,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                      color: AppColors.fernGreen.withValues(alpha: 0.3)),
+                    color: AppColors.fernGreen.withValues(alpha: 0.3),
+                  ),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.email_outlined,
-                        size: 20, color: AppColors.fernGreen),
+                    const Icon(
+                      Icons.email_outlined,
+                      size: 20,
+                      color: AppColors.fernGreen,
+                    ),
                     const SizedBox(width: AppSpacing.md),
-                    Text('support@echoproof.online',
-                        style: GoogleFonts.josefinSans(
-                          fontSize: 14,
-                          color: AppColors.fernGreenDark,
-                          fontWeight: FontWeight.w600,
-                        )),
+                    Text(
+                      'support@echoproof.online',
+                      style: GoogleFonts.josefinSans(
+                        fontSize: 14,
+                        color: AppColors.fernGreenDark,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -1173,7 +1212,9 @@ class _SettingsScreenState extends State<SettingsScreen>
             Text(
               context.l('This is our only support channel at this time.'),
               style: GoogleFonts.josefinSans(
-                  fontSize: 12, color: AppColors.textTertiary),
+                fontSize: 12,
+                color: AppColors.textTertiary,
+              ),
             ),
             const SizedBox(height: AppSpacing.xxl),
           ],
@@ -1191,10 +1232,13 @@ class _SettingsScreenState extends State<SettingsScreen>
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text(context.l('Delete account?'),
-              style: GoogleFonts.josefinSans(fontWeight: FontWeight.w700)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text(
+            context.l('Delete account?'),
+            style: GoogleFonts.josefinSans(fontWeight: FontWeight.w700),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1209,7 +1253,9 @@ class _SettingsScreenState extends State<SettingsScreen>
               Text(
                 context.l('Type your email address to confirm:'),
                 style: GoogleFonts.josefinSans(
-                    fontSize: 13, fontWeight: FontWeight.w600),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               const SizedBox(height: 8),
               TextField(
@@ -1219,13 +1265,16 @@ class _SettingsScreenState extends State<SettingsScreen>
                 style: GoogleFonts.josefinSans(fontSize: 14),
                 decoration: InputDecoration(
                   hintText: context.l('your email address'),
-                  hintStyle:
-                      GoogleFonts.josefinSans(color: AppColors.textTertiary),
+                  hintStyle: GoogleFonts.josefinSans(
+                    color: AppColors.textTertiary,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                 ),
                 onChanged: (_) => setDialogState(() {}),
               ),
@@ -1234,8 +1283,10 @@ class _SettingsScreenState extends State<SettingsScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: Text(context.l('Cancel'),
-                  style: GoogleFonts.josefinSans(color: AppColors.charcoal)),
+              child: Text(
+                context.l('Cancel'),
+                style: GoogleFonts.josefinSans(color: AppColors.charcoal),
+              ),
             ),
             TextButton(
               onPressed: emailCtrl.text.trim() == currentEmail
@@ -1264,6 +1315,9 @@ class _SettingsScreenState extends State<SettingsScreen>
     final service = context.read<AccountDeviceService>();
     await service.loadDevices().catchError((_) {});
     if (!context.mounted) return;
+    if (service.pendingConflict != null) {
+      unawaited(AppHaptics.criticalOpen(key: 'settings_device_conflict'));
+    }
 
     showModalBottomSheet<void>(
       context: context,
@@ -1279,8 +1333,9 @@ class _SettingsScreenState extends State<SettingsScreen>
           final currentId = devices.currentDevice?.deviceId;
           final conflict = devices.pendingConflict;
           final bottom = MediaQuery.paddingOf(sheetContext).bottom;
-          final activeDevices =
-              devices.devices.where((device) => device.active).toList();
+          final activeDevices = devices.devices
+              .where((device) => device.active)
+              .toList();
           return SingleChildScrollView(
             padding: EdgeInsets.fromLTRB(
               AppSpacing.lg,
@@ -1357,8 +1412,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                   ],
                   if (activeDevices.isEmpty)
                     Padding(
-                      padding:
-                          const EdgeInsets.symmetric(vertical: AppSpacing.xl),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: AppSpacing.xl,
+                      ),
                       child: Center(
                         child: Text(
                           context.l('No active devices yet.'),
@@ -1395,6 +1451,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _continueAccountOnThisDevice(BuildContext context) async {
     final devices = context.read<AccountDeviceService>();
     try {
+      unawaited(AppHaptics.criticalConfirm(key: 'settings_device_continue'));
       await devices.continueOnThisDevice();
       if (!context.mounted) return;
       showSuccessSnack(context, context.l('This device is now active.'));
@@ -1407,6 +1464,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   Future<void> _signOutFromDeviceConflict(BuildContext context) async {
     final auth = context.read<AuthService>();
     final devices = context.read<AccountDeviceService>();
+    unawaited(AppHaptics.caution(key: 'settings_device_not_me'));
     devices.clearPendingConflict();
     await auth.signOut(enforceCooldown: false);
     if (!context.mounted) return;
@@ -1430,10 +1488,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _DeviceInfoRow(
-              label: context.l('Name'),
-              value: device.deviceName,
-            ),
+            _DeviceInfoRow(label: context.l('Name'), value: device.deviceName),
             _DeviceInfoRow(
               label: context.l('Platform'),
               value: _devicePlatformLabel(device.platform),
@@ -1442,8 +1497,8 @@ class _SettingsScreenState extends State<SettingsScreen>
               label: context.l('Status'),
               value: device.active
                   ? isThisDevice
-                      ? context.l('Active on this device')
-                      : context.l('Active elsewhere')
+                        ? context.l('Active on this device')
+                        : context.l('Active elsewhere')
                   : context.l('Logged out'),
             ),
             _DeviceInfoRow(
@@ -1513,7 +1568,9 @@ class _SettingsScreenState extends State<SettingsScreen>
     AppLogger.info('settings: scheduling account deletion for $userId');
 
     try {
-      final response = await client.functions.invoke('request-account-deletion');
+      final response = await client.functions.invoke(
+        'request-account-deletion',
+      );
       final data = response.data;
       if (data is Map && data['error'] != null) {
         throw Exception(data['message'] ?? data['error']);
@@ -1594,12 +1651,16 @@ class _PermissionTileState extends State<_PermissionTile>
       borderRadius: BorderRadius.circular(16),
       child: Padding(
         padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.lg, vertical: AppSpacing.md),
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.md,
+        ),
         child: Row(
           children: [
-            Icon(widget.icon,
-                size: 20,
-                color: _granted ? AppColors.fernGreen : AppColors.charcoal),
+            Icon(
+              widget.icon,
+              size: 20,
+              color: _granted ? AppColors.fernGreen : AppColors.charcoal,
+            ),
             const SizedBox(width: AppSpacing.md),
             Expanded(
               child: Column(
@@ -1608,23 +1669,24 @@ class _PermissionTileState extends State<_PermissionTile>
                   Text(
                     widget.label,
                     style: GoogleFonts.josefinSans(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.charcoal),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.charcoal,
+                    ),
                   ),
                   Text(
                     _granted
                         ? context.l('Allowed')
                         : _status == PermissionStatus.permanentlyDenied
-                            ? context.l('Denied — tap to open settings')
-                            : context.l('Not granted'),
+                        ? context.l('Denied — tap to open settings')
+                        : context.l('Not granted'),
                     style: GoogleFonts.josefinSans(
                       fontSize: 12,
                       color: _granted
                           ? AppColors.fernGreen
                           : _status == PermissionStatus.permanentlyDenied
-                              ? AppColors.sunsetCoral
-                              : AppColors.textTertiary,
+                          ? AppColors.sunsetCoral
+                          : AppColors.textTertiary,
                     ),
                   ),
                 ],
@@ -1706,14 +1768,14 @@ class _SecretSupportPanelState extends State<_SecretSupportPanel>
       vsync: this,
       duration: const Duration(milliseconds: 400),
     );
-    _fade = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _entranceCtrl, curve: Curves.easeOut),
-    );
-    _slide = Tween<Offset>(
-      begin: const Offset(0, -0.1),
-      end: Offset.zero,
-    ).animate(
-        CurvedAnimation(parent: _entranceCtrl, curve: Curves.easeOutCubic));
+    _fade = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _entranceCtrl, curve: Curves.easeOut));
+    _slide = Tween<Offset>(begin: const Offset(0, -0.1), end: Offset.zero)
+        .animate(
+          CurvedAnimation(parent: _entranceCtrl, curve: Curves.easeOutCubic),
+        );
     _entranceCtrl.forward();
   }
 
@@ -1734,7 +1796,9 @@ class _SecretSupportPanelState extends State<_SecretSupportPanel>
         // acknowledge completion without changing account entitlements
         if (context.mounted) {
           showErrorSnack(
-              context, 'Ad Completed Thank You For Supporting EchoProof.');
+            context,
+            'Ad Completed Thank You For Supporting EchoProof.',
+          );
         }
       },
       onDismissed: () {},
@@ -1806,8 +1870,9 @@ class _SecretSupportPanelState extends State<_SecretSupportPanel>
                     opacity: isAdReady ? 1.0 : 0.4,
                     duration: const Duration(milliseconds: 200),
                     child: ElevatedButton.icon(
-                      onPressed:
-                          isAdReady ? () => _showSupportAd(context) : null,
+                      onPressed: isAdReady
+                          ? () => _showSupportAd(context)
+                          : null,
                       icon: Icon(
                         isAdReady
                             ? Icons.play_arrow_rounded
@@ -1843,8 +1908,9 @@ class _SecretSupportPanelState extends State<_SecretSupportPanel>
                     : '○ Waiting for ad to load...',
                 style: GoogleFonts.josefinSans(
                   fontSize: 11,
-                  color:
-                      isAdReady ? AppColors.fernGreen : AppColors.textTertiary,
+                  color: isAdReady
+                      ? AppColors.fernGreen
+                      : AppColors.textTertiary,
                 ),
               ),
             ],
@@ -1981,8 +2047,9 @@ class _DeviceConflictBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.sunsetCoralLight,
         borderRadius: BorderRadius.circular(16),
-        border:
-            Border.all(color: AppColors.sunsetCoral.withValues(alpha: 0.35)),
+        border: Border.all(
+          color: AppColors.sunsetCoral.withValues(alpha: 0.35),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2068,8 +2135,8 @@ class _AccountDeviceCard extends StatelessWidget {
     final active = device.active;
     final status = active
         ? isThisDevice
-            ? context.l('This device')
-            : context.l('Active elsewhere')
+              ? context.l('This device')
+              : context.l('Active elsewhere')
         : context.l('Logged out');
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -2100,8 +2167,9 @@ class _AccountDeviceCard extends StatelessWidget {
                   ),
                   child: Icon(
                     platformIcon,
-                    color:
-                        active ? AppColors.fernGreenDark : AppColors.charcoal,
+                    color: active
+                        ? AppColors.fernGreenDark
+                        : AppColors.charcoal,
                   ),
                 ),
                 const SizedBox(width: AppSpacing.md),
@@ -2279,8 +2347,9 @@ class _TileState extends State<_Tile> {
 }
 
 String _subscriptionStatusText(SubscriptionService subscription) {
-  final plan =
-      subscription.currentPlan == 'pro_yearly' ? 'Yearly Pro' : 'Monthly Pro';
+  final plan = subscription.currentPlan == 'pro_yearly'
+      ? 'Yearly Pro'
+      : 'Monthly Pro';
   final status = _subscriptionStatusLabel(subscription.subscriptionStatus);
   final expires = subscription.expiresAt;
   if (expires == null) return '$plan · $status';
@@ -2394,9 +2463,11 @@ class _SwitchTileState extends State<_SwitchTile> {
       ),
       child: Row(
         children: [
-          Icon(widget.icon,
-              size: 20,
-              color: _value ? AppColors.fernGreen : AppColors.textTertiary),
+          Icon(
+            widget.icon,
+            size: 20,
+            color: _value ? AppColors.fernGreen : AppColors.textTertiary,
+          ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
             child: Text(

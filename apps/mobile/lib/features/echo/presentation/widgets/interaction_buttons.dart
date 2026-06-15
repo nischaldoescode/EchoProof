@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
@@ -23,12 +24,16 @@ class InteractionButtons extends StatelessWidget {
     this.dense = false,
     this.onEchoHidden,
     this.onContextPosted,
+    this.showMore = true,
+    this.showShare = true,
   });
 
   final EchoEntity echo;
   final bool dense;
   final VoidCallback? onEchoHidden;
   final Future<void> Function()? onContextPosted;
+  final bool showMore;
+  final bool showShare;
 
   @override
   Widget build(BuildContext context) {
@@ -45,6 +50,7 @@ class InteractionButtons extends StatelessWidget {
               key: ValueKey('${echo.id}:reply'),
               count: echo.replyCount,
               label: context.l('Reply'),
+              compact: dense,
               icon: Icons.chat_bubble_outline_rounded,
               onTap: () async {
                 _openReplies(context);
@@ -58,6 +64,7 @@ class InteractionButtons extends StatelessWidget {
               key: ValueKey('${echo.id}:support'),
               count: echo.supportCount,
               label: context.l('Support'),
+              compact: dense,
               icon: Icons.thumb_up_alt_outlined,
               onTap: () => _openContextSheet(context, 'support'),
               flashColor: AppColors.fernGreen,
@@ -69,44 +76,80 @@ class InteractionButtons extends StatelessWidget {
               key: ValueKey('${echo.id}:challenge'),
               count: echo.challengeCount,
               label: context.l('Challenge'),
+              compact: dense,
               icon: Icons.arrow_downward_rounded,
               onTap: () => _openContextSheet(context, 'challenge'),
               flashColor: AppColors.sunsetCoralDark,
               muted: contextClosed,
             ),
           ),
-          Expanded(
-            child: _InteractionButton(
-              key: ValueKey('${echo.id}:bonds'),
-              count: echo.bondCount,
-              label: context.l('Bonds'),
-              icon: Icons.link_outlined,
-              onTap: () async {
-                _openBonds(context);
-                return false;
-              },
-              flashColor: AppColors.fernGreenDark,
+          if (!dense)
+            Expanded(
+              child: _InteractionButton(
+                key: ValueKey('${echo.id}:bonds'),
+                count: echo.bondCount,
+                label: context.l('Bonds'),
+                compact: dense,
+                icon: Icons.link_outlined,
+                onTap: () async {
+                  _openBonds(context);
+                  return false;
+                },
+                flashColor: AppColors.fernGreenDark,
+              ),
             ),
-          ),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            icon: const Icon(Icons.more_horiz_rounded, size: 19),
-            color: AppColors.textTertiary,
-            tooltip: context.l('More actions'),
-            onPressed: () => showEchoActionSheet(
-              context: context,
-              echoId: echo.id,
-              authorId: echo.userId,
-              authorUsername: echo.username,
-              onHidden: () {
-                context.read<EchoFeedService>().removeEcho(echo.id);
-                onEchoHidden?.call();
-              },
+          // share is useful but not always a primary feed action
+          if (showShare)
+            Expanded(
+              child: _InteractionButton(
+                key: ValueKey('${echo.id}:share'),
+                count: 0,
+                label: context.l('Share'),
+                compact: dense,
+                icon: Icons.ios_share_outlined,
+                onTap: () => _shareEcho(context),
+                flashColor: AppColors.fernGreenDark,
+              ),
             ),
-          ),
+          if (showMore)
+            IconButton(
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.more_horiz_rounded, size: 19),
+              color: AppColors.textTertiary,
+              tooltip: context.l('More actions'),
+              onPressed: () => showEchoActionSheet(
+                context: context,
+                echoId: echo.id,
+                authorId: echo.userId,
+                authorUsername: echo.username,
+                onHidden: () {
+                  context.read<EchoFeedService>().removeEcho(echo.id);
+                  onEchoHidden?.call();
+                },
+              ),
+            ),
         ],
       ),
     );
+  }
+
+  Future<bool> _shareEcho(BuildContext context) async {
+    if (showOfflineSnackIfNeeded(context)) return false;
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          text:
+              '${context.l('Read this echo on EchoProof')}\n'
+              'https://echoproof.online/echo/${echo.id}',
+          subject: context.l('EchoProof echo'),
+        ),
+      );
+    } catch (_) {
+      if (context.mounted) {
+        showErrorSnack(context, context.l('Could not open share sheet'));
+      }
+    }
+    return false;
   }
 
   void _openBonds(BuildContext context) {
@@ -187,6 +230,7 @@ class _InteractionButton extends StatefulWidget {
     super.key,
     required this.count,
     required this.label,
+    required this.compact,
     required this.icon,
     required this.onTap,
     required this.flashColor,
@@ -195,6 +239,7 @@ class _InteractionButton extends StatefulWidget {
 
   final int count;
   final String label;
+  final bool compact;
   final IconData icon;
   final Future<bool> Function() onTap;
   final Color flashColor;
@@ -218,9 +263,10 @@ class _InteractionButtonState extends State<_InteractionButton>
       duration: const Duration(milliseconds: 100),
       reverseDuration: const Duration(milliseconds: 80),
     );
-    _scale = Tween<double>(begin: 1.0, end: 0.88).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
-    );
+    _scale = Tween<double>(
+      begin: 1.0,
+      end: 0.88,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
   }
 
   @override
@@ -243,13 +289,16 @@ class _InteractionButtonState extends State<_InteractionButton>
 
   @override
   Widget build(BuildContext context) {
-    final label =
-        widget.count > 0 ? '${widget.count} ${widget.label}' : widget.label;
+    final label = widget.compact
+        ? (widget.count > 0 ? '${widget.count}' : '')
+        : widget.count > 0
+        ? '${widget.count} ${widget.label}'
+        : widget.label;
     final color = widget.muted
         ? AppColors.textTertiary
         : _isFlashing
-            ? widget.flashColor
-            : AppColors.textSecondary;
+        ? widget.flashColor
+        : AppColors.textSecondary;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -267,37 +316,40 @@ class _InteractionButtonState extends State<_InteractionButton>
                 curve: Curves.easeOutBack,
                 child: Icon(widget.icon, size: 15, color: color),
               ),
-              const SizedBox(width: 4),
-              Flexible(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 180),
-                  transitionBuilder: (child, animation) {
-                    return FadeTransition(
-                      opacity: animation,
-                      child: SlideTransition(
-                        position: Tween<Offset>(
-                          begin: const Offset(0, 0.25),
-                          end: Offset.zero,
-                        ).animate(animation),
-                        child: child,
+              if (label.isNotEmpty) ...[
+                const SizedBox(width: 4),
+                Flexible(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 180),
+                    transitionBuilder: (child, animation) {
+                      return FadeTransition(
+                        opacity: animation,
+                        child: SlideTransition(
+                          position: Tween<Offset>(
+                            begin: const Offset(0, 0.25),
+                            end: Offset.zero,
+                          ).animate(animation),
+                          child: child,
+                        ),
+                      );
+                    },
+                    child: Text(
+                      label,
+                      key: ValueKey(label),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: _isFlashing
+                            ? FontWeight.w700
+                            : FontWeight.w600,
+                        color: color,
+                        fontFamily: AppTypography.fontFamily,
                       ),
-                    );
-                  },
-                  child: Text(
-                    label,
-                    key: ValueKey(label),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight:
-                          _isFlashing ? FontWeight.w700 : FontWeight.w600,
-                      color: color,
-                      fontFamily: AppTypography.fontFamily,
                     ),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -308,6 +360,7 @@ class _InteractionButtonState extends State<_InteractionButton>
 
 bool _isPublicContextClosed(EchoEntity echo) {
   final closesAt = echo.publicContextClosesAt;
-  return echo.publicVerdict != 'open' ||
+  return (echo.publicVerdict != 'open' &&
+          echo.publicVerdict != 'needs_context') ||
       (closesAt != null && !closesAt.isAfter(DateTime.now()));
 }

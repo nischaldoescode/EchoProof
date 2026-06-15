@@ -34,7 +34,7 @@ String _formatShortDuration(Duration duration) {
   return '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
 }
 
-const _chatCanvas = Color(0xFFF8F4EE);
+const _chatCanvas = Color(0xFFF3F8F4);
 const _chatSurface = Color(0xFFFFFEFB);
 const _mineBubble = Color(0xFFEAF6EC);
 const _otherBubble = Color(0xFFFFFEFC);
@@ -258,13 +258,15 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
     try {
       final room = refreshRoom ? await _service.loadRoom(widget.roomId) : _room;
       final messages = await _service.loadMessages(widget.roomId);
-      final members =
-          refreshMembers ? await _service.loadMembers(widget.roomId) : null;
+      final members = refreshMembers
+          ? await _service.loadMembers(widget.roomId)
+          : null;
       await _loadProfiles(messages);
       if (!mounted) return;
       if (room != null && !room.isActive) {
         unawaited(
-            _handleRoomDestroyed('A member left. The room was destroyed.'));
+          _handleRoomDestroyed('A member left. The room was destroyed.'),
+        );
         return;
       }
       if (members != null) {
@@ -288,12 +290,14 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
       _loadingMessages = false;
       if (_queuedMessageRefresh && mounted) {
         _queuedMessageRefresh = false;
-        unawaited(_loadMessagesOnly(
-          refreshRoom: refreshRoom,
-          refreshMembers: refreshMembers,
-          updatePresence: updatePresence,
-          scrollToBottom: scrollToBottom,
-        ));
+        unawaited(
+          _loadMessagesOnly(
+            refreshRoom: refreshRoom,
+            refreshMembers: refreshMembers,
+            updatePresence: updatePresence,
+            scrollToBottom: scrollToBottom,
+          ),
+        );
       }
     }
   }
@@ -340,16 +344,17 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
       final message = await _service.decryptRealtimeMessage(widget.roomId, row);
       if (!mounted || message == null || message.isExpired) return;
       _mergeRealtimeMessage(message);
-      unawaited(_loadProfiles([message]).then((_) {
-        if (mounted) setState(() {});
-      }).catchError((_) {}));
+      unawaited(
+        _loadProfiles([message])
+            .then((_) {
+              if (mounted) setState(() {});
+            })
+            .catchError((_) {}),
+      );
       _prefetchRecentMedia([message]);
       if (message.senderId != _currentUserId) {
         unawaited(
-          _service.markMessagesRead(
-            roomId: widget.roomId,
-            messages: [message],
-          ),
+          _service.markMessagesRead(roomId: widget.roomId, messages: [message]),
         );
       }
       _scrollToEnd();
@@ -383,12 +388,14 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
 
   void _removeRealtimeMessage(String? messageId) {
     if (messageId == null || messageId.isEmpty || !mounted) return;
-    final removed =
-        _messages.where((message) => message.id == messageId).toList();
+    final removed = _messages
+        .where((message) => message.id == messageId)
+        .toList();
     if (removed.isEmpty) return;
     setState(() {
-      _messages =
-          _messages.where((message) => message.id != messageId).toList();
+      _messages = _messages
+          .where((message) => message.id != messageId)
+          .toList();
     });
     _addDeletedGhosts(removed);
   }
@@ -428,7 +435,8 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
     _typingTimer?.cancel();
     unawaited(_service.setTyping(widget.roomId, false));
     unawaited(
-        _service.setPresence(widget.roomId, SecureRoomPresenceState.offline));
+      _service.setPresence(widget.roomId, SecureRoomPresenceState.offline),
+    );
     unawaited(_service.markRoomUnavailable(widget.roomId, forgetKey: true));
     unawaited(_service.loadRooms());
     setState(() {
@@ -461,11 +469,13 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
 
   void _prefetchRecentMedia(List<SecureRoomMessage> messages) {
     final lightweightMedia = messages
-        .where((message) =>
-            message.mediaPath != null &&
-            (message.kind == 'image' ||
-                message.kind == 'gif' ||
-                message.kind == 'audio'))
+        .where(
+          (message) =>
+              message.mediaPath != null &&
+              (message.kind == 'image' ||
+                  message.kind == 'gif' ||
+                  message.kind == 'audio'),
+        )
         .toList()
         .reversed
         .take(6);
@@ -563,8 +573,8 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
         _typingLabel = names.isEmpty
             ? null
             : names.length == 1
-                ? '${names.first} is typing'
-                : '${names.length} people are typing';
+            ? '${names.first} is typing'
+            : '${names.length} people are typing';
       });
     });
   }
@@ -748,10 +758,7 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
       );
       if (!validation.isValid) {
         if (mounted) {
-          showErrorSnack(
-            context,
-            validation.error ?? 'Unsupported media.',
-          );
+          showErrorSnack(context, validation.error ?? 'Unsupported media.');
         }
         return;
       }
@@ -770,7 +777,9 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
         if (durationMs == null || durationMs <= 0) {
           if (mounted) {
             showErrorSnack(
-                context, 'Could not read that video. Try another one.');
+              context,
+              'Could not read that video. Try another one.',
+            );
           }
           return;
         }
@@ -789,8 +798,8 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
       final messageKind = kind == MediaFileKind.video
           ? 'video'
           : picked.path.toLowerCase().endsWith('.gif')
-              ? 'gif'
-              : 'image';
+          ? 'gif'
+          : 'image';
       final clientMessageId = _newPendingClientMessageId();
       pendingClientMessageId = clientMessageId;
       _addPendingMessage(
@@ -803,8 +812,8 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
             text: messageKind == 'video'
                 ? 'Encrypted video'
                 : messageKind == 'gif'
-                    ? 'Encrypted GIF'
-                    : 'Encrypted image',
+                ? 'Encrypted GIF'
+                : 'Encrypted image',
             ttlSeconds: _ttlSeconds,
             audioDurationMs: durationMs,
           ),
@@ -895,14 +904,16 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
               ),
               const SizedBox(height: AppSpacing.lg),
               GridView.count(
-                crossAxisCount:
-                    MediaQuery.sizeOf(sheetContext).width < 420 ? 2 : 4,
+                crossAxisCount: MediaQuery.sizeOf(sheetContext).width < 420
+                    ? 2
+                    : 4,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 mainAxisSpacing: AppSpacing.sm,
                 crossAxisSpacing: AppSpacing.sm,
-                childAspectRatio:
-                    MediaQuery.sizeOf(sheetContext).width < 420 ? 2.35 : 1.0,
+                childAspectRatio: MediaQuery.sizeOf(sheetContext).width < 420
+                    ? 2.35
+                    : 1.0,
                 children: [
                   _MediaMenuAction(
                     icon: Icons.photo_library_outlined,
@@ -977,8 +988,9 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
         _voiceLimitStopTriggered = false;
       });
       await _recordingDurationSub?.cancel();
-      _recordingDurationSub =
-          _recorderController.onCurrentDuration.listen((duration) {
+      _recordingDurationSub = _recorderController.onCurrentDuration.listen((
+        duration,
+      ) {
         if (!mounted || !_recording) return;
         final seconds = duration.inSeconds.clamp(0, 60).toInt();
         if (seconds != _recordingSeconds) {
@@ -1017,10 +1029,10 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
     if (!mounted) return;
     final recordedDuration =
         _recorderController.recordedDuration > Duration.zero
-            ? _recorderController.recordedDuration
-            : elapsedBeforeStop > Duration.zero
-                ? elapsedBeforeStop
-                : Duration(seconds: _recordingSeconds);
+        ? _recorderController.recordedDuration
+        : elapsedBeforeStop > Duration.zero
+        ? elapsedBeforeStop
+        : Duration(seconds: _recordingSeconds);
     final duration = recordedDuration > _maxVoiceDuration
         ? _maxVoiceDuration
         : recordedDuration;
@@ -1196,7 +1208,8 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
       final key = await _service.requireRoomKey(widget.roomId);
       await SharePlus.instance.share(
         ShareParams(
-            text: SecureRoomService.buildShareLink(room.inviteCode, key)),
+          text: SecureRoomService.buildShareLink(room.inviteCode, key),
+        ),
       );
     } catch (e) {
       if (mounted) showErrorSnack(context, _friendlyError(e));
@@ -1279,8 +1292,8 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
         final username = profile['username'] as String? ?? '';
         final displayName =
             (profile['display_name'] as String?)?.trim().isNotEmpty == true
-                ? profile['display_name'] as String
-                : username;
+            ? profile['display_name'] as String
+            : username;
         final avatarUrl = profile['avatar_url'] as String?;
         return AlertDialog(
           contentPadding: const EdgeInsets.all(AppSpacing.xl),
@@ -1310,7 +1323,8 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
                       : () {
                           Navigator.pop(dialogContext);
                           context.push(
-                              '/profile/${Uri.encodeComponent(username)}');
+                            '/profile/${Uri.encodeComponent(username)}',
+                          );
                         },
                   icon: const Icon(Icons.person_add_alt_1_rounded),
                   label: const Text('View profile and follow'),
@@ -1324,7 +1338,8 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
   }
 
   Future<void> _deleteMessage(SecureRoomMessage message) async {
-    final canDelete = message.senderId == _currentUserId ||
+    final canDelete =
+        message.senderId == _currentUserId ||
         _room?.creatorId == _currentUserId;
     if (!canDelete) {
       showInfoSnack(context, 'Only the sender or room host can delete this.');
@@ -1345,18 +1360,16 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
     }
   }
 
-  Future<void> _showMessageActions(
-    SecureRoomMessage message,
-    bool mine,
-  ) async {
-    final canDelete = mine ||
+  Future<void> _showMessageActions(SecureRoomMessage message, bool mine) async {
+    final canDelete =
+        mine ||
         (_room?.creatorId != null && _room?.creatorId == _currentUserId);
     final sender = _profiles[message.senderId];
     final senderName = sender == null
         ? (mine ? 'You' : 'Unknown')
         : ((sender['display_name'] as String?)?.trim().isNotEmpty == true
-            ? sender['display_name'] as String
-            : sender['username'] as String? ?? 'Unknown');
+              ? sender['display_name'] as String
+              : sender['username'] as String? ?? 'Unknown');
     await showModalBottomSheet<void>(
       context: context,
       useSafeArea: true,
@@ -1378,12 +1391,15 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Message details',
-                  style: AppTypography.textTheme.titleLarge),
+              Text(
+                'Message details',
+                style: AppTypography.textTheme.titleLarge,
+              ),
               const SizedBox(height: AppSpacing.md),
               _RoomSettingsTile(
-                icon:
-                    mine ? Icons.north_east_rounded : Icons.south_west_rounded,
+                icon: mine
+                    ? Icons.north_east_rounded
+                    : Icons.south_west_rounded,
                 title: mine ? 'Sent by you' : 'Sent by $senderName',
                 subtitle:
                     '${message.kind.toUpperCase()} • ${_formatDateTime(message.createdAt)}',
@@ -1496,10 +1512,7 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
     );
   }
 
-  Future<void> _updateRoomTimer(
-    int seconds,
-    StateSetter sheetSetState,
-  ) async {
+  Future<void> _updateRoomTimer(int seconds, StateSetter sheetSetState) async {
     final room = _room;
     if (room == null || room.creatorId != _currentUserId) {
       showInfoSnack(context, 'Only the room host can change the timer.');
@@ -1591,8 +1604,10 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
                     ),
                   ),
                   const SizedBox(height: AppSpacing.lg),
-                  Text('Message timer',
-                      style: AppTypography.textTheme.titleSmall),
+                  Text(
+                    'Message timer',
+                    style: AppTypography.textTheme.titleSmall,
+                  ),
                   const SizedBox(height: AppSpacing.sm),
                   Wrap(
                     spacing: AppSpacing.sm,
@@ -1604,8 +1619,8 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
                           selected: _ttlSeconds == option,
                           onTap: canChangeTimer
                               ? () => unawaited(
-                                    _updateRoomTimer(option, sheetSetState),
-                                  )
+                                  _updateRoomTimer(option, sheetSetState),
+                                )
                               : null,
                         ),
                     ],
@@ -1697,8 +1712,8 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
               room == null
                   ? '${_ttlSeconds ~/ 60} min expiry'
                   : room.isWaiting
-                      ? 'Waiting • ${room.memberProgressLabel}'
-                      : _presenceSubtitle(),
+                  ? 'Waiting • ${room.memberProgressLabel}'
+                  : _presenceSubtitle(),
               style: AppTypography.textTheme.labelMedium,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -1773,139 +1788,120 @@ class _SecureRoomChatScreenState extends State<SecureRoomChatScreen>
               ),
             )
           : _closingRoom
-              ? _RoomClosingView(reason: _closingRoomReason)
-              : _error != null
-                  ? _RoomUnavailable(
-                      error: _error!, onBack: () => context.go('/rooms'))
-                  : room?.isActive == false
-                      ? _RoomUnavailable(
-                          error: 'This room has been destroyed.',
-                          onBack: () => context.go('/rooms'),
-                        )
-                      : DecoratedBox(
-                          decoration: const BoxDecoration(color: _chatCanvas),
-                          child: Column(
-                            children: [
-                              AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 260),
-                                switchInCurve: Curves.easeOutCubic,
-                                switchOutCurve: Curves.easeInCubic,
-                                child: (_showSecurityBanner ||
-                                        room?.isWaiting == true ||
-                                        room?.isActive == false)
-                                    ? _SecurityBanner(
-                                        key: const ValueKey('security-banner'),
-                                        room: room,
-                                      )
-                                    : const SizedBox.shrink(
-                                        key: ValueKey('security-banner-hidden'),
-                                      ),
-                              ),
-                              Expanded(
-                                child: room?.isWaiting == true
-                                    ? _WaitingRoomPanel(
-                                        room: room!,
-                                        onRefresh: _loadMessagesOnly,
-                                        onShare: _canShareInvite
-                                            ? _shareInvite
-                                            : null,
-                                      )
-                                    : ListView.builder(
-                                        controller: _scrollCtrl,
-                                        keyboardDismissBehavior:
-                                            ScrollViewKeyboardDismissBehavior
-                                                .onDrag,
-                                        padding: const EdgeInsets.fromLTRB(
-                                          AppSpacing.md,
-                                          AppSpacing.lg,
-                                          AppSpacing.md,
-                                          AppSpacing.xl,
-                                        ),
-                                        itemCount: timelineItems.length +
-                                            (_typingLabel == null ? 0 : 1),
-                                        itemBuilder: (context, index) {
-                                          if (index >= timelineItems.length) {
-                                            return _TypingIndicator(
-                                                label: _typingLabel!);
-                                          }
-                                          final item = timelineItems[index];
-                                          final pending =
-                                              item is _PendingRoomMessage
-                                                  ? item
-                                                  : null;
-                                          final message = switch (item) {
-                                            SecureRoomMessage message =>
-                                              message,
-                                            _PendingRoomMessage pending =>
-                                              pending.message,
-                                            _DeletedMessageGhost ghost =>
-                                              ghost.message,
-                                            _ => throw StateError(
-                                                'Unknown timeline item'),
-                                          };
-                                          final mine = message.senderId ==
-                                              _currentUserId;
-                                          final bubble = _MessageBubble(
-                                            key: ValueKey(
-                                                'bubble-${message.id}'),
-                                            message: message,
-                                            mine: mine,
-                                            isHost: message.senderId ==
-                                                room?.creatorId,
-                                            profile:
-                                                _profiles[message.senderId],
-                                            service: _service,
-                                            roomMemberCount:
-                                                room?.activeMemberCount ?? 2,
-                                            onProfileTap: (profile) =>
-                                                _showSender(profile),
-                                            onLongPress: pending == null
-                                                ? () => _showMessageActions(
-                                                      message,
-                                                      mine,
-                                                    )
-                                                : () {},
-                                            pending: pending != null,
-                                            pendingLabel: pending?.label,
-                                            localMediaPath:
-                                                pending?.localMediaPath,
-                                          );
-                                          if (item is _DeletedMessageGhost) {
-                                            return _DustVanishBubble(
-                                              key: ValueKey(item.id),
-                                              mine: mine,
-                                              onDone: () =>
-                                                  _removeDeletedGhost(item.id),
-                                              child: bubble,
-                                            );
-                                          }
-                                          return bubble;
-                                        },
-                                      ),
-                              ),
-                              if (!room!.isWaiting)
-                                _Composer(
-                                  controller: _textCtrl,
-                                  sending: false,
-                                  enabled: _canSend,
-                                  ttlSeconds: _ttlSeconds,
-                                  onSend: _sendText,
-                                  onOpenMediaMenu: _showMediaMenu,
-                                  onStartRecording: _startRecording,
-                                  onStopRecording: () => _finishRecording(),
-                                  onCancelRecording: _cancelRecording,
-                                  onSendVoicePreview: _sendVoicePreview,
-                                  onDiscardVoicePreview: _discardVoicePreview,
-                                  recording: _recording,
-                                  recordingSeconds: _recordingSeconds,
-                                  recorderController: _recorderController,
-                                  voicePreviewPath: _voicePreviewPath,
-                                  voicePreviewDuration: _voicePreviewDuration,
-                                  sendingVoiceNote: _sendingVoiceNote,
-                                ),
-                            ],
+          ? _RoomClosingView(reason: _closingRoomReason)
+          : _error != null
+          ? _RoomUnavailable(error: _error!, onBack: () => context.go('/rooms'))
+          : room?.isActive == false
+          ? _RoomUnavailable(
+              error: 'This room has been destroyed.',
+              onBack: () => context.go('/rooms'),
+            )
+          : DecoratedBox(
+              decoration: const BoxDecoration(color: _chatCanvas),
+              child: Column(
+                children: [
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 260),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    child:
+                        (_showSecurityBanner ||
+                            room?.isWaiting == true ||
+                            room?.isActive == false)
+                        ? _SecurityBanner(
+                            key: const ValueKey('security-banner'),
+                            room: room,
+                          )
+                        : const SizedBox.shrink(
+                            key: ValueKey('security-banner-hidden'),
                           ),
-                        ),
+                  ),
+                  Expanded(
+                    child: room?.isWaiting == true
+                        ? _WaitingRoomPanel(
+                            room: room!,
+                            onRefresh: _loadMessagesOnly,
+                            onShare: _canShareInvite ? _shareInvite : null,
+                          )
+                        : ListView.builder(
+                            controller: _scrollCtrl,
+                            keyboardDismissBehavior:
+                                ScrollViewKeyboardDismissBehavior.onDrag,
+                            padding: const EdgeInsets.fromLTRB(
+                              AppSpacing.md,
+                              AppSpacing.lg,
+                              AppSpacing.md,
+                              AppSpacing.xl,
+                            ),
+                            itemCount:
+                                timelineItems.length +
+                                (_typingLabel == null ? 0 : 1),
+                            itemBuilder: (context, index) {
+                              if (index >= timelineItems.length) {
+                                return _TypingIndicator(label: _typingLabel!);
+                              }
+                              final item = timelineItems[index];
+                              final pending = item is _PendingRoomMessage
+                                  ? item
+                                  : null;
+                              final message = switch (item) {
+                                SecureRoomMessage message => message,
+                                _PendingRoomMessage pending => pending.message,
+                                _DeletedMessageGhost ghost => ghost.message,
+                                _ => throw StateError('Unknown timeline item'),
+                              };
+                              final mine = message.senderId == _currentUserId;
+                              final bubble = _MessageBubble(
+                                key: ValueKey('bubble-${message.id}'),
+                                message: message,
+                                mine: mine,
+                                isHost: message.senderId == room?.creatorId,
+                                profile: _profiles[message.senderId],
+                                service: _service,
+                                roomMemberCount: room?.activeMemberCount ?? 2,
+                                onProfileTap: (profile) => _showSender(profile),
+                                onLongPress: pending == null
+                                    ? () => _showMessageActions(message, mine)
+                                    : () {},
+                                pending: pending != null,
+                                pendingLabel: pending?.label,
+                                localMediaPath: pending?.localMediaPath,
+                              );
+                              if (item is _DeletedMessageGhost) {
+                                return _DustVanishBubble(
+                                  key: ValueKey(item.id),
+                                  mine: mine,
+                                  onDone: () => _removeDeletedGhost(item.id),
+                                  child: bubble,
+                                );
+                              }
+                              return bubble;
+                            },
+                          ),
+                  ),
+                  if (!room!.isWaiting)
+                    _Composer(
+                      controller: _textCtrl,
+                      sending: false,
+                      enabled: _canSend,
+                      ttlSeconds: _ttlSeconds,
+                      onSend: _sendText,
+                      onOpenMediaMenu: _showMediaMenu,
+                      onStartRecording: _startRecording,
+                      onStopRecording: () => _finishRecording(),
+                      onCancelRecording: _cancelRecording,
+                      onSendVoicePreview: _sendVoicePreview,
+                      onDiscardVoicePreview: _discardVoicePreview,
+                      recording: _recording,
+                      recordingSeconds: _recordingSeconds,
+                      recorderController: _recorderController,
+                      voicePreviewPath: _voicePreviewPath,
+                      voicePreviewDuration: _voicePreviewDuration,
+                      sendingVoiceNote: _sendingVoiceNote,
+                    ),
+                ],
+              ),
+            ),
     );
   }
 
@@ -2168,8 +2164,9 @@ class _SecurityBanner extends StatelessWidget {
         horizontal: AppSpacing.lg,
         vertical: AppSpacing.sm,
       ),
-      color:
-          roomAvailable ? AppColors.fernGreenLight : AppColors.sunsetCoralLight,
+      color: roomAvailable
+          ? AppColors.fernGreenLight
+          : AppColors.sunsetCoralLight,
       child: Row(
         children: [
           Icon(
@@ -2187,8 +2184,8 @@ class _SecurityBanner extends StatelessWidget {
               waiting
                   ? 'Waiting room. Messages unlock when members join or the timer resolves.'
                   : roomAvailable
-                      ? 'Encrypted locally. Ed25519-signed messages. Auto-deletion active.'
-                      : 'This room has been destroyed. Sending is disabled.',
+                  ? 'Encrypted locally. Ed25519-signed messages. Auto-deletion active.'
+                  : 'This room has been destroyed. Sending is disabled.',
               style: AppTypography.textTheme.bodySmall?.copyWith(
                 color: roomAvailable
                     ? AppColors.fernGreenDark
@@ -2217,8 +2214,11 @@ class _WaitingRoomPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final expiresAt = room.waitingExpiresAt;
-    final remaining =
-        expiresAt?.difference(DateTime.now()).inSeconds.clamp(0, 999).toInt();
+    final remaining = expiresAt
+        ?.difference(DateTime.now())
+        .inSeconds
+        .clamp(0, 999)
+        .toInt();
     final wide = MediaQuery.sizeOf(context).width >= 700;
 
     return RefreshIndicator(
@@ -2369,10 +2369,7 @@ class _WaitingPulseState extends State<_WaitingPulse>
 }
 
 class _DeletedMessageGhost {
-  const _DeletedMessageGhost({
-    required this.id,
-    required this.message,
-  });
+  const _DeletedMessageGhost({required this.id, required this.message});
 
   final String id;
   final SecureRoomMessage message;
@@ -2413,14 +2410,15 @@ class _DustVanishBubbleState extends State<_DustVanishBubble>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1450),
-    )
-      ..addStatusListener((status) {
-        if (status == AnimationStatus.completed) widget.onDone();
-      })
-      ..forward();
+    _controller =
+        AnimationController(
+            vsync: this,
+            duration: const Duration(milliseconds: 1180),
+          )
+          ..addStatusListener((status) {
+            if (status == AnimationStatus.completed) widget.onDone();
+          })
+          ..forward();
   }
 
   @override
@@ -2435,6 +2433,7 @@ class _DustVanishBubbleState extends State<_DustVanishBubble>
       animation: _controller,
       builder: (context, child) {
         final t = Curves.easeInOutCubic.transform(_controller.value);
+        final fade = Curves.easeOutQuart.transform(_controller.value);
         return ClipRect(
           child: CustomPaint(
             foregroundPainter: _DustVanishPainter(
@@ -2442,11 +2441,11 @@ class _DustVanishBubbleState extends State<_DustVanishBubble>
               mine: widget.mine,
             ),
             child: Opacity(
-              opacity: (1 - t * 0.92).clamp(0.0, 1.0).toDouble(),
+              opacity: (1 - fade * 0.98).clamp(0.0, 1.0).toDouble(),
               child: Transform.translate(
-                offset: Offset(widget.mine ? t * 24 : -t * 24, -t * 12),
+                offset: Offset(widget.mine ? t * 14 : -t * 14, -t * 8),
                 child: Transform.scale(
-                  scale: 1 - t * 0.11,
+                  scale: 1 - t * 0.08,
                   alignment: widget.mine
                       ? Alignment.centerRight
                       : Alignment.centerLeft,
@@ -2463,10 +2462,7 @@ class _DustVanishBubbleState extends State<_DustVanishBubble>
 }
 
 class _DustVanishPainter extends CustomPainter {
-  const _DustVanishPainter({
-    required this.progress,
-    required this.mine,
-  });
+  const _DustVanishPainter({required this.progress, required this.mine});
 
   final double progress;
   final bool mine;
@@ -2474,29 +2470,30 @@ class _DustVanishPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (progress <= 0.02 || size.isEmpty) return;
-    final random = math.Random(42);
-    final originX = mine ? size.width * 0.82 : size.width * 0.18;
+    final random = math.Random(mine ? 73 : 41);
+    final originX = mine ? size.width * 0.92 : size.width * 0.08;
     final originY = size.height * 0.54;
     final baseColor = mine ? AppColors.fernGreenDark : AppColors.charcoal;
     final paint = Paint()..style = PaintingStyle.fill;
+    final burst = Curves.easeOutCubic.transform(progress);
+    final fade = math.pow(1 - progress, 1.25).toDouble();
 
-    for (var i = 0; i < 86; i++) {
+    for (var i = 0; i < 118; i++) {
       final direction = mine ? -1.0 : 1.0;
-      final angle = direction * (0.08 + random.nextDouble() * 1.1);
-      final distance = (10 + random.nextDouble() * 118) * progress;
-      final drift = (random.nextDouble() - 0.5) * 46 * progress;
-      final radius = (0.7 + random.nextDouble() * 3.1) *
-          math.pow(1 - progress, 1.4).toDouble();
+      final angle = direction * (-0.35 + random.nextDouble() * 1.45);
+      final distance = (8 + random.nextDouble() * 142) * burst;
+      final drift = (random.nextDouble() - 0.5) * 54 * burst;
+      final radius = (0.55 + random.nextDouble() * 2.8) * fade;
       if (radius <= 0) continue;
       paint.color = baseColor.withValues(
-        alpha: ((0.38 + random.nextDouble() * 0.22) * (1 - progress))
+        alpha: ((0.34 + random.nextDouble() * 0.24) * fade)
             .clamp(0.0, 0.48)
             .toDouble(),
       );
       canvas.drawCircle(
         Offset(
           originX + math.cos(angle) * distance * direction,
-          originY + math.sin(angle) * distance + drift - progress * 18,
+          originY + math.sin(angle) * distance + drift - burst * 22,
         ),
         radius,
         paint,
@@ -2544,8 +2541,8 @@ class _MessageBubble extends StatelessWidget {
     final name = profile == null
         ? 'Unknown'
         : ((profile!['display_name'] as String?)?.trim().isNotEmpty == true
-            ? profile!['display_name'] as String
-            : profile!['username'] as String? ?? 'Unknown');
+              ? profile!['display_name'] as String
+              : profile!['username'] as String? ?? 'Unknown');
     final username = profile?['username'] as String?;
     final expiresIn = message.expiresAt.difference(DateTime.now()).inSeconds;
     final width = MediaQuery.sizeOf(context).width;
@@ -2561,8 +2558,9 @@ class _MessageBubble extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: Row(
-        mainAxisAlignment:
-            mine ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: mine
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!mine)
@@ -2604,8 +2602,9 @@ class _MessageBubble extends StatelessWidget {
                   ],
                 ),
                 child: Column(
-                  crossAxisAlignment:
-                      mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                  crossAxisAlignment: mine
+                      ? CrossAxisAlignment.end
+                      : CrossAxisAlignment.start,
                   children: [
                     if (!mine)
                       Row(
@@ -2615,11 +2614,11 @@ class _MessageBubble extends StatelessWidget {
                             child: Text(
                               name,
                               overflow: TextOverflow.ellipsis,
-                              style:
-                                  AppTypography.textTheme.labelMedium?.copyWith(
-                                color: AppColors.fernGreenDark,
-                                fontWeight: FontWeight.w700,
-                              ),
+                              style: AppTypography.textTheme.labelMedium
+                                  ?.copyWith(
+                                    color: AppColors.fernGreenDark,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                             ),
                           ),
                           if (username?.isNotEmpty == true) ...[
@@ -2630,17 +2629,18 @@ class _MessageBubble extends StatelessWidget {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color:
-                                    AppColors.charcoal.withValues(alpha: 0.06),
+                                color: AppColors.charcoal.withValues(
+                                  alpha: 0.06,
+                                ),
                                 borderRadius: BorderRadius.circular(999),
                               ),
                               child: Text(
                                 '@$username',
                                 style: AppTypography.textTheme.labelSmall
                                     ?.copyWith(
-                                  color: AppColors.textSecondary,
-                                  fontWeight: FontWeight.w700,
-                                ),
+                                      color: AppColors.textSecondary,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                               ),
                             ),
                           ],
@@ -2697,14 +2697,14 @@ class _MessageBubble extends StatelessWidget {
                           pending
                               ? Icons.schedule_rounded
                               : message.cryptographicallyVerified
-                                  ? Icons.verified_user_rounded
-                                  : Icons.warning_amber_rounded,
+                              ? Icons.verified_user_rounded
+                              : Icons.warning_amber_rounded,
                           size: 13,
                           color: pending
                               ? AppColors.textTertiary
                               : message.cryptographicallyVerified
-                                  ? AppColors.fernGreenDark
-                                  : AppColors.sunsetCoral,
+                              ? AppColors.fernGreenDark
+                              : AppColors.sunsetCoral,
                         ),
                         const SizedBox(width: 4),
                         if (!pending &&
@@ -2721,12 +2721,12 @@ class _MessageBubble extends StatelessWidget {
                           pending
                               ? pendingLabel ?? 'sending...'
                               : message.cryptographicallyVerified
-                                  ? mine
-                                      ? '${_deliveryLabel(message)} • ${expiresIn.clamp(0, 999)}s'
-                                      : '${expiresIn.clamp(0, 999)}s'
-                                  : message.integrityOk
-                                      ? 'sender key unknown'
-                                      : 'integrity warning',
+                              ? mine
+                                    ? '${_deliveryLabel(message)} • ${expiresIn.clamp(0, 999)}s'
+                                    : '${expiresIn.clamp(0, 999)}s'
+                              : message.integrityOk
+                              ? 'sender key unknown'
+                              : 'integrity warning',
                           style: AppTypography.textTheme.labelSmall?.copyWith(
                             color: AppColors.textTertiary,
                           ),
@@ -2766,10 +2766,7 @@ class _MessageBubble extends StatelessWidget {
   }
 }
 
-Future<void> _showEncryptedImageViewer(
-  BuildContext context,
-  Uint8List bytes,
-) {
+Future<void> _showEncryptedImageViewer(BuildContext context, Uint8List bytes) {
   return showGeneralDialog<void>(
     context: context,
     barrierDismissible: true,
@@ -2823,10 +2820,7 @@ Future<void> _showEncryptedVideoViewer(BuildContext context, File file) {
 }
 
 class _PendingInlinePreview extends StatelessWidget {
-  const _PendingInlinePreview({
-    required this.kind,
-    required this.text,
-  });
+  const _PendingInlinePreview({required this.kind, required this.text});
 
   final String kind;
   final String text;
@@ -3148,32 +3142,32 @@ class _EncryptedVideoViewerState extends State<_EncryptedVideoViewer>
                       ),
                     )
                   : _failed || controller == null
-                      ? Center(
-                          child: Text(
-                            'Video unavailable',
-                            style: AppTypography.textTheme.bodyMedium?.copyWith(
-                              color: AppColors.white,
-                            ),
-                          ),
-                        )
-                      : GestureDetector(
-                          onTap: () => unawaited(_togglePlayback(controller)),
-                          child: LayoutBuilder(
-                            builder: (context, _) {
-                              final size = controller.value.size;
-                              return Center(
-                                child: FittedBox(
-                                  fit: BoxFit.contain,
-                                  child: SizedBox(
-                                    width: size.width <= 0 ? 1 : size.width,
-                                    height: size.height <= 0 ? 1 : size.height,
-                                    child: VideoPlayer(controller),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
+                  ? Center(
+                      child: Text(
+                        'Video unavailable',
+                        style: AppTypography.textTheme.bodyMedium?.copyWith(
+                          color: AppColors.white,
                         ),
+                      ),
+                    )
+                  : GestureDetector(
+                      onTap: () => unawaited(_togglePlayback(controller)),
+                      child: LayoutBuilder(
+                        builder: (context, _) {
+                          final size = controller.value.size;
+                          return Center(
+                            child: FittedBox(
+                              fit: BoxFit.contain,
+                              child: SizedBox(
+                                width: size.width <= 0 ? 1 : size.width,
+                                height: size.height <= 0 ? 1 : size.height,
+                                child: VideoPlayer(controller),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
             ),
             Positioned(
               top: AppSpacing.md,
@@ -3192,8 +3186,9 @@ class _EncryptedVideoViewerState extends State<_EncryptedVideoViewer>
                 valueListenable: controller,
                 builder: (context, value, _) {
                   final duration = value.duration;
-                  final position =
-                      value.position > duration ? duration : value.position;
+                  final position = value.position > duration
+                      ? duration
+                      : value.position;
                   final canSeek = duration.inMilliseconds > 0;
                   return Stack(
                     children: [
@@ -3253,31 +3248,31 @@ class _EncryptedVideoViewerState extends State<_EncryptedVideoViewer>
                                       ),
                                       overlayShape:
                                           const RoundSliderOverlayShape(
-                                        overlayRadius: 12,
-                                      ),
+                                            overlayRadius: 12,
+                                          ),
                                       activeTrackColor: AppColors.fernGreen,
-                                      inactiveTrackColor:
-                                          Colors.white.withValues(alpha: 0.24),
+                                      inactiveTrackColor: Colors.white
+                                          .withValues(alpha: 0.24),
                                       thumbColor: AppColors.white,
                                     ),
                                     child: Slider(
                                       value: canSeek
                                           ? position.inMilliseconds
-                                              .clamp(
-                                                0,
-                                                duration.inMilliseconds,
-                                              )
-                                              .toDouble()
+                                                .clamp(
+                                                  0,
+                                                  duration.inMilliseconds,
+                                                )
+                                                .toDouble()
                                           : 0,
                                       max: canSeek
                                           ? duration.inMilliseconds.toDouble()
                                           : 1,
                                       onChanged: canSeek
                                           ? (value) => controller.seekTo(
-                                                Duration(
-                                                  milliseconds: value.round(),
-                                                ),
-                                              )
+                                              Duration(
+                                                milliseconds: value.round(),
+                                              ),
+                                            )
                                           : null,
                                     ),
                                   ),
@@ -3470,9 +3465,7 @@ class _EncryptedVideoState extends State<_EncryptedVideo> {
               Positioned(
                 right: 8,
                 bottom: 8,
-                child: _VideoDurationPill(
-                  duration: controller.value.duration,
-                ),
+                child: _VideoDurationPill(duration: controller.value.duration),
               ),
             ],
           ),
@@ -3618,8 +3611,9 @@ class _VoiceMessagePlayerState extends State<_VoiceMessagePlayer> {
 
   void _createController() {
     _playerController = PlayerController()
-      ..updateFrequency =
-          widget.compact ? UpdateFrequency.medium : UpdateFrequency.high;
+      ..updateFrequency = widget.compact
+          ? UpdateFrequency.medium
+          : UpdateFrequency.high;
     _stateSub = _playerController.onPlayerStateChanged.listen((state) {
       if (!mounted) return;
       setState(() => _playing = state.isPlaying);
@@ -3726,10 +3720,12 @@ class _VoiceMessagePlayerState extends State<_VoiceMessagePlayer> {
     final playerHeight = widget.compact ? 32.0 : 38.0;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final fallbackWidth =
-            widget.compact ? 184.0 : _mediaPreviewWidth(context);
-        final availableWidth =
-            constraints.hasBoundedWidth ? constraints.maxWidth : fallbackWidth;
+        final fallbackWidth = widget.compact
+            ? 184.0
+            : _mediaPreviewWidth(context);
+        final availableWidth = constraints.hasBoundedWidth
+            ? constraints.maxWidth
+            : fallbackWidth;
         final width = math.max(156.0, math.min(fallbackWidth, availableWidth));
         final waveformWidth = math.max(78.0, width - 106);
         final progress = _durationMs <= 0
@@ -3788,8 +3784,9 @@ class _VoiceMessagePlayerState extends State<_VoiceMessagePlayer> {
                           value: _preparing ? null : progress,
                           minHeight: 3,
                           color: AppColors.fernGreenDark,
-                          backgroundColor:
-                              AppColors.white.withValues(alpha: 0.58),
+                          backgroundColor: AppColors.white.withValues(
+                            alpha: 0.58,
+                          ),
                         ),
                       ),
                     ),
@@ -3984,7 +3981,7 @@ class _DotPulseState extends State<_DotPulse>
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _controller,
-      builder: (_, __) => Row(
+      builder: (_, _) => Row(
         mainAxisSize: MainAxisSize.min,
         children: List.generate(3, (i) {
           final opacity = 0.35 + 0.65 * ((i * 0.22 + _controller.value) % 1);
@@ -4084,142 +4081,140 @@ class _Composer extends StatelessWidget {
                   onSend: onSendVoicePreview,
                 )
               : recording
-                  ? _RecordingComposer(
-                      seconds: recordingSeconds,
-                      sending: sending,
-                      onCancel: onCancelRecording,
-                      onStop: onStopRecording,
-                      recorderController: recorderController,
-                    )
-                  : ValueListenableBuilder<TextEditingValue>(
-                      valueListenable: controller,
-                      builder: (context, value, _) {
-                        final hasText = value.text.trim().isNotEmpty;
-                        final actionColor =
-                            hasText ? AppColors.charcoal : AppColors.fernGreen;
-                        return DecoratedBox(
-                          key: const ValueKey('text-composer'),
-                          decoration: BoxDecoration(
-                            color: AppColors.white,
-                            borderRadius: BorderRadius.circular(30),
-                            border: Border.all(
-                              color: AppColors.borderSubtle
-                                  .withValues(alpha: 0.85),
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.045),
-                                blurRadius: 24,
-                                offset: const Offset(0, 10),
+              ? _RecordingComposer(
+                  seconds: recordingSeconds,
+                  sending: sending,
+                  onCancel: onCancelRecording,
+                  onStop: onStopRecording,
+                  recorderController: recorderController,
+                )
+              : ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: controller,
+                  builder: (context, value, _) {
+                    final hasText = value.text.trim().isNotEmpty;
+                    final actionColor = hasText
+                        ? AppColors.charcoal
+                        : AppColors.fernGreen;
+                    return DecoratedBox(
+                      key: const ValueKey('text-composer'),
+                      decoration: BoxDecoration(
+                        color: AppColors.white,
+                        borderRadius: BorderRadius.circular(30),
+                        border: Border.all(
+                          color: AppColors.borderSubtle.withValues(alpha: 0.85),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.045),
+                            blurRadius: 24,
+                            offset: const Offset(0, 10),
+                          ),
+                        ],
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(5),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            SizedBox(
+                              width: 42,
+                              height: 42,
+                              child: IconButton(
+                                tooltip: 'Attach media',
+                                onPressed: enabled && !sending
+                                    ? onOpenMediaMenu
+                                    : null,
+                                style: IconButton.styleFrom(
+                                  backgroundColor: AppColors.fernGreenLight
+                                      .withValues(alpha: 0.72),
+                                  foregroundColor: AppColors.fernGreenDark,
+                                  disabledForegroundColor:
+                                      AppColors.textTertiary,
+                                ),
+                                icon: const Icon(Icons.add_rounded, size: 25),
                               ),
-                            ],
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(5),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                SizedBox(
-                                  width: 42,
-                                  height: 42,
-                                  child: IconButton(
-                                    tooltip: 'Attach media',
-                                    onPressed: enabled && !sending
-                                        ? onOpenMediaMenu
-                                        : null,
-                                    style: IconButton.styleFrom(
-                                      backgroundColor: AppColors.fernGreenLight
-                                          .withValues(alpha: 0.72),
-                                      foregroundColor: AppColors.fernGreenDark,
-                                      disabledForegroundColor:
-                                          AppColors.textTertiary,
-                                    ),
-                                    icon:
-                                        const Icon(Icons.add_rounded, size: 25),
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Expanded(
-                                  child: TextField(
-                                    controller: controller,
-                                    minLines: 1,
-                                    maxLines: 5,
-                                    enabled: enabled && !sending,
-                                    textInputAction: TextInputAction.newline,
-                                    cursorColor: AppColors.fernGreen,
-                                    maxLength:
-                                        SecureRoomService.maxRoomTextCharacters,
-                                    maxLengthEnforcement:
-                                        MaxLengthEnforcement.enforced,
-                                    inputFormatters: [
-                                      FilteringTextInputFormatter.deny(
-                                        RegExp(
-                                          r'[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u202A-\u202E\u2066-\u2069]',
-                                        ),
-                                      ),
-                                    ],
-                                    style: AppTypography.textTheme.bodyMedium
-                                        ?.copyWith(
-                                      color: _softInk,
-                                    ),
-                                    decoration: InputDecoration(
-                                      counterText: '',
-                                      hintText: enabled
-                                          ? 'Message expires in ${ttlSeconds ~/ 60} min'
-                                          : 'Room is destroyed',
-                                      hintStyle: AppTypography
-                                          .textTheme.bodyMedium
-                                          ?.copyWith(
-                                        color: AppColors.textTertiary,
-                                      ),
-                                      border: InputBorder.none,
-                                      isDense: true,
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                        horizontal: AppSpacing.xs,
-                                        vertical: 12,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                SizedBox(
-                                  width: 44,
-                                  height: 44,
-                                  child: FilledButton(
-                                    onPressed: enabled && !sending
-                                        ? (hasText ? onSend : onStartRecording)
-                                        : null,
-                                    style: FilledButton.styleFrom(
-                                      shape: const CircleBorder(),
-                                      padding: EdgeInsets.zero,
-                                      backgroundColor: actionColor,
-                                      foregroundColor: AppColors.white,
-                                      disabledBackgroundColor:
-                                          AppColors.borderSubtle,
-                                    ),
-                                    child: sending
-                                        ? const SizedBox(
-                                            width: 18,
-                                            height: 18,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: AppColors.white,
-                                            ),
-                                          )
-                                        : Icon(
-                                            hasText
-                                                ? Icons.send_rounded
-                                                : Icons.mic_rounded,
-                                          ),
-                                  ),
-                                ),
-                              ],
                             ),
-                          ),
-                        );
-                      },
-                    ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: TextField(
+                                controller: controller,
+                                minLines: 1,
+                                maxLines: 5,
+                                enabled: enabled && !sending,
+                                textInputAction: TextInputAction.newline,
+                                cursorColor: AppColors.fernGreen,
+                                maxLength:
+                                    SecureRoomService.maxRoomTextCharacters,
+                                maxLengthEnforcement:
+                                    MaxLengthEnforcement.enforced,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.deny(
+                                    RegExp(
+                                      r'[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u202A-\u202E\u2066-\u2069]',
+                                    ),
+                                  ),
+                                ],
+                                style: AppTypography.textTheme.bodyMedium
+                                    ?.copyWith(color: _softInk),
+                                decoration: InputDecoration(
+                                  counterText: '',
+                                  hintText: enabled
+                                      ? 'Message expires in ${ttlSeconds ~/ 60} min'
+                                      : 'Room is destroyed',
+                                  hintStyle: AppTypography.textTheme.bodyMedium
+                                      ?.copyWith(color: AppColors.textTertiary),
+                                  border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
+                                  errorBorder: InputBorder.none,
+                                  focusedErrorBorder: InputBorder.none,
+                                  disabledBorder: InputBorder.none,
+                                  isDense: true,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: AppSpacing.xs,
+                                    vertical: 12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            SizedBox(
+                              width: 44,
+                              height: 44,
+                              child: FilledButton(
+                                onPressed: enabled && !sending
+                                    ? (hasText ? onSend : onStartRecording)
+                                    : null,
+                                style: FilledButton.styleFrom(
+                                  shape: const CircleBorder(),
+                                  padding: EdgeInsets.zero,
+                                  backgroundColor: actionColor,
+                                  foregroundColor: AppColors.white,
+                                  disabledBackgroundColor:
+                                      AppColors.borderSubtle,
+                                ),
+                                child: sending
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: AppColors.white,
+                                        ),
+                                      )
+                                    : Icon(
+                                        hasText
+                                            ? Icons.send_rounded
+                                            : Icons.mic_rounded,
+                                      ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
         ),
       ),
     );
@@ -4249,9 +4244,7 @@ class _RecordingComposer extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(
-          color: AppColors.fernGreen.withValues(alpha: 0.26),
-        ),
+        border: Border.all(color: AppColors.fernGreen.withValues(alpha: 0.26)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.045),
@@ -4356,9 +4349,7 @@ class _VoiceReviewComposer extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.white,
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(
-          color: AppColors.fernGreen.withValues(alpha: 0.22),
-        ),
+        border: Border.all(color: AppColors.fernGreen.withValues(alpha: 0.22)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.045),
@@ -4536,7 +4527,7 @@ class _RecordingPulseState extends State<_RecordingPulse>
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _controller,
-      builder: (_, __) => Container(
+      builder: (_, _) => Container(
         width: 10 + _controller.value * 4,
         height: 10 + _controller.value * 4,
         decoration: BoxDecoration(
@@ -4607,8 +4598,9 @@ class _RoomClosingViewState extends State<_RoomClosingView>
                           color: AppColors.sunsetCoralLight,
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color:
-                                AppColors.sunsetCoral.withValues(alpha: 0.22),
+                            color: AppColors.sunsetCoral.withValues(
+                              alpha: 0.22,
+                            ),
                           ),
                         ),
                         child: const Icon(

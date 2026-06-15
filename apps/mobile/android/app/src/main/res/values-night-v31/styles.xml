@@ -2,7 +2,7 @@
 <!-- styles -->
 <resources>
     <!-- theme applied to the android window while the process is starting when the os's dark mode setting is on -->
-    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:forceDarkAllowed">false</item>
         <item name="android:windowFullscreen">false</item>
         <item name="android:windowSplashScreenBackground">#E8F5EE</item>
@@ -16,7 +16,8 @@
     running
     this theme is only used starting with v2 of flutter's android embedding
 -->
-    <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
-        <item name="android:windowBackground">?android:colorBackground</item>
+    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@color/backgroundColor</item>
+        <item name="android:forceDarkAllowed">false</item>
     </style>
 </resources>

@@ -6,24 +6,23 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../domain/entities/echo_entity.dart';
 import '../../domain/entities/echo_status.dart';
-import '../widgets/confidence_bar.dart';
-import '../widgets/trust_badge.dart';
 import '../widgets/interaction_buttons.dart';
 import '../widgets/signal_response_sheet.dart';
 import '../widgets/proof_attachment.dart';
 import '../widgets/truth_bond_button.dart';
 import '../widgets/verified_echo_record.dart';
 import '../widgets/solana_status_chip.dart';
-import '../../../../shared/widgets/shimmer_loader.dart';
 import '../../../../shared/widgets/image_viewer.dart';
 import '../../../../shared/widgets/avatar_image_provider.dart';
 import '../../../../shared/widgets/rich_text_display.dart';
+import '../../../../shared/widgets/verified_badges.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../core/utils/media_file_safety.dart';
@@ -33,6 +32,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../../../core/services/video_playback_coordinator.dart';
 import '../widgets/echo_video_player.dart';
 import '../widgets/link_preview_card.dart';
+import '../widgets/bookmark_button.dart';
 import '../services/solana_record_retry_service.dart';
 
 class EchoDetailScreen extends StatefulWidget {
@@ -87,6 +87,7 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
   String? _liveVerifiedRecordStatus;
   DateTime? _liveCreatedRecordAt;
   DateTime? _liveVerifiedRecordAt;
+  int? _liveViewCount;
 
   @override
   void initState() {
@@ -108,8 +109,10 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
   Future<void> _loadEcho() async {
     try {
       final client = Supabase.instance.client;
-      final row = await client.from('echoes').select('''
-              id, user_id, title, content, category, category_detail, status, media_urls, reply_count,
+      final row = await client
+          .from('echoes')
+          .select('''
+              id, user_id, title, content, category, category_detail, status, media_urls, reply_count, view_count,
               trust_score, confidence_score, controversy_score,
               support_count, challenge_count, created_at,
               context_support_count, context_challenge_count,
@@ -120,15 +123,18 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
               verified_record_tx, verified_record_at,
               verified_record_status, verified_record_error,
               bond_count, response_count,
-              users_public!inner(
+              users_public!echoes_user_id_fkey!inner(
                 username, display_name, avatar_url, trust_tier, is_pro
               )
-          ''').eq('id', widget.echoId).single();
+          ''')
+          .eq('id', widget.echoId)
+          .single();
 
       setState(() {
         _echo = _mapRow(row);
         _isLoading = false;
       });
+      unawaited(_recordEchoView());
     } catch (e) {
       AppLogger.error('echo detail: load failed', e);
       setState(() {
@@ -190,8 +196,9 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
       final contextRows = List<Map<String, dynamic>>.from(rows as List);
       final currentUserId = client.auth.currentUser?.id;
       if (currentUserId != null) {
-        final hasOwnContext =
-            contextRows.any((row) => row['user_id'] == currentUserId);
+        final hasOwnContext = contextRows.any(
+          (row) => row['user_id'] == currentUserId,
+        );
         if (!hasOwnContext) {
           final ownRow = await client
               .from('signal_responses')
@@ -259,6 +266,23 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
     }
   }
 
+  Future<void> _recordEchoView() async {
+    try {
+      final response = await Supabase.instance.client.rpc(
+        'record_echo_view',
+        params: {'p_echo_id': widget.echoId},
+      );
+      if (!mounted) return;
+      if (response is int) {
+        setState(() => _liveViewCount = response);
+      } else if (response is num) {
+        setState(() => _liveViewCount = response.toInt());
+      }
+    } catch (e) {
+      AppLogger.warn('echo detail: view record skipped $e');
+    }
+  }
+
   void _openReplies(EchoEntity echo) {
     final avatarParam = echo.userAvatarUrl == null
         ? ''
@@ -271,6 +295,12 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
       '&authorId=${Uri.encodeComponent(echo.userId)}'
       '$avatarParam',
     );
+  }
+
+  void _openHashtag(String tag) {
+    final clean = tag.trim();
+    if (clean.length < 2) return;
+    context.push('/search?q=${Uri.encodeQueryComponent(clean)}');
   }
 
   void _subscribeRealtime() {
@@ -290,21 +320,23 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
             final newRow = payload.newRecord;
             if (!mounted) return;
             setState(() {
-              _liveConfidence =
-                  (newRow['confidence_score'] as num?)?.toDouble();
-              _liveStatus =
-                  _parseStatus(newRow['status'] as String? ?? 'active');
+              _liveConfidence = (newRow['confidence_score'] as num?)
+                  ?.toDouble();
+              _liveStatus = _parseStatus(
+                newRow['status'] as String? ?? 'active',
+              );
               _liveSupport =
                   (newRow['context_support_count'] as num?)?.toInt() ??
-                      (newRow['support_count'] as num?)?.toInt();
+                  (newRow['support_count'] as num?)?.toInt();
               _liveChallenge =
                   (newRow['context_challenge_count'] as num?)?.toInt() ??
-                      (newRow['challenge_count'] as num?)?.toInt();
+                  (newRow['challenge_count'] as num?)?.toInt();
               _liveContextScore = (newRow['context_score'] as num?)?.toInt();
               _livePublicVerdict = newRow['public_verdict'] as String?;
               _livePublicVerdictAt = _parseDate(newRow['public_verdict_at']);
-              _livePublicContextClosesAt =
-                  _parseDate(newRow['public_context_closes_at']);
+              _livePublicContextClosesAt = _parseDate(
+                newRow['public_context_closes_at'],
+              );
               _livePublicContextMinCount =
                   (newRow['public_context_min_count'] as num?)?.toInt();
               _livePublicContextDecisionReason =
@@ -317,6 +349,7 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                   newRow['verified_record_status'] as String?;
               _liveCreatedRecordAt = _parseDate(newRow['created_record_at']);
               _liveVerifiedRecordAt = _parseDate(newRow['verified_record_at']);
+              _liveViewCount = (newRow['view_count'] as num?)?.toInt();
             });
           },
         )
@@ -336,8 +369,8 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
       username: user['username'] as String,
       userDisplayName:
           (user['display_name'] as String?)?.trim().isNotEmpty == true
-              ? user['display_name'] as String
-              : user['username'] as String,
+          ? user['display_name'] as String
+          : user['username'] as String,
       userTrustTier: trustTier,
       userIsVerified: trustTier == 'high' || trustTier == 'elite',
       userIsPro: user['is_pro'] as bool? ?? false,
@@ -349,10 +382,12 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
       confidenceScore: (row['confidence_score'] as num?)?.toDouble() ?? 0.0,
       trustScore: (row['trust_score'] as num?)?.toInt() ?? 0,
       controversyScore: (row['controversy_score'] as num?)?.toDouble() ?? 0.0,
-      supportCount: (row['context_support_count'] as num?)?.toInt() ??
+      supportCount:
+          (row['context_support_count'] as num?)?.toInt() ??
           (row['support_count'] as num?)?.toInt() ??
           0,
-      challengeCount: (row['context_challenge_count'] as num?)?.toInt() ??
+      challengeCount:
+          (row['context_challenge_count'] as num?)?.toInt() ??
           (row['challenge_count'] as num?)?.toInt() ??
           0,
       contextSupportCount: (row['context_support_count'] as num?)?.toInt() ?? 0,
@@ -367,6 +402,7 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
           row['public_context_decision_reason'] as String?,
       contextScore: (row['context_score'] as num?)?.toInt() ?? 0,
       replyCount: (row['reply_count'] as num?)?.toInt() ?? 0,
+      viewCount: (row['view_count'] as num?)?.toInt() ?? 0,
       mediaUrls: (row['media_urls'] as List?)?.cast<String>() ?? const [],
       createdRecordTx: row['created_record_tx'] as String?,
       createdRecordAt: _parseDate(row['created_record_at']),
@@ -388,16 +424,16 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
   }
 
   EchoStatus _parseStatus(String v) => switch (v) {
-        'pending_verification' => EchoStatus.pendingVerification,
-        'active' => EchoStatus.active,
-        'under_review' => EchoStatus.underReview,
-        'verified' => EchoStatus.verified,
-        'controversial' => EchoStatus.controversial,
-        'disputed' => EchoStatus.disputed,
-        'hidden' => EchoStatus.hidden,
-        'rejected' => EchoStatus.rejected,
-        _ => EchoStatus.pendingVerification,
-      };
+    'pending_verification' => EchoStatus.pendingVerification,
+    'active' => EchoStatus.active,
+    'under_review' => EchoStatus.underReview,
+    'verified' => EchoStatus.verified,
+    'controversial' => EchoStatus.controversial,
+    'disputed' => EchoStatus.disputed,
+    'hidden' => EchoStatus.hidden,
+    'rejected' => EchoStatus.rejected,
+    _ => EchoStatus.pendingVerification,
+  };
 
   void _handleEchoHidden() {
     if (!mounted) return;
@@ -453,8 +489,8 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
             _RuleLine(
               icon: Icons.block_rounded,
               text:
-                  'If no one adds context before the window closes, the echo is treated as not publicly supported.',
-              color: AppColors.sunsetCoralDark,
+                  'If too little context arrives before the window closes, the echo is marked as insufficient context.',
+              color: AppColors.textSecondary,
             ),
           ],
         ),
@@ -475,8 +511,9 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
       _liveSolanaStatus = 'recording';
     });
     try {
-      final signature =
-          await SolanaRecordRetryService.retryEchoCreation(echo.id);
+      final signature = await SolanaRecordRetryService.retryEchoCreation(
+        echo.id,
+      );
       if (!mounted) return;
       setState(() {
         if (signature != null) {
@@ -509,8 +546,9 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
       _liveVerifiedRecordStatus = 'recording';
     });
     try {
-      final signature =
-          await SolanaRecordRetryService.retryEchoVerification(echo.id);
+      final signature = await SolanaRecordRetryService.retryEchoVerification(
+        echo.id,
+      );
       if (!mounted) return;
       setState(() {
         if (signature != null) {
@@ -561,7 +599,8 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
           _livePublicContextClosesAt ?? _echo!.publicContextClosesAt,
       publicContextMinCount:
           _livePublicContextMinCount ?? _echo!.publicContextMinCount,
-      publicContextDecisionReason: _livePublicContextDecisionReason ??
+      publicContextDecisionReason:
+          _livePublicContextDecisionReason ??
           _echo!.publicContextDecisionReason,
       createdRecordTx: _liveCreatedRecordTx ?? _echo!.createdRecordTx,
       createdRecordAt: _liveCreatedRecordAt ?? _echo!.createdRecordAt,
@@ -571,16 +610,20 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
       verifiedRecordStatus:
           _liveVerifiedRecordStatus ?? _echo!.verifiedRecordStatus,
       bondCount: _liveBondCount ?? _echo!.bondCount,
+      viewCount: _liveViewCount ?? _echo!.viewCount,
     );
 
-    final previewUrl =
-        extractFirstUrl('${displayed.title}\n${displayed.content}');
+    final previewUrl = extractFirstUrl(
+      '${displayed.title}\n${displayed.content}',
+    );
     final hideUrlText = previewUrl != null && !_previewUnavailable;
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
     final isOwnEcho =
         currentUserId != null && currentUserId == displayed.userId;
     final showPostSolanaDetails =
-        isOwnEcho && displayed.publicVerdict != 'open';
+        isOwnEcho &&
+        displayed.publicVerdict != 'open' &&
+        displayed.publicVerdict != 'needs_context';
     final showVerifiedSolanaDetails =
         isOwnEcho && displayed.publicVerdict == 'supported';
     final canRetryPostRecord = _canRetrySolanaRecord(
@@ -624,9 +667,8 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
               title: _EchoDetailAppBarTitle(echo: displayed),
               actions: [
                 _ProofTrailAppBarAction(
-                  onPressed: () => context.push(
-                    '/feed/echo/${displayed.id}/proof-trail',
-                  ),
+                  onPressed: () =>
+                      context.push('/feed/echo/${displayed.id}/proof-trail'),
                 ),
                 IconButton(
                   tooltip: 'How context works',
@@ -659,113 +701,24 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // author row
-                      Row(
-                        children: [
-                          Expanded(
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () => _openAuthorProfile(displayed),
-                              child: Row(
-                                children: [
-                                  _VerifiedAvatar(
-                                    avatarUrl: displayed.userAvatarUrl,
-                                    isVerified: displayed.userIsVerified,
-                                  ),
-                                  const SizedBox(width: AppSpacing.sm),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          displayed.userDisplayName
-                                                  .trim()
-                                                  .isNotEmpty
-                                              ? displayed.userDisplayName.trim()
-                                              : displayed.username,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: AppTypography
-                                              .textTheme.titleSmall,
-                                        ),
-                                        if (displayed.userIsVerified ||
-                                            displayed.userIsPro)
-                                          Padding(
-                                            padding:
-                                                const EdgeInsets.only(top: 2),
-                                            child: _InlineDetailBadge(
-                                              isVerified:
-                                                  displayed.userIsVerified,
-                                              isPro: displayed.userIsPro,
-                                            ),
-                                          ),
-                                        Text(
-                                          '@${displayed.username} · ${displayed.timeAgo}',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: AppTypography
-                                              .textTheme.labelMedium,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          TrustBadge(tier: displayed.userTrustTier),
-                        ],
+                      _DetailMainPostCard(
+                        echo: displayed,
+                        previewUrl: previewUrl,
+                        hideUrlText: hideUrlText,
+                        onAuthorTap: () => _openAuthorProfile(displayed),
+                        onHashtagTap: _openHashtag,
+                        onPreviewUnavailable: () {
+                          if (mounted) {
+                            setState(() => _previewUnavailable = true);
+                          }
+                        },
                       ),
 
-                      const SizedBox(height: AppSpacing.xl),
+                      const SizedBox(height: AppSpacing.md),
+                      _DetailStatusStrip(echo: displayed),
+                      const SizedBox(height: AppSpacing.md),
 
-                      if (displayed.title.isNotEmpty) ...[
-                        RichTextDisplay(
-                          text: displayed.title,
-                          style:
-                              AppTypography.textTheme.headlineSmall?.copyWith(
-                            height: 1.15,
-                            color: AppColors.charcoal,
-                          ),
-                          hideUrls: hideUrlText,
-                        ),
-                        const SizedBox(height: AppSpacing.md),
-                      ],
-
-                      RichTextDisplay(
-                        text: displayed.content,
-                        style: AppTypography.textTheme.bodyLarge,
-                        hideUrls: hideUrlText,
-                      ),
-
-                      if (previewUrl != null)
-                        EchoLinkPreview(
-                          url: previewUrl,
-                          variant: EchoLinkPreviewVariant.detail,
-                          onUnavailable: () {
-                            if (mounted) {
-                              setState(() => _previewUnavailable = true);
-                            }
-                          },
-                        ),
-
-                      if (displayed.mediaUrls.isNotEmpty) ...[
-                        const SizedBox(height: AppSpacing.lg),
-                        _EchoDetailMediaGallery(
-                          echoId: displayed.id,
-                          urls: displayed.mediaUrls,
-                        ),
-                      ],
-
-                      const SizedBox(height: AppSpacing.xl),
-                      _DetailCategoryChip(echo: displayed),
-                      const SizedBox(height: AppSpacing.lg),
-                      const Divider(),
-                      const SizedBox(height: AppSpacing.lg),
-
-                      // live score section
-                      _LiveScoreSection(
+                      InteractionButtons(
                         echo: displayed,
                         onEchoHidden: _handleEchoHidden,
                         onContextPosted: () async {
@@ -830,7 +783,8 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                             displayed.verifiedRecordTx!.isNotEmpty) ...[
                           VerifiedEchoRecord(
                             transactionSignature: displayed.verifiedRecordTx!,
-                            verifiedAt: displayed.verifiedRecordAt ??
+                            verifiedAt:
+                                displayed.verifiedRecordAt ??
                                 displayed.createdRecordAt ??
                                 DateTime.now(),
                           ),
@@ -845,10 +799,7 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                       ],
 
                       // proofs section
-                      _ProofsSection(
-                        proofs: _proofs,
-                        onRefresh: _loadProofs,
-                      ),
+                      _ProofsSection(proofs: _proofs, onRefresh: _loadProofs),
 
                       const SizedBox(height: AppSpacing.xl),
                       const Divider(),
@@ -879,8 +830,9 @@ class _EchoDetailAppBarTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final compactId = echo.id.replaceAll('-', '');
-    final shortId =
-        compactId.length <= 8 ? compactId : compactId.substring(0, 8);
+    final shortId = compactId.length <= 8
+        ? compactId
+        : compactId.substring(0, 8);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -979,48 +931,413 @@ class _RuleLine extends StatelessWidget {
   }
 }
 
-class _InlineDetailBadge extends StatelessWidget {
-  const _InlineDetailBadge({
-    required this.isVerified,
-    required this.isPro,
+class _DetailMainPostCard extends StatelessWidget {
+  const _DetailMainPostCard({
+    required this.echo,
+    required this.previewUrl,
+    required this.hideUrlText,
+    required this.onAuthorTap,
+    required this.onHashtagTap,
+    required this.onPreviewUnavailable,
   });
 
-  final bool isVerified;
-  final bool isPro;
+  final EchoEntity echo;
+  final String? previewUrl;
+  final bool hideUrlText;
+  final VoidCallback onAuthorTap;
+  final ValueChanged<String> onHashtagTap;
+  final VoidCallback onPreviewUnavailable;
 
   @override
   Widget build(BuildContext context) {
-    final color = isVerified ? AppColors.fernGreen : const Color(0xFFFFB300);
-    final label = isVerified && isPro
-        ? context.l('Verified Pro')
-        : isVerified
-            ? context.l('Verified')
-            : context.l('Pro');
-    final icon = isPro && !isVerified
-        ? Icons.workspace_premium_rounded
-        : Icons.verified_rounded;
+    final verdict = _detailVerdictLabel(context, echo);
+    final verdictColor = _detailVerdictColor(echo);
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.md,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onAuthorTap,
+            child: _VerifiedAvatar(avatarUrl: echo.userAvatarUrl),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: onAuthorTap,
+                        child: _DetailAuthorName(echo: echo),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    _DetailMiniPill(
+                      label: verdict,
+                      color: verdictColor,
+                      icon: _detailVerdictIcon(echo),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.md),
+                if (echo.title.isNotEmpty) ...[
+                  RichTextDisplay(
+                    text: echo.title,
+                    style: AppTypography.textTheme.headlineSmall?.copyWith(
+                      height: 1.14,
+                      color: AppColors.charcoal,
+                    ),
+                    hideUrls: hideUrlText,
+                    onHashtagTap: onHashtagTap,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                ],
+                RichTextDisplay(
+                  text: echo.content,
+                  style: AppTypography.textTheme.bodyLarge?.copyWith(
+                    height: 1.45,
+                    color: AppColors.charcoal,
+                  ),
+                  hideUrls: hideUrlText,
+                  onHashtagTap: onHashtagTap,
+                ),
+                if (previewUrl != null)
+                  EchoLinkPreview(
+                    url: previewUrl!,
+                    variant: EchoLinkPreviewVariant.detail,
+                    onUnavailable: onPreviewUnavailable,
+                  ),
+                if (echo.mediaUrls.isNotEmpty) ...[
+                  const SizedBox(height: AppSpacing.lg),
+                  _EchoDetailMediaGallery(
+                    echoId: echo.id,
+                    urls: echo.mediaUrls,
+                  ),
+                ],
+                const SizedBox(height: AppSpacing.lg),
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: AppSpacing.sm,
+                  runSpacing: AppSpacing.sm,
+                  children: [
+                    _DetailCategoryChip(echo: echo),
+                    _DetailSolanaMiniChip(echo: echo),
+                    if (echo.proofCount > 0)
+                      _DetailMiniPill(
+                        label:
+                            '${Formatters.compactNumber(echo.proofCount)} ${echo.proofCount == 1 ? 'proof' : 'proofs'}',
+                        color: AppColors.textSecondary,
+                        icon: Icons.fact_check_outlined,
+                      ),
+                    if (echo.bondCount > 0)
+                      _DetailMiniPill(
+                        label:
+                            '${Formatters.compactNumber(echo.bondCount)} ${echo.bondCount == 1 ? 'bond' : 'bonds'}',
+                        color: AppColors.textSecondary,
+                        icon: Icons.link_rounded,
+                      ),
+                    if (echo.replyCount > 0)
+                      _DetailMiniPill(
+                        label:
+                            '${Formatters.compactNumber(echo.replyCount)} ${echo.replyCount == 1 ? 'reply' : 'replies'}',
+                        color: AppColors.textSecondary,
+                        icon: Icons.mode_comment_outlined,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Row(
+                  children: [
+                    Expanded(child: _EchoDetailMetaLine(echo: echo)),
+                    EchoBookmarkButton(echoId: echo.id, compact: true),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailAuthorName extends StatelessWidget {
+  const _DetailAuthorName({required this.echo});
+
+  final EchoEntity echo;
+
+  @override
+  Widget build(BuildContext context) {
+    final display = echo.userDisplayName.trim().isNotEmpty
+        ? echo.userDisplayName.trim()
+        : echo.username;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          width: 15,
-          height: 15,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, size: 10, color: Colors.white),
+        Row(
+          children: [
+            Flexible(
+              child: Text(
+                display,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.textTheme.titleSmall?.copyWith(
+                  color: AppColors.charcoal,
+                ),
+              ),
+            ),
+            if (echo.userIsVerified || echo.userIsPro) ...[
+              const SizedBox(width: 5),
+              const AccountVerifiedBadge(size: 16),
+            ],
+          ],
         ),
-        const SizedBox(width: 4),
+        const SizedBox(height: 2),
         Text(
-          label,
-          style: AppTypography.textTheme.labelSmall?.copyWith(
-            color: AppColors.textSecondary,
-            fontWeight: FontWeight.w700,
-          ),
+          '@${echo.username} · ${echo.timeAgo}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppTypography.textTheme.labelMedium,
         ),
       ],
+    );
+  }
+}
+
+class _DetailStatusStrip extends StatelessWidget {
+  const _DetailStatusStrip({required this.echo});
+
+  final EchoEntity echo;
+
+  @override
+  Widget build(BuildContext context) {
+    final support = echo.supportCount;
+    final challenge = echo.challengeCount;
+    final total = support + challenge;
+    final supportShare = total == 0 ? 0.5 : support / total;
+    final verdictColor = _detailVerdictColor(echo);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: _detailVerdictSurface(echo),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: verdictColor.withValues(alpha: 0.18)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  context.l('Community signal'),
+                  style: AppTypography.textTheme.titleSmall,
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                Tooltip(
+                  message: context.l(
+                    'How support, challenge, context, and views are blended',
+                  ),
+                  child: Semantics(
+                    button: true,
+                    label: context.l('Explain community signal'),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () => _showCommunitySignalHelp(context),
+                      child: const Padding(
+                        padding: EdgeInsets.all(2),
+                        child: Icon(
+                          Icons.help_outline_rounded,
+                          size: 16,
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  _detailVerdictLabel(context, echo),
+                  style: AppTypography.textTheme.labelLarge?.copyWith(
+                    color: verdictColor,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.md),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+              child: SizedBox(
+                height: 7,
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: (supportShare * 1000).round().clamp(1, 999).toInt(),
+                      child: Container(color: AppColors.fernGreen),
+                    ),
+                    Expanded(
+                      flex: ((1 - supportShare) * 1000)
+                          .round()
+                          .clamp(1, 999)
+                          .toInt(),
+                      child: Container(color: AppColors.sunsetCoral),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            Row(
+              children: [
+                _DetailMetric(
+                  icon: Icons.thumb_up_alt_outlined,
+                  value: support,
+                  label: context.l('Support'),
+                  color: AppColors.fernGreen,
+                ),
+                _DetailMetric(
+                  icon: Icons.warning_amber_rounded,
+                  value: challenge,
+                  label: context.l('Challenge'),
+                  color: AppColors.sunsetCoral,
+                ),
+                _DetailMetric(
+                  icon: Icons.groups_2_outlined,
+                  value: total,
+                  label: context.l('Contributor'),
+                  color: AppColors.textSecondary,
+                ),
+                _DetailMetric(
+                  icon: Icons.visibility_outlined,
+                  value: echo.viewCount,
+                  label: context.l('Views'),
+                  color: AppColors.textSecondary,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailMetric extends StatelessWidget {
+  const _DetailMetric({
+    required this.icon,
+    required this.value,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final int value;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        children: [
+          Icon(icon, size: 20, color: color),
+          const SizedBox(height: 4),
+          Text(
+            Formatters.compactNumber(value),
+            style: AppTypography.textTheme.titleSmall?.copyWith(
+              color: AppColors.charcoal,
+            ),
+          ),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppTypography.textTheme.labelSmall,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailMiniPill extends StatelessWidget {
+  const _DetailMiniPill({
+    required this.label,
+    required this.color,
+    required this.icon,
+  });
+
+  final String label;
+  final Color color;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: AppTypography.textTheme.labelSmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailSolanaMiniChip extends StatelessWidget {
+  const _DetailSolanaMiniChip({required this.echo});
+
+  final EchoEntity echo;
+
+  @override
+  Widget build(BuildContext context) {
+    final anchored = echo.createdRecordTx?.isNotEmpty == true;
+    final recording = echo.solanaStatus == 'recording';
+    final failed = echo.solanaStatus == 'failed';
+    final label = anchored
+        ? context.l('Solana anchored')
+        : recording
+        ? context.l('Solana recording')
+        : failed
+        ? context.l('Solana delayed')
+        : context.l('Solana pending');
+    final color = anchored
+        ? AppColors.fernGreenDark
+        : failed
+        ? AppColors.sunsetCoralDark
+        : AppColors.textSecondary;
+
+    return _DetailMiniPill(
+      label: label,
+      color: color,
+      icon: anchored ? Icons.verified_rounded : Icons.bolt_rounded,
     );
   }
 }
@@ -1125,8 +1442,8 @@ class _EchoDetailMediaTile extends StatelessWidget {
             fit: BoxFit.cover,
             width: double.infinity,
             height: double.infinity,
-            placeholder: (_, __) => Container(color: AppColors.softSand),
-            errorWidget: (_, __, ___) => Container(
+            placeholder: (context, url) => Container(color: AppColors.softSand),
+            errorWidget: (context, url, error) => Container(
               color: AppColors.softSand,
               child: const Icon(
                 Icons.broken_image_outlined,
@@ -1196,10 +1513,12 @@ class _PublicContextSectionState extends State<_PublicContextSection> {
       _selectedStance = _normalizeContextStance(widget.initialStance);
     }
     if (!_userSelectedStance) {
-      final supportRows =
-          widget.contexts.where((row) => row['stance'] == 'support').toList();
-      final challengeRows =
-          widget.contexts.where((row) => row['stance'] == 'challenge').toList();
+      final supportRows = widget.contexts
+          .where((row) => row['stance'] == 'support')
+          .toList();
+      final challengeRows = widget.contexts
+          .where((row) => row['stance'] == 'challenge')
+          .toList();
       if (_selectedStance == 'support' &&
           supportRows.isEmpty &&
           challengeRows.isNotEmpty) {
@@ -1220,12 +1539,15 @@ class _PublicContextSectionState extends State<_PublicContextSection> {
     final color = _publicVerdictColor(echo.publicVerdict);
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
     final isOwnEcho = currentUserId != null && currentUserId == echo.userId;
-    final supportRows =
-        contexts.where((row) => row['stance'] == 'support').toList();
-    final challengeRows =
-        contexts.where((row) => row['stance'] == 'challenge').toList();
-    final selectedRows =
-        _selectedStance == 'support' ? supportRows : challengeRows;
+    final supportRows = contexts
+        .where((row) => row['stance'] == 'support')
+        .toList();
+    final challengeRows = contexts
+        .where((row) => row['stance'] == 'challenge')
+        .toList();
+    final selectedRows = _selectedStance == 'support'
+        ? supportRows
+        : challengeRows;
     Map<String, dynamic>? ownContext;
     if (currentUserId != null) {
       for (final row in contexts) {
@@ -1237,9 +1559,13 @@ class _PublicContextSectionState extends State<_PublicContextSection> {
     }
     final now = DateTime.now();
     final closesAt = echo.publicContextClosesAt;
-    final isClosed = echo.publicVerdict != 'open' ||
+    final isClosed =
+        (echo.publicVerdict != 'open' &&
+            echo.publicVerdict != 'needs_context') ||
         (closesAt != null && !closesAt.isAfter(now));
-    final windowEndedOpen = echo.publicVerdict == 'open' &&
+    final windowEndedOpen =
+        (echo.publicVerdict == 'open' ||
+            echo.publicVerdict == 'needs_context') &&
         closesAt != null &&
         !closesAt.isAfter(now);
     final headerVerdict = windowEndedOpen ? 'Window closed' : verdict;
@@ -1254,10 +1580,7 @@ class _PublicContextSectionState extends State<_PublicContextSection> {
         return;
       }
       if (isClosed) {
-        showInfoSnack(
-          context,
-          'Public context is closed for this echo.',
-        );
+        showInfoSnack(context, 'Public context is closed for this echo.');
         return;
       }
       if (ownContext != null) {
@@ -1300,9 +1623,7 @@ class _PublicContextSectionState extends State<_PublicContextSection> {
               decoration: BoxDecoration(
                 color: headerColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-                border: Border.all(
-                  color: headerColor.withValues(alpha: 0.35),
-                ),
+                border: Border.all(color: headerColor.withValues(alpha: 0.35)),
               ),
               child: Text(
                 headerVerdict,
@@ -1542,7 +1863,8 @@ class _ContextTabButton extends StatelessWidget {
           child: AnimatedDefaultTextStyle(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
-            style: AppTypography.textTheme.labelMedium?.copyWith(
+            style:
+                AppTypography.textTheme.labelMedium?.copyWith(
                   color: selected ? color : AppColors.textSecondary,
                   fontWeight: FontWeight.w800,
                 ) ??
@@ -1609,7 +1931,11 @@ class _YourContextNotice extends StatelessWidget {
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Text(
-              'Your ${stance == 'support' ? 'support' : 'challenge'} context is listed here. ${isClosed ? 'Evaluation is closed.' : editsLeft > 0 ? 'You can edit it once.' : 'You already used your edit.'}',
+              'Your ${stance == 'support' ? 'support' : 'challenge'} context is listed here. ${isClosed
+                  ? 'Evaluation is closed.'
+                  : editsLeft > 0
+                  ? 'You can edit it once.'
+                  : 'You already used your edit.'}',
               style: AppTypography.textTheme.bodySmall?.copyWith(
                 color: AppColors.textSecondary,
               ),
@@ -1633,19 +1959,20 @@ class _ContextEvaluationNote extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final total = echo.supportCount + echo.challengeCount;
-    final remaining =
-        (echo.publicContextMinCount - total).clamp(0, 1 << 31).toInt();
+    final remaining = (echo.publicContextMinCount - total)
+        .clamp(0, 1 << 31)
+        .toInt();
     final closesAt = echo.publicContextClosesAt;
     final verdict = echo.publicVerdict;
     final decidedAt = echo.publicVerdictAt;
 
     final text = switch (verdict) {
-      'supported' ||
-      'not_supported' ||
-      'contested' =>
+      'supported' || 'not_supported' || 'contested' || 'insufficient_context' =>
         'Decided by public context${decidedAt == null ? '' : ' ${Formatters.timeAgo(decidedAt)}'}.',
+      'needs_context' =>
+        'This echo is being held for stronger public context before it spreads normally.',
       _ when echo.publicContextDecisionReason == 'insufficient_context' =>
-        'The review window ended without enough public context, so it is not publicly supported.',
+        'The review window ended without enough public context, so it is not treated as proven.',
       _ when closesAt != null && !closesAt.isAfter(DateTime.now()) =>
         'The public context window has ended. Existing support and challenge context is still visible.',
       _ when closesAt != null =>
@@ -1682,8 +2009,9 @@ class _ContextBalanceBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final total = support + challenge;
     final supportShare = total == 0 ? 0.5 : support / total;
-    final progress =
-        minCount <= 0 ? 1.0 : (total / minCount).clamp(0.0, 1.0).toDouble();
+    final progress = minCount <= 0
+        ? 1.0
+        : (total / minCount).clamp(0.0, 1.0).toDouble();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1702,8 +2030,10 @@ class _ContextBalanceBar extends StatelessWidget {
                   ),
                 ),
                 Expanded(
-                  flex:
-                      ((1 - supportShare) * 1000).round().clamp(1, 999).toInt(),
+                  flex: ((1 - supportShare) * 1000)
+                      .round()
+                      .clamp(1, 999)
+                      .toInt(),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 260),
                     color: const Color(0xFFE08A76),
@@ -1809,10 +2139,12 @@ class _ContextRowState extends State<_ContextRow> {
     });
 
     try {
-      final rows = await Supabase.instance.client.rpc(
-        'toggle_signal_response_like',
-        params: {'p_response_id': widget.row['id']},
-      ) as List;
+      final rows =
+          await Supabase.instance.client.rpc(
+                'toggle_signal_response_like',
+                params: {'p_response_id': widget.row['id']},
+              )
+              as List;
       final row = rows.isEmpty ? null : rows.first as Map<String, dynamic>?;
       if (!mounted || row == null) return;
       final liked = row['liked'] as bool? ?? _liked;
@@ -1821,9 +2153,9 @@ class _ContextRowState extends State<_ContextRow> {
         _likeCount = (row['like_count'] as num?)?.toInt() ?? _likeCount;
       });
       if (liked) {
-        unawaited(_notifySocialEvent('context_like', {
-          'response_id': widget.row['id'],
-        }));
+        unawaited(
+          _notifySocialEvent('context_like', {'response_id': widget.row['id']}),
+        );
       }
       await widget.onChanged();
     } catch (e) {
@@ -1838,8 +2170,8 @@ class _ContextRowState extends State<_ContextRow> {
         message.contains('public_context_closed')
             ? 'Public context is closed for this echo.'
             : message.contains('own_context')
-                ? 'You cannot like your own context.'
-                : 'Could not update context like.',
+            ? 'You cannot like your own context.'
+            : 'Could not update context like.',
       );
     }
   }
@@ -1863,13 +2195,14 @@ class _ContextRowState extends State<_ContextRow> {
     final user = widget.row['users_public'] as Map<String, dynamic>? ?? {};
     final displayName =
         (user['display_name'] as String?)?.trim().isNotEmpty == true
-            ? user['display_name'] as String
-            : user['username'] as String? ?? 'unknown';
+        ? user['display_name'] as String
+        : user['username'] as String? ?? 'unknown';
     final username = user['username'] as String? ?? 'unknown';
     final avatarUrl = user['avatar_url'] as String?;
     final stance = widget.row['stance'] as String? ?? 'support';
-    final color =
-        stance == 'support' ? AppColors.fernGreen : AppColors.sunsetCoralDark;
+    final color = stance == 'support'
+        ? AppColors.fernGreen
+        : AppColors.sunsetCoralDark;
     final mediaUrls =
         (widget.row['media_urls'] as List?)?.cast<String>() ?? const <String>[];
     final created = _parseContextDate(widget.row['created_at']);
@@ -1948,8 +2281,9 @@ class _ContextRowState extends State<_ContextRow> {
                       ),
                       decoration: BoxDecoration(
                         color: color.withValues(alpha: 0.1),
-                        borderRadius:
-                            BorderRadius.circular(AppSpacing.radiusFull),
+                        borderRadius: BorderRadius.circular(
+                          AppSpacing.radiusFull,
+                        ),
                       ),
                       child: Text(
                         stance == 'support' ? 'Supports' : 'Challenges',
@@ -2027,24 +2361,80 @@ String _relativeWindow(DateTime target) {
   final value = duration.inDays >= 1
       ? '${duration.inDays}d'
       : duration.inHours >= 1
-          ? '${duration.inHours}h'
-          : '${duration.inMinutes.clamp(1, 59)}m';
+      ? '${duration.inHours}h'
+      : '${duration.inMinutes.clamp(1, 59)}m';
   return past ? '$value ago' : 'in $value';
 }
 
 String _publicVerdictLabel(String verdict) => switch (verdict) {
-      'supported' => 'Supported',
-      'not_supported' => 'Not supported',
-      'contested' => 'Contested',
-      _ => 'Open',
-    };
+  'supported' => 'Supported',
+  'not_supported' => 'Not supported',
+  'contested' => 'Contested',
+  'needs_context' => 'Needs context',
+  'insufficient_context' => 'Insufficient context',
+  _ => 'Open',
+};
 
 Color _publicVerdictColor(String verdict) => switch (verdict) {
-      'supported' => AppColors.fernGreenDark,
-      'not_supported' => AppColors.sunsetCoralDark,
-      'contested' => AppColors.statusControversial,
-      _ => AppColors.textTertiary,
-    };
+  'supported' => AppColors.fernGreenDark,
+  'not_supported' => AppColors.sunsetCoralDark,
+  'contested' => AppColors.statusControversial,
+  'needs_context' => AppColors.statusUnderReview,
+  'insufficient_context' => AppColors.textSecondary,
+  _ => AppColors.textTertiary,
+};
+
+String _detailVerdictLabel(BuildContext context, EchoEntity echo) {
+  final endedAt = echo.publicVerdictAt;
+  if (endedAt != null &&
+      DateTime.now().difference(endedAt) < const Duration(days: 2) &&
+      echo.publicVerdict != 'open' &&
+      echo.publicVerdict != 'needs_context') {
+    return context.l('Window ended');
+  }
+  return context.l(_publicVerdictLabel(echo.publicVerdict));
+}
+
+Color _detailVerdictColor(EchoEntity echo) {
+  return _publicVerdictColor(echo.publicVerdict);
+}
+
+Color _detailVerdictSurface(EchoEntity echo) {
+  final verdict = echo.publicVerdict;
+  if (verdict == 'not_supported') {
+    return AppColors.sunsetCoral.withValues(alpha: 0.055);
+  }
+  if (verdict == 'contested') {
+    return AppColors.statusControversial.withValues(alpha: 0.06);
+  }
+  if (verdict == 'needs_context') {
+    return AppColors.statusUnderReview.withValues(alpha: 0.045);
+  }
+  if (verdict == 'insufficient_context' ||
+      _isDetailContextWindowEndedOpen(echo)) {
+    return AppColors.softSand.withValues(alpha: 0.32);
+  }
+  if (verdict == 'supported') {
+    return AppColors.fernGreenLight.withValues(alpha: 0.42);
+  }
+  return AppColors.surfaceSecondary.withValues(alpha: 0.7);
+}
+
+bool _isDetailContextWindowEndedOpen(EchoEntity echo) {
+  final closesAt = echo.publicContextClosesAt;
+  return (echo.publicVerdict == 'open' ||
+          echo.publicVerdict == 'needs_context') &&
+      closesAt != null &&
+      !closesAt.isAfter(DateTime.now());
+}
+
+IconData _detailVerdictIcon(EchoEntity echo) => switch (echo.publicVerdict) {
+  'supported' => Icons.check_circle_outline_rounded,
+  'not_supported' => Icons.warning_amber_rounded,
+  'contested' => Icons.sync_alt_rounded,
+  'insufficient_context' => Icons.hourglass_empty_rounded,
+  _ => Icons.radio_button_unchecked_rounded,
+};
 
 bool _canRetrySolanaRecord({
   required String? currentUserId,
@@ -2059,34 +2449,36 @@ bool _canRetrySolanaRecord({
   return status == 'failed' || status == 'pending';
 }
 
-class _LiveScoreSection extends StatelessWidget {
-  const _LiveScoreSection({
-    required this.echo,
-    this.onEchoHidden,
-    this.onContextPosted,
-  });
+class _EchoDetailMetaLine extends StatelessWidget {
+  const _EchoDetailMetaLine({required this.echo});
+
   final EchoEntity echo;
-  final VoidCallback? onEchoHidden;
-  final Future<void> Function()? onContextPosted;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          context.tx('echoDetail.communitySignals'),
-          style: AppTypography.textTheme.titleMedium,
-        ),
-        const SizedBox(height: AppSpacing.md),
-        ConfidenceBar(confidence: echo.confidenceScore, status: echo.status),
-        const SizedBox(height: AppSpacing.md),
-        InteractionButtons(
-          echo: echo,
-          onEchoHidden: onEchoHidden,
-          onContextPosted: onContextPosted,
-        ),
-      ],
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 180),
+      child: Row(
+        key: ValueKey('meta_${echo.timeAgo}_${echo.replyCount}'),
+        children: [
+          Text(
+            echo.timeAgo,
+            style: AppTypography.textTheme.labelMedium?.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 7),
+            child: Text('·', style: TextStyle(color: AppColors.textTertiary)),
+          ),
+          Text(
+            '${Formatters.compactNumber(echo.replyCount)} ${echo.replyCount == 1 ? 'reply' : 'replies'}',
+            style: AppTypography.textTheme.labelMedium?.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2098,7 +2490,8 @@ class _DetailCategoryChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final detail = echo.categoryDetail?.trim();
-    final label = echo.category == EchoCategory.other &&
+    final label =
+        echo.category == EchoCategory.other &&
             detail != null &&
             detail.isNotEmpty
         ? context.l('Other: {detail}', {'detail': detail})
@@ -2126,10 +2519,7 @@ class _DetailCategoryChip extends StatelessWidget {
 }
 
 class _ProofsSection extends StatelessWidget {
-  const _ProofsSection({
-    required this.proofs,
-    required this.onRefresh,
-  });
+  const _ProofsSection({required this.proofs, required this.onRefresh});
   final List<Map<String, dynamic>> proofs;
   final VoidCallback onRefresh;
 
@@ -2138,8 +2528,10 @@ class _ProofsSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(context.tx('echoDetail.evidence'),
-            style: AppTypography.textTheme.titleMedium),
+        Text(
+          context.tx('echoDetail.evidence'),
+          style: AppTypography.textTheme.titleMedium,
+        ),
         const SizedBox(height: AppSpacing.sm),
         if (proofs.isEmpty)
           Text(
@@ -2151,7 +2543,7 @@ class _ProofsSection extends StatelessWidget {
             final user = p['users_public'] as Map<String, dynamic>? ?? {};
             final created =
                 DateTime.tryParse(p['created_at'] as String? ?? '') ??
-                    DateTime.now();
+                DateTime.now();
             return Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.sm),
               child: ProofAttachment(
@@ -2193,7 +2585,7 @@ class _RepliesPreviewSection extends StatelessWidget {
             Text(
               replies.isEmpty
                   ? context.tx('echoDetail.replies')
-                  : '${context.tx('echoDetail.replies')} (${replies.length})',
+                  : context.l('Most relevant replies'),
               style: AppTypography.textTheme.titleMedium,
             ),
             const Spacer(),
@@ -2202,7 +2594,7 @@ class _RepliesPreviewSection extends StatelessWidget {
               child: Text(
                 replies.isEmpty
                     ? context.tx('echoDetail.addReply')
-                    : context.tx('echoDetail.viewThread'),
+                    : context.l('Show replies'),
                 style: const TextStyle(color: AppColors.fernGreenDark),
               ),
             ),
@@ -2240,15 +2632,17 @@ class _RepliesPreviewSection extends StatelessWidget {
         else ...[
           for (final reply in visible) _InlineReply(reply: reply),
           if (replies.length > visible.length)
-            TextButton.icon(
+            TextButton(
               onPressed: onOpenReplies,
-              icon: const Icon(Icons.chat_bubble_outline_rounded, size: 15),
-              label: Text(context.l('View {count} more', {
-                'count': replies.length - visible.length,
-              })),
               style: TextButton.styleFrom(
                 foregroundColor: AppColors.fernGreenDark,
-                padding: EdgeInsets.zero,
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                alignment: Alignment.centerLeft,
+              ),
+              child: Text(
+                context.l('Show {count} more replies', {
+                  'count': replies.length - visible.length,
+                }),
               ),
             ),
         ],
@@ -2285,10 +2679,11 @@ class _InlineReplyState extends State<_InlineReply> {
     final username = user['username'] as String? ?? 'unknown';
     final displayName =
         (user['display_name'] as String?)?.trim().isNotEmpty == true
-            ? user['display_name'] as String
-            : username;
+        ? user['display_name'] as String
+        : username;
     final avatarUrl = user['avatar_url'] as String?;
-    final created = DateTime.tryParse(reply['created_at'] as String? ?? '') ??
+    final created =
+        DateTime.tryParse(reply['created_at'] as String? ?? '') ??
         DateTime.now();
     final content = reply['content'] as String? ?? '';
     final previewUrl = extractFirstUrl(content);
@@ -2302,17 +2697,12 @@ class _InlineReplyState extends State<_InlineReply> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
       decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: AppColors.borderSubtle),
-        ),
+        border: Border(bottom: BorderSide(color: AppColors.borderSubtle)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _VerifiedAvatar(
-            avatarUrl: avatarUrl,
-            isVerified: isPro || isTrusted,
-          ),
+          _VerifiedAvatar(avatarUrl: avatarUrl),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Column(
@@ -2330,15 +2720,7 @@ class _InlineReplyState extends State<_InlineReply> {
                     ),
                     const SizedBox(width: AppSpacing.xs),
                     if (isPro || isTrusted) ...[
-                      Icon(
-                        isPro
-                            ? Icons.workspace_premium_rounded
-                            : Icons.verified_rounded,
-                        size: 14,
-                        color: isPro
-                            ? const Color(0xFFFFB300)
-                            : AppColors.fernGreen,
-                      ),
+                      const AccountVerifiedBadge(size: 15),
                       const SizedBox(width: AppSpacing.xs),
                     ],
                     Expanded(
@@ -2410,42 +2792,83 @@ class _InlineReplyState extends State<_InlineReply> {
 }
 
 class _VerifiedAvatar extends StatelessWidget {
-  const _VerifiedAvatar({
-    required this.avatarUrl,
-    required this.isVerified,
-  });
+  const _VerifiedAvatar({required this.avatarUrl});
   final String? avatarUrl;
-  final bool isVerified;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: AppSpacing.avatarSizeMd + 4,
-      height: AppSpacing.avatarSizeMd + 4,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: isVerified ? AppColors.fernGreen : AppColors.borderSubtle,
-          width: isVerified ? 2.0 : 1.0,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(2),
-        child: CircleAvatar(
-          radius: AppSpacing.avatarSizeMd / 2,
-          backgroundColor: AppColors.softSand,
-          backgroundImage: avatarImageProvider(avatarUrl),
-          child: avatarImageProvider(avatarUrl) == null
-              ? const Icon(
-                  Icons.person_outline,
-                  size: 22,
-                  color: AppColors.textTertiary,
-                )
-              : null,
-        ),
-      ),
+    return CircleAvatar(
+      radius: AppSpacing.avatarSizeMd / 2,
+      backgroundColor: AppColors.softSand,
+      backgroundImage: avatarImageProvider(avatarUrl),
+      child: avatarImageProvider(avatarUrl) == null
+          ? const Icon(
+              Icons.person_outline,
+              size: 22,
+              color: AppColors.textTertiary,
+            )
+          : null,
     );
   }
+}
+
+void _showCommunitySignalHelp(BuildContext context) {
+  showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    backgroundColor: AppColors.white,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+    ),
+    builder: (sheetContext) => Padding(
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.xl,
+        AppSpacing.lg,
+        AppSpacing.xl,
+        AppSpacing.xl + MediaQuery.paddingOf(sheetContext).bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.borderMedium,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.lg),
+          Row(
+            children: [
+              const Icon(
+                Icons.insights_rounded,
+                color: AppColors.fernGreenDark,
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Text(
+                context.l('Community signal'),
+                style: AppTypography.textTheme.titleMedium,
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            context.l(
+              'Support, challenge, context, and views are combined to show where the crowd currently leans.',
+            ),
+            style: AppTypography.textTheme.bodyMedium?.copyWith(
+              color: AppColors.textSecondary,
+              height: 1.4,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _DetailShimmer extends StatelessWidget {
@@ -2453,9 +2876,90 @@ class _DetailShimmer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.all(AppSpacing.xl),
-      child: EchoCardShimmer(),
+    return Center(
+      child: SingleChildScrollView(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 680),
+          child: Shimmer.fromColors(
+            baseColor: AppColors.softSand,
+            highlightColor: AppColors.white,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Row(
+                  children: [
+                    _DetailShimmerBox(width: 42, height: 42, radius: 21),
+                    SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _DetailShimmerBox(width: 150, height: 14),
+                          SizedBox(height: 7),
+                          _DetailShimmerBox(width: 96, height: 11),
+                        ],
+                      ),
+                    ),
+                    _DetailShimmerBox(width: 84, height: 28, radius: 999),
+                  ],
+                ),
+                SizedBox(height: AppSpacing.xl),
+                _DetailShimmerBox(width: double.infinity, height: 24),
+                SizedBox(height: AppSpacing.sm),
+                _DetailShimmerBox(width: 320, height: 22),
+                SizedBox(height: AppSpacing.lg),
+                _DetailShimmerBox(width: double.infinity, height: 13),
+                SizedBox(height: AppSpacing.sm),
+                _DetailShimmerBox(width: double.infinity, height: 13),
+                SizedBox(height: AppSpacing.sm),
+                _DetailShimmerBox(width: 260, height: 13),
+                SizedBox(height: AppSpacing.xl),
+                _DetailShimmerBox(
+                  width: double.infinity,
+                  height: 140,
+                  radius: 18,
+                ),
+                SizedBox(height: AppSpacing.xl),
+                Row(
+                  children: [
+                    _DetailShimmerBox(width: 88, height: 18),
+                    SizedBox(width: AppSpacing.md),
+                    _DetailShimmerBox(width: 64, height: 18),
+                    Spacer(),
+                    _DetailShimmerBox(width: 74, height: 18),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailShimmerBox extends StatelessWidget {
+  const _DetailShimmerBox({
+    required this.width,
+    required this.height,
+    this.radius = 8,
+  });
+
+  final double width;
+  final double height;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(radius),
+      ),
     );
   }
 }

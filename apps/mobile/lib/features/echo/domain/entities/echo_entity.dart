@@ -18,34 +18,34 @@ enum EchoCategory {
   other;
 
   String get displayName => switch (this) {
-        EchoCategory.tech => 'Tech',
-        EchoCategory.finance => 'Finance',
-        EchoCategory.startups => 'Startups',
-        EchoCategory.socialIssues => 'Social Issues',
-        EchoCategory.web3 => 'Web3',
-        EchoCategory.ai => 'AI',
-        EchoCategory.gaming => 'Gaming',
-        EchoCategory.education => 'Education',
-        EchoCategory.other => 'Other',
-      };
+    EchoCategory.tech => 'Tech',
+    EchoCategory.finance => 'Finance',
+    EchoCategory.startups => 'Startups',
+    EchoCategory.socialIssues => 'Social Issues',
+    EchoCategory.web3 => 'Web3',
+    EchoCategory.ai => 'AI',
+    EchoCategory.gaming => 'Gaming',
+    EchoCategory.education => 'Education',
+    EchoCategory.other => 'Other',
+  };
 
   String get dbValue => switch (this) {
-        EchoCategory.socialIssues => 'social_issues',
-        _ => name,
-      };
+    EchoCategory.socialIssues => 'social_issues',
+    _ => name,
+  };
 
   /// maps db string value to enum
   static EchoCategory fromString(String value) => switch (value) {
-        'tech' => EchoCategory.tech,
-        'finance' => EchoCategory.finance,
-        'startups' => EchoCategory.startups,
-        'social_issues' => EchoCategory.socialIssues,
-        'web3' => EchoCategory.web3,
-        'ai' => EchoCategory.ai,
-        'gaming' => EchoCategory.gaming,
-        'education' => EchoCategory.education,
-        _ => EchoCategory.other,
-      };
+    'tech' => EchoCategory.tech,
+    'finance' => EchoCategory.finance,
+    'startups' => EchoCategory.startups,
+    'social_issues' => EchoCategory.socialIssues,
+    'web3' => EchoCategory.web3,
+    'ai' => EchoCategory.ai,
+    'gaming' => EchoCategory.gaming,
+    'education' => EchoCategory.education,
+    _ => EchoCategory.other,
+  };
 }
 
 /// trust tier matches sql trust_tier enum
@@ -57,29 +57,29 @@ enum TrustTier {
   elite;
 
   static TrustTier fromString(String value) => switch (value) {
-        'low' => TrustTier.low,
-        'medium' => TrustTier.medium,
-        'high' => TrustTier.high,
-        'elite' => TrustTier.elite,
-        _ => TrustTier.unverified,
-      };
+    'low' => TrustTier.low,
+    'medium' => TrustTier.medium,
+    'high' => TrustTier.high,
+    'elite' => TrustTier.elite,
+    _ => TrustTier.unverified,
+  };
 
   String get displayLabel => switch (this) {
-        TrustTier.unverified => 'Unverified',
-        TrustTier.low => 'Low',
-        TrustTier.medium => 'Medium',
-        TrustTier.high => 'High',
-        TrustTier.elite => 'Elite',
-      };
+    TrustTier.unverified => 'Unverified',
+    TrustTier.low => 'Low',
+    TrustTier.medium => 'Medium',
+    TrustTier.high => 'High',
+    TrustTier.elite => 'Elite',
+  };
 
   /// interaction weight this tier contributes
   int get weight => switch (this) {
-        TrustTier.elite => 5,
-        TrustTier.high => 4,
-        TrustTier.medium => 3,
-        TrustTier.low => 2,
-        TrustTier.unverified => 1,
-      };
+    TrustTier.elite => 5,
+    TrustTier.high => 4,
+    TrustTier.medium => 3,
+    TrustTier.low => 2,
+    TrustTier.unverified => 1,
+  };
 }
 
 /// the core domain entity representing a single echo (post)
@@ -107,6 +107,7 @@ class EchoEntity extends Equatable {
     this.requiresVerification = true,
     this.version = 1,
     this.replyCount = 0,
+    this.viewCount = 0,
     this.mediaUrls = const [],
     this.categoryDetail,
     this.userId = '',
@@ -159,6 +160,7 @@ class EchoEntity extends Equatable {
   final int supportCount;
   final int challengeCount;
   final int replyCount;
+  final int viewCount;
   final String userId;
   final String? createdRecordTx;
   final DateTime? createdRecordAt;
@@ -204,11 +206,13 @@ class EchoEntity extends Equatable {
       confidenceScore: (json['confidence_score'] as num).toDouble(),
       trustScore: json['trust_score'] as int,
       controversyScore: (json['controversy_score'] as num).toDouble(),
-      supportCount: ((json['context_support_count'] as num?) ??
+      supportCount:
+          ((json['context_support_count'] as num?) ??
                   (json['support_count'] as num?))
               ?.toInt() ??
           0,
-      challengeCount: ((json['context_challenge_count'] as num?) ??
+      challengeCount:
+          ((json['context_challenge_count'] as num?) ??
                   (json['challenge_count'] as num?))
               ?.toInt() ??
           0,
@@ -219,6 +223,7 @@ class EchoEntity extends Equatable {
       userIsPro: (json['user_is_pro'] as bool?) ?? false,
       mediaUrls: (json['media_urls'] as List?)?.cast<String>() ?? const [],
       replyCount: (json['reply_count'] as int?) ?? 0,
+      viewCount: (json['view_count'] as num?)?.toInt() ?? 0,
       userId: json['user_id'] as String? ?? '',
       createdRecordTx: json['created_record_tx'] as String?,
       createdRecordAt: _dateFromJson(json['created_record_at']),
@@ -248,7 +253,8 @@ class EchoEntity extends Equatable {
               json['top_context'] as Map<String, dynamic>,
             )
           : null,
-      previewReplies: (json['preview_replies'] as List?)
+      previewReplies:
+          (json['preview_replies'] as List?)
               ?.whereType<Map<String, dynamic>>()
               .map(EchoReplyPreview.fromJson)
               .toList() ??
@@ -283,6 +289,7 @@ class EchoEntity extends Equatable {
     bool? requiresVerification,
     int? version,
     int? replyCount,
+    int? viewCount,
     bool? userIsPro,
     List<String>? mediaUrls,
     String? userId,
@@ -330,6 +337,7 @@ class EchoEntity extends Equatable {
       requiresVerification: requiresVerification ?? this.requiresVerification,
       version: version ?? this.version,
       userIsPro: userIsPro ?? this.userIsPro,
+      viewCount: viewCount ?? this.viewCount,
       mediaUrls: mediaUrls ?? this.mediaUrls,
       userId: userId ?? this.userId,
       createdRecordTx: createdRecordTx ?? this.createdRecordTx,
@@ -361,51 +369,52 @@ class EchoEntity extends Equatable {
 
   @override
   List<Object?> get props => [
-        id,
-        title,
-        content,
-        username,
-        userDisplayName,
-        userTrustTier,
-        userIsVerified,
-        userAvatarUrl,
-        category,
-        categoryDetail,
-        status,
-        confidenceScore,
-        trustScore,
-        controversyScore,
-        supportCount,
-        challengeCount,
-        timeAgo,
-        proofCount,
-        requiresVerification,
-        version,
-        replyCount,
-        userId,
-        userIsPro,
-        mediaUrls,
-        createdRecordTx,
-        createdRecordAt,
-        solanaStatus,
-        solanaError,
-        verifiedRecordTx,
-        verifiedRecordAt,
-        verifiedRecordStatus,
-        verifiedRecordError,
-        bondCount,
-        socialContext,
-        publicVerdict,
-        publicVerdictAt,
-        publicContextClosesAt,
-        publicContextMinCount,
-        publicContextDecisionReason,
-        contextScore,
-        contextSupportCount,
-        contextChallengeCount,
-        topContext,
-        previewReplies,
-      ];
+    id,
+    title,
+    content,
+    username,
+    userDisplayName,
+    userTrustTier,
+    userIsVerified,
+    userAvatarUrl,
+    category,
+    categoryDetail,
+    status,
+    confidenceScore,
+    trustScore,
+    controversyScore,
+    supportCount,
+    challengeCount,
+    timeAgo,
+    proofCount,
+    requiresVerification,
+    version,
+    replyCount,
+    viewCount,
+    userId,
+    userIsPro,
+    mediaUrls,
+    createdRecordTx,
+    createdRecordAt,
+    solanaStatus,
+    solanaError,
+    verifiedRecordTx,
+    verifiedRecordAt,
+    verifiedRecordStatus,
+    verifiedRecordError,
+    bondCount,
+    socialContext,
+    publicVerdict,
+    publicVerdictAt,
+    publicContextClosesAt,
+    publicContextMinCount,
+    publicContextDecisionReason,
+    contextScore,
+    contextSupportCount,
+    contextChallengeCount,
+    topContext,
+    previewReplies,
+  ];
 }
 
 class EchoContextPreview extends Equatable {
@@ -441,7 +450,8 @@ class EchoContextPreview extends Equatable {
       content: json['content'] as String? ?? '',
       stance: json['stance'] as String? ?? 'support',
       username: json['username'] as String? ?? 'unknown',
-      displayName: json['display_name'] as String? ??
+      displayName:
+          json['display_name'] as String? ??
           json['username'] as String? ??
           'unknown',
       userId: json['user_id'] as String? ?? '',
@@ -455,18 +465,18 @@ class EchoContextPreview extends Equatable {
 
   @override
   List<Object?> get props => [
-        id,
-        content,
-        stance,
-        username,
-        displayName,
-        userId,
-        avatarUrl,
-        userIsPro,
-        likeCount,
-        mediaUrls,
-        createdAt,
-      ];
+    id,
+    content,
+    stance,
+    username,
+    displayName,
+    userId,
+    avatarUrl,
+    userIsPro,
+    likeCount,
+    mediaUrls,
+    createdAt,
+  ];
 }
 
 class EchoReplyPreview extends Equatable {
@@ -481,6 +491,7 @@ class EchoReplyPreview extends Equatable {
     this.userIsVerified = false,
     this.userIsPro = false,
     this.isLiked = false,
+    this.isFromFollowed = false,
     this.likeCount = 0,
     this.childReplyCount = 0,
     this.createdAt,
@@ -496,6 +507,7 @@ class EchoReplyPreview extends Equatable {
   final bool userIsVerified;
   final bool userIsPro;
   final bool isLiked;
+  final bool isFromFollowed;
   final int likeCount;
   final int childReplyCount;
   final DateTime? createdAt;
@@ -505,7 +517,8 @@ class EchoReplyPreview extends Equatable {
       id: json['id'] as String? ?? '',
       content: json['content'] as String? ?? '',
       username: json['username'] as String? ?? 'unknown',
-      displayName: json['display_name'] as String? ??
+      displayName:
+          json['display_name'] as String? ??
           json['username'] as String? ??
           'unknown',
       userId: json['user_id'] as String? ?? '',
@@ -514,6 +527,7 @@ class EchoReplyPreview extends Equatable {
       userIsVerified: json['user_is_verified'] as bool? ?? false,
       userIsPro: json['user_is_pro'] as bool? ?? false,
       isLiked: json['is_liked'] as bool? ?? false,
+      isFromFollowed: json['is_from_followed'] as bool? ?? false,
       likeCount: (json['like_count'] as num?)?.toInt() ?? 0,
       childReplyCount: (json['child_reply_count'] as num?)?.toInt() ?? 0,
       createdAt: EchoEntity._dateFromJson(json['created_at']),
@@ -522,18 +536,19 @@ class EchoReplyPreview extends Equatable {
 
   @override
   List<Object?> get props => [
-        id,
-        content,
-        username,
-        displayName,
-        userId,
-        avatarUrl,
-        userTrustTier,
-        userIsVerified,
-        userIsPro,
-        isLiked,
-        likeCount,
-        childReplyCount,
-        createdAt,
-      ];
+    id,
+    content,
+    username,
+    displayName,
+    userId,
+    avatarUrl,
+    userTrustTier,
+    userIsVerified,
+    userIsPro,
+    isLiked,
+    isFromFollowed,
+    likeCount,
+    childReplyCount,
+    createdAt,
+  ];
 }

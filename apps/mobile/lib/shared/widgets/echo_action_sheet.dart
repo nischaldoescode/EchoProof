@@ -1,9 +1,8 @@
-// echo action sheet report, share, copy link
+// echo action sheet report and moderation actions
 // themed to match echoproof design system
 // no riverpod uses supabase instance directly
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../app/theme/colors.dart';
 import '../../app/theme/spacing.dart';
@@ -89,7 +88,10 @@ class _EchoActionSheet extends StatelessWidget {
                 },
               ),
               const Divider(
-                  height: 1, indent: AppSpacing.lg, endIndent: AppSpacing.lg),
+                height: 1,
+                indent: AppSpacing.lg,
+                endIndent: AppSpacing.lg,
+              ),
             ] else ...[
               _SheetTile(
                 icon: Icons.visibility_off_outlined,
@@ -107,7 +109,10 @@ class _EchoActionSheet extends StatelessWidget {
                 },
               ),
               const Divider(
-                  height: 1, indent: AppSpacing.lg, endIndent: AppSpacing.lg),
+                height: 1,
+                indent: AppSpacing.lg,
+                endIndent: AppSpacing.lg,
+              ),
               _SheetTile(
                 icon: Icons.block_rounded,
                 label: authorUsername.isEmpty
@@ -127,7 +132,10 @@ class _EchoActionSheet extends StatelessWidget {
                 },
               ),
               const Divider(
-                  height: 1, indent: AppSpacing.lg, endIndent: AppSpacing.lg),
+                height: 1,
+                indent: AppSpacing.lg,
+                endIndent: AppSpacing.lg,
+              ),
               _SheetTile(
                 icon: Icons.flag_outlined,
                 label: 'Report echo',
@@ -143,30 +151,11 @@ class _EchoActionSheet extends StatelessWidget {
                 },
               ),
               const Divider(
-                  height: 1, indent: AppSpacing.lg, endIndent: AppSpacing.lg),
+                height: 1,
+                indent: AppSpacing.lg,
+                endIndent: AppSpacing.lg,
+              ),
             ],
-            _SheetTile(
-              icon: Icons.ios_share_outlined,
-              label: 'Share echo',
-              iconColor: AppColors.charcoal,
-              onTap: () {
-                Navigator.pop(context);
-                showInfoSnack(parentContext, 'Share Coming Soon');
-              },
-            ),
-            const Divider(
-                height: 1, indent: AppSpacing.lg, endIndent: AppSpacing.lg),
-            _SheetTile(
-              icon: Icons.link_outlined,
-              label: 'Copy link',
-              iconColor: AppColors.charcoal,
-              onTap: () {
-                Navigator.pop(context);
-                final url = 'https://echoproof.online/echo/$echoId';
-                Clipboard.setData(ClipboardData(text: url));
-                showSuccessSnack(parentContext, 'Link copied');
-              },
-            ),
           ],
         ),
       ),
@@ -187,7 +176,9 @@ Future<void> _recordFeedback({
   if (authorId == userId) {
     if (parentContext.mounted) {
       showInfoSnack(
-          parentContext, 'You cannot hide your own echo from yourself.');
+        parentContext,
+        'You cannot hide your own echo from yourself.',
+      );
     }
     return;
   }
@@ -436,30 +427,32 @@ class _ReportSheetState extends State<_ReportSheet> {
                 style: AppTypography.textTheme.titleMedium,
               ),
             ),
-            ..._reasons.map((r) => InkWell(
-                  onTap: () => _submit(r.value),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.xl,
-                      vertical: AppSpacing.md,
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            r.label,
-                            style: AppTypography.textTheme.bodyMedium,
-                          ),
-                        ),
-                        const Icon(
-                          Icons.chevron_right,
-                          size: 18,
-                          color: AppColors.textTertiary,
-                        ),
-                      ],
-                    ),
+            ..._reasons.map(
+              (r) => InkWell(
+                onTap: () => _submit(r.value),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.xl,
+                    vertical: AppSpacing.md,
                   ),
-                )),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          r.label,
+                          style: AppTypography.textTheme.bodyMedium,
+                        ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right,
+                        size: 18,
+                        color: AppColors.textTertiary,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -498,8 +491,10 @@ void _confirmDeleteEcho({
                 ),
               ),
             ),
-            Text('Delete this echo?',
-                style: AppTypography.textTheme.titleMedium),
+            Text(
+              'Delete this echo?',
+              style: AppTypography.textTheme.titleMedium,
+            ),
             const SizedBox(height: AppSpacing.sm),
             Text(
               'Echo deletion is limited to 1 per day and is checked on the server before anything is removed.',

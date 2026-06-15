@@ -13,6 +13,7 @@ import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../../../core/services/ad_service.dart';
+import '../../../../core/utils/app_haptics.dart';
 import '../../../../shared/widgets/app_banner_ad.dart';
 import '../../../../shared/widgets/rating_prompt.dart';
 import '../../../subscription/presentation/services/subscription_service.dart';
@@ -126,6 +127,7 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
   final List<Offset> _trail = [];
   final List<_GameParticle> _particles = [];
   final List<_SignalReflector> _reflectors = [];
+  final List<_SignalReflectorPlan> _reflectorPlans = [];
 
   Size _arena = Size.zero;
   Offset _signal = Offset.zero;
@@ -173,12 +175,13 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
       if (!mounted) return;
       _prepareGameBreakAd();
     });
-    _ticker = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1000),
-    )
-      ..addListener(_tick)
-      ..repeat();
+    _ticker =
+        AnimationController(
+            vsync: this,
+            duration: const Duration(milliseconds: 1000),
+          )
+          ..addListener(_tick)
+          ..repeat();
   }
 
   @override
@@ -222,16 +225,144 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
     }
   }
 
+  double _arenaDifficulty(Size size) {
+    if (size == Size.zero) return 1;
+    final widthFactor = ((size.width - 390) / 390).clamp(0.0, 1.0).toDouble();
+    final heightFactor = ((size.height - 640) / 360).clamp(0.0, 1.0).toDouble();
+    return 1 + widthFactor * 0.14 + heightFactor * 0.10;
+  }
+
+  double _speedDifficulty(Size size) {
+    if (size == Size.zero) return 1;
+    final compactWidth = ((390 - size.width) / 120).clamp(0.0, 1.0).toDouble();
+    final compactHeight = ((640 - size.height) / 220)
+        .clamp(0.0, 1.0)
+        .toDouble();
+    final widePressure = ((size.width - 520) / 360).clamp(0.0, 1.0).toDouble();
+    final tallPressure = ((size.height - 780) / 420).clamp(0.0, 1.0).toDouble();
+    return (_arenaDifficulty(size) +
+            compactWidth * 0.28 +
+            compactHeight * 0.16 +
+            widePressure * 0.56 +
+            tallPressure * 0.38)
+        .clamp(1.22, 2.24)
+        .toDouble();
+  }
+
+  List<_SignalReflectorPlan> _createReflectorPlans(Size size) {
+    final difficulty = _speedDifficulty(size);
+    final largeShift = ((difficulty - 1) * 16).round();
+    final wideArena = size.width >= 520 || size.height >= 760;
+    const patterns = <List<Offset>>[
+      [
+        Offset(0.31, 0.43),
+        Offset(0.69, 0.61),
+        Offset(0.50, 0.34),
+        Offset(0.53, 0.53),
+      ],
+      [
+        Offset(0.57, 0.39),
+        Offset(0.28, 0.58),
+        Offset(0.71, 0.47),
+        Offset(0.45, 0.66),
+      ],
+      [
+        Offset(0.42, 0.52),
+        Offset(0.72, 0.37),
+        Offset(0.30, 0.66),
+        Offset(0.58, 0.55),
+      ],
+      [
+        Offset(0.66, 0.49),
+        Offset(0.35, 0.34),
+        Offset(0.52, 0.64),
+        Offset(0.76, 0.58),
+      ],
+    ];
+    final pattern = patterns[_rng.nextInt(patterns.length)];
+    final mirror = _rng.nextBool();
+
+    _SignalReflectorPlan plan({
+      required int id,
+      required int baseUnlock,
+      required int variance,
+      required Offset anchor,
+      required double widthFactor,
+      required double maxWidth,
+      required double drift,
+    }) {
+      final jitter = _rng.nextInt(variance + 1);
+      final unlock = math.max(3, baseUnlock + jitter - largeShift);
+      final baseX = mirror ? 1 - anchor.dx : anchor.dx;
+      return _SignalReflectorPlan(
+        id: id,
+        unlockScore: unlock,
+        x: (baseX + (_rng.nextDouble() - 0.5) * 0.16)
+            .clamp(0.22, 0.78)
+            .toDouble(),
+        y: (anchor.dy + (_rng.nextDouble() - 0.5) * 0.14)
+            .clamp(0.30, 0.70)
+            .toDouble(),
+        widthFactor: widthFactor,
+        maxWidth: maxWidth,
+        drift: drift * (0.88 + _rng.nextDouble() * 0.38),
+      );
+    }
+
+    return [
+      plan(
+        id: 1,
+        baseUnlock: 3,
+        variance: 6,
+        anchor: pattern[0],
+        widthFactor: 0.27,
+        maxWidth: 144,
+        drift: 0.024,
+      ),
+      plan(
+        id: 2,
+        baseUnlock: 10,
+        variance: 7,
+        anchor: pattern[1],
+        widthFactor: 0.24,
+        maxWidth: 128,
+        drift: 0.026,
+      ),
+      plan(
+        id: 3,
+        baseUnlock: 19,
+        variance: 9,
+        anchor: pattern[2],
+        widthFactor: 0.20,
+        maxWidth: 112,
+        drift: 0.021,
+      ),
+      if (wideArena)
+        plan(
+          id: 4,
+          baseUnlock: 14,
+          variance: 11,
+          anchor: pattern[3],
+          widthFactor: 0.18,
+          maxWidth: 106,
+          drift: 0.019,
+        ),
+    ];
+  }
+
   void _start(Size size) {
     if (size.width <= 0 || size.height <= 0) return;
-    HapticFeedback.selectionClick();
+    unawaited(AppHaptics.gameStart());
+    final difficulty = _speedDifficulty(size);
     setState(() {
       _arena = size;
       _runToken++;
       _signal = Offset(size.width * 0.5, size.height * 0.34);
       _velocity = Offset(
-        (_rng.nextBool() ? 1 : -1) * (168 + _rng.nextDouble() * 64),
-        -250,
+        (_rng.nextBool() ? 1 : -1) *
+            (252 + _rng.nextDouble() * 112) *
+            difficulty,
+        -364 * difficulty,
       );
       _paddleCenter = 0.5;
       _score = 0;
@@ -258,6 +389,9 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
       _trail.clear();
       _particles.clear();
       _reflectors.clear();
+      _reflectorPlans
+        ..clear()
+        ..addAll(_createReflectorPlans(size));
       _runStartedAt = DateTime.now();
       _lastTick = DateTime.now();
     });
@@ -293,9 +427,8 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
     final paddleWidth = _paddleWidth(_arena.width);
     final paddleY = _arena.height - 76;
     final paddleX = _paddleCenter * _arena.width;
-    final next = _signal + _velocity * effectiveDt;
     var velocity = _velocity;
-    var signal = next;
+    var signal = _signal;
     var score = _score;
     var combo = _combo;
     var perfectStreak = _perfectStreak;
@@ -309,38 +442,27 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
       velocity = Offset(velocity.dx + drift, velocity.dy);
     }
 
-    if (signal.dx <= radius) {
-      signal = Offset(radius, signal.dy);
-      velocity = Offset(velocity.dx.abs(), velocity.dy);
-    } else if (signal.dx >= _arena.width - radius) {
-      signal = Offset(_arena.width - radius, signal.dy);
-      velocity = Offset(-velocity.dx.abs(), velocity.dy);
-    }
-
-    if (signal.dy <= radius) {
-      signal = Offset(signal.dx, radius);
-      velocity = Offset(velocity.dx, velocity.dy.abs());
-    }
-
-    final reflectorHit = _resolveReflectorHit(
+    final physics = _advanceSignal(
       now: now,
-      previous: _signal,
       signal: signal,
       velocity: velocity,
+      dt: effectiveDt,
       radius: radius,
     );
-    signal = reflectorHit.signal;
-    velocity = reflectorHit.velocity;
-    if (reflectorHit.hit) {
+    signal = physics.signal;
+    velocity = physics.velocity;
+    if (physics.hit) {
       _softClick();
-      HapticFeedback.selectionClick();
+      unawaited(AppHaptics.gameReflector());
     }
 
-    final paddleHit = velocity.dy > 0 &&
+    final paddleHit =
+        velocity.dy > 0 &&
         _signal.dy <= paddleY &&
         signal.dy + radius >= paddleY &&
         (signal.dx - paddleX).abs() <= paddleWidth / 2 + radius;
-    final crossedPaddle = velocity.dy > 0 &&
+    final crossedPaddle =
+        velocity.dy > 0 &&
         _signal.dy <= paddleY &&
         signal.dy + radius >= paddleY;
 
@@ -354,10 +476,14 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
       focus = math.min(100, focus + (isPerfect ? 24 : 7));
       final focusBonus = focusActive ? 2 : 0;
       score += 1 + (isPerfect ? 1 : 0) + (combo >= 4 ? 1 : 0) + focusBonus;
-      final speedUp = math.min(1.10 + score * 0.006, 1.42);
+      final difficulty = _speedDifficulty(_arena);
+      final speedUp = math.min(
+        1.38 + score * 0.016 + (difficulty - 1) * 0.62,
+        2.24,
+      );
       velocity = _capVelocity(
         Offset(
-          offset * (255 + score * 6.2),
+          offset * (318 + score * 10.4) * math.min(difficulty, 1.34),
           -velocity.dy.abs() * speedUp,
         ),
       );
@@ -371,29 +497,26 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
         _focusModeUntil = now.add(const Duration(seconds: 10));
         _shakeUntil = now.add(const Duration(milliseconds: 160));
         _setFieldNote('focus mode');
+        unawaited(AppHaptics.gameFocus());
       }
       if (isPerfect || combo >= 4) {
         _shakeUntil = now.add(const Duration(milliseconds: 110));
       }
       _softClick();
-      if (isPerfect) {
-        HapticFeedback.selectionClick();
-      } else {
-        HapticFeedback.lightImpact();
-      }
+      unawaited(AppHaptics.gamePaddle(perfect: isPerfect, combo: combo));
     } else if (crossedPaddle && !_nearMissMarked) {
       final edgeDistance = (signal.dx - paddleX).abs() - (paddleWidth / 2);
       if (edgeDistance > radius && edgeDistance <= radius + 7) {
         _nearMissMarked = true;
         _setFieldNote('close');
-        HapticFeedback.selectionClick();
+        unawaited(AppHaptics.gameNearMiss());
       }
     }
 
     if (signal.dy > _arena.height + radius) {
       ended = true;
       _softAlert();
-      HapticFeedback.heavyImpact();
+      unawaited(AppHaptics.gameOver());
     }
 
     if (!ended) {
@@ -441,6 +564,10 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
     final height = _arena.height;
     final barHeight = width < 390 ? 9.0 : 11.0;
     final targets = <_SignalReflectorSpec>[];
+    if (_reflectorPlans.isEmpty) {
+      _reflectorPlans.addAll(_createReflectorPlans(_arena));
+    }
+    final seconds = DateTime.now().millisecondsSinceEpoch / 1000.0;
 
     Offset center(double x, double y) {
       return Offset(
@@ -449,33 +576,24 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
       );
     }
 
-    if (score >= 8) {
+    for (final plan in _reflectorPlans) {
+      if (score < plan.unlockScore) continue;
+      if (plan.id == 3 && width < 340) continue;
+      final liveShift = ((score - plan.unlockScore + 1) / 8)
+          .clamp(0.0, 1.0)
+          .toDouble();
+      final phase = seconds * 0.45 + plan.id * 1.7;
+      final dx = math.sin(phase) * plan.drift * liveShift;
+      final dy = math.cos(phase * 0.8) * plan.drift * 0.45 * liveShift;
       targets.add(
         _SignalReflectorSpec(
-          id: 1,
-          unlockScore: 8,
-          center: center(0.32, 0.46),
-          size: Size(math.min(width * 0.27, 144), barHeight),
-        ),
-      );
-    }
-    if (score >= 18) {
-      targets.add(
-        _SignalReflectorSpec(
-          id: 2,
-          unlockScore: 18,
-          center: center(0.69, 0.61),
-          size: Size(math.min(width * 0.24, 128), barHeight),
-        ),
-      );
-    }
-    if (score >= 34 && width >= 340) {
-      targets.add(
-        _SignalReflectorSpec(
-          id: 3,
-          unlockScore: 34,
-          center: center(0.50, 0.34),
-          size: Size(math.min(width * 0.20, 112), barHeight),
+          id: plan.id,
+          unlockScore: plan.unlockScore,
+          center: center(plan.x + dx, plan.y + dy),
+          size: Size(
+            math.min(width * plan.widthFactor, plan.maxWidth),
+            barHeight,
+          ),
         ),
       );
     }
@@ -518,8 +636,64 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
 
     if (_reflectors.length > previousCount && _started && !_ended) {
       _setFieldNote(
-          _reflectors.length == 1 ? 'field reflects' : 'field shifts');
+        _reflectors.length == 1 ? 'field reflects' : 'field shifts',
+      );
     }
+  }
+
+  _ReflectorHit _advanceSignal({
+    required DateTime now,
+    required Offset signal,
+    required Offset velocity,
+    required double dt,
+    required double radius,
+  }) {
+    final travel = velocity.distance * dt;
+    final maxStep = math.max(0.65, radius * 0.055);
+    final stepCap = _liteMode ? 140 : 220;
+    final steps = travel <= maxStep
+        ? 1
+        : math.min(stepCap, math.max(2, (travel / maxStep).ceil()));
+    final stepDt = dt / steps;
+    var currentSignal = signal;
+    var currentVelocity = velocity;
+    var didHit = false;
+
+    // small steps stop fast frames from skipping thin reflectors
+    for (var i = 0; i < steps; i++) {
+      final previous = currentSignal;
+      currentSignal = previous + currentVelocity * stepDt;
+
+      if (currentSignal.dx <= radius) {
+        currentSignal = Offset(radius, currentSignal.dy);
+        currentVelocity = Offset(currentVelocity.dx.abs(), currentVelocity.dy);
+      } else if (currentSignal.dx >= _arena.width - radius) {
+        currentSignal = Offset(_arena.width - radius, currentSignal.dy);
+        currentVelocity = Offset(-currentVelocity.dx.abs(), currentVelocity.dy);
+      }
+
+      if (currentSignal.dy <= radius) {
+        currentSignal = Offset(currentSignal.dx, radius);
+        currentVelocity = Offset(currentVelocity.dx, currentVelocity.dy.abs());
+      }
+
+      final reflectorHit = _resolveReflectorHit(
+        now: now,
+        previous: previous,
+        signal: currentSignal,
+        velocity: currentVelocity,
+        radius: radius,
+      );
+      currentSignal = reflectorHit.signal;
+      currentVelocity = reflectorHit.velocity;
+      didHit = didHit || reflectorHit.hit;
+    }
+
+    return _ReflectorHit(
+      signal: currentSignal,
+      velocity: currentVelocity,
+      hit: didHit,
+    );
   }
 
   _ReflectorHit _resolveReflectorHit({
@@ -531,41 +705,66 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
   }) {
     for (final reflector in _reflectors) {
       final lastHit = reflector.lastHitAt;
-      if (lastHit != null && now.difference(lastHit).inMilliseconds < 140) {
+      if (lastHit != null && now.difference(lastHit).inMilliseconds < 20) {
+        final stillSeparating = reflector.rect
+            .inflate(radius + 14)
+            .contains(previous);
+        final movingBackIn = _movingTowardRect(
+          previous,
+          velocity,
+          reflector.rect,
+        );
+        if (!stillSeparating || movingBackIn) {
+          reflector.lastHitAt = null;
+        }
+      }
+      if (lastHit != null &&
+          reflector.lastHitAt != null &&
+          now.difference(lastHit).inMilliseconds < 20) {
         continue;
       }
 
       final rect = reflector.rect;
-      if (!rect.inflate(radius + 1).contains(signal)) continue;
+      final expandedRect = rect.inflate(radius + 18);
+      final sweepHit =
+          _segmentRectHit(previous, signal, expandedRect) ??
+          _segmentBandHit(previous, signal, expandedRect);
+      final hitPath = expandedRect.contains(signal) || sweepHit != null;
+      if (!hitPath) continue;
 
       var nextSignal = signal;
       var nextVelocity = velocity;
-      final fromTop =
-          previous.dy + radius <= rect.top && signal.dy + radius >= rect.top;
-      final fromBottom = previous.dy - radius >= rect.bottom &&
-          signal.dy - radius <= rect.bottom;
-      final fromLeft =
-          previous.dx + radius <= rect.left && signal.dx + radius >= rect.left;
-      final fromRight = previous.dx - radius >= rect.right &&
-          signal.dx - radius <= rect.right;
+      final hitNormal = sweepHit?.normal;
 
-      if (fromTop) {
-        nextSignal = Offset(signal.dx, rect.top - radius - 1);
+      if (hitNormal != null && hitNormal.dy < 0) {
+        nextSignal = Offset(
+          previous.dx + (signal.dx - previous.dx) * sweepHit!.time,
+          rect.top - radius - 1,
+        );
         nextVelocity = Offset(velocity.dx, -velocity.dy.abs());
-      } else if (fromBottom) {
-        nextSignal = Offset(signal.dx, rect.bottom + radius + 1);
+      } else if (hitNormal != null && hitNormal.dy > 0) {
+        nextSignal = Offset(
+          previous.dx + (signal.dx - previous.dx) * sweepHit!.time,
+          rect.bottom + radius + 1,
+        );
         nextVelocity = Offset(velocity.dx, velocity.dy.abs());
-      } else if (fromLeft) {
-        nextSignal = Offset(rect.left - radius - 1, signal.dy);
+      } else if (hitNormal != null && hitNormal.dx < 0) {
+        nextSignal = Offset(
+          rect.left - radius - 1,
+          previous.dy + (signal.dy - previous.dy) * sweepHit!.time,
+        );
         nextVelocity = Offset(-velocity.dx.abs(), velocity.dy);
-      } else if (fromRight) {
-        nextSignal = Offset(rect.right + radius + 1, signal.dy);
+      } else if (hitNormal != null && hitNormal.dx > 0) {
+        nextSignal = Offset(
+          rect.right + radius + 1,
+          previous.dy + (signal.dy - previous.dy) * sweepHit!.time,
+        );
         nextVelocity = Offset(velocity.dx.abs(), velocity.dy);
       } else {
-        final xWeight =
-            ((signal.dx - rect.center.dx).abs() / (rect.width / 2)).toDouble();
-        final yWeight =
-            ((signal.dy - rect.center.dy).abs() / (rect.height / 2)).toDouble();
+        final xWeight = ((signal.dx - rect.center.dx).abs() / (rect.width / 2))
+            .toDouble();
+        final yWeight = ((signal.dy - rect.center.dy).abs() / (rect.height / 2))
+            .toDouble();
         if (yWeight >= xWeight) {
           final direction = signal.dy < rect.center.dy ? -1.0 : 1.0;
           nextSignal = Offset(
@@ -611,13 +810,116 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
     return _ReflectorHit(signal: signal, velocity: velocity, hit: false);
   }
 
+  _SegmentRectHit? _segmentRectHit(Offset start, Offset end, Rect rect) {
+    final delta = end - start;
+    var tMin = 0.0;
+    var tMax = 1.0;
+    var normal = Offset.zero;
+
+    bool axis({
+      required double startValue,
+      required double deltaValue,
+      required double min,
+      required double max,
+      required Offset nearNormal,
+      required Offset farNormal,
+    }) {
+      if (deltaValue.abs() < 0.0001) {
+        return startValue >= min && startValue <= max;
+      }
+
+      var near = (min - startValue) / deltaValue;
+      var far = (max - startValue) / deltaValue;
+      var nearSide = nearNormal;
+      var farSide = farNormal;
+      if (near > far) {
+        final tmp = near;
+        near = far;
+        far = tmp;
+        final tmpSide = nearSide;
+        nearSide = farSide;
+        farSide = tmpSide;
+      }
+
+      if (near > tMin) {
+        tMin = near;
+        normal = nearSide;
+      }
+      if (far < tMax) {
+        tMax = far;
+      }
+      return tMin <= tMax;
+    }
+
+    final hitX = axis(
+      startValue: start.dx,
+      deltaValue: delta.dx,
+      min: rect.left,
+      max: rect.right,
+      nearNormal: const Offset(-1, 0),
+      farNormal: const Offset(1, 0),
+    );
+    if (!hitX) return null;
+    final hitY = axis(
+      startValue: start.dy,
+      deltaValue: delta.dy,
+      min: rect.top,
+      max: rect.bottom,
+      nearNormal: const Offset(0, -1),
+      farNormal: const Offset(0, 1),
+    );
+    if (!hitY || tMin < 0 || tMin > 1) return null;
+    return _SegmentRectHit(tMin, normal);
+  }
+
+  _SegmentRectHit? _segmentBandHit(Offset start, Offset end, Rect rect) {
+    final delta = end - start;
+    _SegmentRectHit? best;
+
+    void consider(double t, Offset normal) {
+      if (t < 0 || t > 1) return;
+      final point = start + delta * t;
+      if (!rect.contains(point)) return;
+      if (best == null || t < best!.time) {
+        best = _SegmentRectHit(t, normal);
+      }
+    }
+
+    // fallback for very fast frames crossing a thin reflector band
+    if (delta.dy.abs() > 0.0001) {
+      consider((rect.top - start.dy) / delta.dy, const Offset(0, -1));
+      consider((rect.bottom - start.dy) / delta.dy, const Offset(0, 1));
+    }
+    if (delta.dx.abs() > 0.0001) {
+      consider((rect.left - start.dx) / delta.dx, const Offset(-1, 0));
+      consider((rect.right - start.dx) / delta.dx, const Offset(1, 0));
+    }
+    return best;
+  }
+
+  bool _movingTowardRect(Offset point, Offset velocity, Rect rect) {
+    final nearest = Offset(
+      point.dx.clamp(rect.left, rect.right).toDouble(),
+      point.dy.clamp(rect.top, rect.bottom).toDouble(),
+    );
+    final toRect = nearest - point;
+    if (toRect.distanceSquared <= 0.01) return true;
+    return velocity.dx * toRect.dx + velocity.dy * toRect.dy > 0;
+  }
+
   Offset _capVelocity(Offset velocity) {
-    final maxSpeed = _liteMode ? 660.0 : 760.0;
+    final difficulty = _speedDifficulty(_arena);
+    final baseMaxSpeed = _liteMode ? 820.0 : 1020.0;
+    final maxSpeed = math.min(
+      baseMaxSpeed * difficulty,
+      _liteMode ? 1040.0 : 1480.0,
+    );
     final speed = velocity.distance;
     var capped = speed > maxSpeed ? velocity * (maxSpeed / speed) : velocity;
-    if (capped.dy.abs() < 168) {
+    final minVertical = 224.0 * math.min(difficulty, 1.36);
+    if (capped.dy.abs() < minVertical) {
       final direction = capped.dy < 0 ? -1.0 : 1.0;
-      capped = Offset(capped.dx, direction * 168);
+      capped = Offset(capped.dx, direction * minVertical);
     }
     return capped;
   }
@@ -634,11 +936,11 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
   void _burst(Offset origin, {required bool isPerfect}) {
     final amount = _liteMode
         ? isPerfect
-            ? 4
-            : 2
+              ? 4
+              : 2
         : isPerfect
-            ? 8
-            : 4;
+        ? 8
+        : 4;
     final color = isPerfect ? _fieldTheme.highlight : _accent;
     for (var i = 0; i < amount; i++) {
       final angle = _rng.nextDouble() * math.pi * 2;
@@ -759,8 +1061,9 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
       if (token == _runToken) {
         _fragmentsEarned = earned;
         _dailyCompletedThisRun = completedDaily;
-        _unlockedFieldThisRun =
-            oldField.name == newField.name ? null : newField.name;
+        _unlockedFieldThisRun = oldField.name == newField.name
+            ? null
+            : newField.name;
       }
     });
   }
@@ -769,8 +1072,9 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
     final token = _runToken;
     final score = _score;
     final started = _runStartedAt;
-    final runMs =
-        started == null ? 0 : DateTime.now().difference(started).inMilliseconds;
+    final runMs = started == null
+        ? 0
+        : DateTime.now().difference(started).inMilliseconds;
     setState(() => _submittingScore = true);
     await _awardProgress(score, token);
     final result = await _scoreService.submitScore(score: score, runMs: runMs);
@@ -829,8 +1133,9 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
       _start(_arena);
     }
     setState(() {
-      _paddleCenter =
-          (localPosition.dx / _arena.width).clamp(0.08, 0.92).toDouble();
+      _paddleCenter = (localPosition.dx / _arena.width)
+          .clamp(0.08, 0.92)
+          .toDouble();
     });
   }
 
@@ -882,6 +1187,9 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
 
   double _paddleWidth(double width) {
     final base = width.clamp(320.0, 760.0).toDouble() * 0.25;
+    final difficulty = _arena == Size.zero
+        ? 1.0
+        : _arenaDifficulty(Size(width, _arena.height));
     final scoreScale = switch (_score) {
       >= 65 => 0.64,
       >= 44 => 0.70,
@@ -891,7 +1199,10 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
       _ => 1.0,
     };
     final fieldEase = _fragments >= 180 ? 0.03 : 0.0;
-    return base * math.min(0.98, scoreScale + fieldEase);
+    final largeScreenPenalty = 1 - (difficulty - 1) * 0.82;
+    return base *
+        math.min(0.98, scoreScale + fieldEase) *
+        largeScreenPenalty.clamp(0.80, 1.0).toDouble();
   }
 
   int get _phase {
@@ -1041,8 +1352,9 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
                           width: width,
                           height: arenaSize.height,
                           child: Transform.translate(
-                            offset:
-                                renderLite ? Offset.zero : _screenShakeOffset,
+                            offset: renderLite
+                                ? Offset.zero
+                                : _screenShakeOffset,
                             child: Stack(
                               children: [
                                 Positioned.fill(
@@ -1063,8 +1375,9 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
                                       phase: _phase,
                                       time: _ticker.value,
                                       hitPulse: renderLite ? 0 : _hitPulse,
-                                      focusActive:
-                                          _isFocusActiveAt(DateTime.now()),
+                                      focusActive: _isFocusActiveAt(
+                                        DateTime.now(),
+                                      ),
                                       signalRadius: _signalRadius,
                                       theme: theme,
                                       renderLite: renderLite,
@@ -1089,6 +1402,16 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
                                     strong: true,
                                   ),
                                 ),
+                                if (_isPlaying)
+                                  Positioned(
+                                    right: AppSpacing.lg,
+                                    top: AppSpacing.lg,
+                                    child: _GamePill(
+                                      label: 'best',
+                                      value: '$_highScore',
+                                      color: _fieldTheme.highlight,
+                                    ),
+                                  ),
                                 if (_isPlaying)
                                   Positioned(
                                     left: width * 0.5 - 70,
@@ -1119,8 +1442,9 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
                                 if (!_started || _ended || _paused)
                                   Center(
                                     child: AnimatedSwitcher(
-                                      duration:
-                                          const Duration(milliseconds: 240),
+                                      duration: const Duration(
+                                        milliseconds: 240,
+                                      ),
                                       child: _GamePrompt(
                                         key: ValueKey('$_ended$_paused$_score'),
                                         ended: _ended,
@@ -1185,6 +1509,26 @@ class _GameParticle {
   double age = 0;
 }
 
+class _SignalReflectorPlan {
+  const _SignalReflectorPlan({
+    required this.id,
+    required this.unlockScore,
+    required this.x,
+    required this.y,
+    required this.widthFactor,
+    required this.maxWidth,
+    required this.drift,
+  });
+
+  final int id;
+  final int unlockScore;
+  final double x;
+  final double y;
+  final double widthFactor;
+  final double maxWidth;
+  final double drift;
+}
+
 class _SignalReflectorSpec {
   const _SignalReflectorSpec({
     required this.id,
@@ -1214,11 +1558,8 @@ class _SignalReflector {
   DateTime? lastHitAt;
   DateTime? hitUntil;
 
-  Rect get rect => Rect.fromCenter(
-        center: center,
-        width: size.width,
-        height: size.height,
-      );
+  Rect get rect =>
+      Rect.fromCenter(center: center, width: size.width, height: size.height);
 }
 
 class _ReflectorHit {
@@ -1231,6 +1572,13 @@ class _ReflectorHit {
   final Offset signal;
   final Offset velocity;
   final bool hit;
+}
+
+class _SegmentRectHit {
+  const _SegmentRectHit(this.time, this.normal);
+
+  final double time;
+  final Offset normal;
 }
 
 // paints a calm field with brief feedback instead of constant arcade glow
@@ -1295,17 +1643,18 @@ class _SignalGamePainter extends CustomPainter {
     final pulse = 0.5 + math.sin(time * math.pi * 2) * 0.5;
     if (!renderLite) {
       final topMist = Paint()
-        ..shader = RadialGradient(
-          colors: [
-            accent.withValues(alpha: focusActive ? 0.11 : 0.06),
-            Colors.transparent,
-          ],
-        ).createShader(
-          Rect.fromCircle(
-            center: Offset(size.width * 0.5, size.height * 0.22),
-            radius: size.shortestSide * 0.72,
-          ),
-        );
+        ..shader =
+            RadialGradient(
+              colors: [
+                accent.withValues(alpha: focusActive ? 0.11 : 0.06),
+                Colors.transparent,
+              ],
+            ).createShader(
+              Rect.fromCircle(
+                center: Offset(size.width * 0.5, size.height * 0.22),
+                radius: size.shortestSide * 0.72,
+              ),
+            );
       canvas.drawRect(rect, topMist);
     }
 
@@ -1320,14 +1669,16 @@ class _SignalGamePainter extends CustomPainter {
 
     for (final reflector in reflectors) {
       final reflectorRect = reflector.rect;
-      final hitActive = reflector.hitUntil != null &&
+      final hitActive =
+          reflector.hitUntil != null &&
           DateTime.now().isBefore(reflector.hitUntil!);
       final reflectorShape = RRect.fromRectAndRadius(
         reflectorRect,
         const Radius.circular(12),
       );
-      final fillAlpha =
-          hitActive ? (theme.dark ? 0.20 : 0.16) : (theme.dark ? 0.12 : 0.08);
+      final fillAlpha = hitActive
+          ? (theme.dark ? 0.20 : 0.16)
+          : (theme.dark ? 0.12 : 0.08);
       canvas.drawRRect(
         reflectorShape.inflate(hitActive && !renderLite ? 2 : 0),
         Paint()..color = theme.signal.withValues(alpha: fillAlpha),
@@ -1346,8 +1697,9 @@ class _SignalGamePainter extends CustomPainter {
           Paint()
             ..strokeWidth = 1
             ..strokeCap = StrokeCap.round
-            ..color =
-                theme.highlight.withValues(alpha: hitActive ? 0.24 : 0.12),
+            ..color = theme.highlight.withValues(
+              alpha: hitActive ? 0.24 : 0.12,
+            ),
         );
       }
     }
@@ -1360,8 +1712,9 @@ class _SignalGamePainter extends CustomPainter {
         point,
         renderLite ? 3 + alpha * 4 : 3 + alpha * 7,
         Paint()
-          ..color =
-              accent.withValues(alpha: alpha * (renderLite ? 0.05 : 0.08)),
+          ..color = accent.withValues(
+            alpha: alpha * (renderLite ? 0.05 : 0.08),
+          ),
       );
     }
 
@@ -1390,8 +1743,8 @@ class _SignalGamePainter extends CustomPainter {
     final signalPaint = Paint()
       ..color = paused
           ? (theme.dark
-              ? theme.text.withValues(alpha: 0.54)
-              : AppColors.textTertiary)
+                ? theme.text.withValues(alpha: 0.54)
+                : AppColors.textTertiary)
           : accent;
     final squashX = 1 + hitPulse * 0.28;
     final squashY = 1 - hitPulse * 0.18;
@@ -1419,14 +1772,16 @@ class _SignalGamePainter extends CustomPainter {
         const Radius.circular(16),
       ),
       Paint()
-        ..color =
-            accent.withValues(alpha: focusActive || combo >= 4 ? 0.13 : 0.07),
+        ..color = accent.withValues(
+          alpha: focusActive || combo >= 4 ? 0.13 : 0.07,
+        ),
     );
     canvas.drawRRect(
       RRect.fromRectAndRadius(paddleRect, const Radius.circular(10)),
       Paint()
-        ..color =
-            started && !ended && !paused ? accent : AppColors.textTertiary,
+        ..color = started && !ended && !paused
+            ? accent
+            : AppColors.textTertiary,
     );
   }
 
@@ -1454,10 +1809,7 @@ class _SignalGamePainter extends CustomPainter {
 }
 
 class _GameTopBar extends StatelessWidget {
-  const _GameTopBar({
-    required this.onBack,
-    required this.onReset,
-  });
+  const _GameTopBar({required this.onBack, required this.onReset});
 
   final VoidCallback onBack;
   final VoidCallback? onReset;
@@ -1538,8 +1890,9 @@ class _GamePill extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.88),
         borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-        border:
-            Border.all(color: color.withValues(alpha: strong ? 0.26 : 0.16)),
+        border: Border.all(
+          color: color.withValues(alpha: strong ? 0.26 : 0.16),
+        ),
         boxShadow: [
           BoxShadow(
             color: color.withValues(alpha: strong ? 0.10 : 0.05),
@@ -1617,10 +1970,7 @@ class _FocusMeter extends StatelessWidget {
 }
 
 class _ComboBurst extends StatelessWidget {
-  const _ComboBurst({
-    required this.note,
-    required this.color,
-  });
+  const _ComboBurst({required this.note, required this.color});
 
   final String note;
   final Color color;
@@ -1700,13 +2050,13 @@ class _GamePrompt extends StatelessWidget {
     final title = paused
         ? 'Field paused'
         : ended
-            ? 'Signal lost'
-            : 'Tap to begin';
+        ? 'Signal lost'
+        : 'Tap to begin';
     final subtitle = paused
         ? 'Resume when you are ready'
         : ended
-            ? _resultText
-            : 'slide anywhere to guide the signal';
+        ? _resultText
+        : 'slide anywhere to guide the signal';
     final waitingForScore = ended && submitting;
 
     return Container(
@@ -1844,11 +2194,13 @@ class _GamePrompt extends StatelessWidget {
                       Expanded(
                         child: ElevatedButton(
                           onPressed: paused ? onResume : onRestart,
-                          child: Text(paused
-                              ? 'Resume'
-                              : ended
-                                  ? 'Try again'
-                                  : 'Start'),
+                          child: Text(
+                            paused
+                                ? 'Resume'
+                                : ended
+                                ? 'Try again'
+                                : 'Start',
+                          ),
                         ),
                       ),
                       if (ended && showReviewButton) ...[
@@ -1883,10 +2235,7 @@ class _GamePrompt extends StatelessWidget {
 }
 
 class _SavingScoreAction extends StatelessWidget {
-  const _SavingScoreAction({
-    super.key,
-    required this.theme,
-  });
+  const _SavingScoreAction({super.key, required this.theme});
 
   final _SignalFieldTheme theme;
 
@@ -1917,10 +2266,7 @@ class _SavingScoreAction extends StatelessWidget {
 }
 
 class _ScoreTile extends StatelessWidget {
-  const _ScoreTile({
-    required this.label,
-    required this.value,
-  });
+  const _ScoreTile({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -1957,10 +2303,7 @@ class _ScoreTile extends StatelessWidget {
 }
 
 class _ExitSheet extends StatelessWidget {
-  const _ExitSheet({
-    required this.onResume,
-    required this.onLeave,
-  });
+  const _ExitSheet({required this.onResume, required this.onLeave});
 
   final VoidCallback onResume;
   final VoidCallback onLeave;
@@ -1991,14 +2334,8 @@ class _ExitSheet extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: AppSpacing.lg),
-          ElevatedButton(
-            onPressed: onResume,
-            child: const Text('Resume'),
-          ),
-          TextButton(
-            onPressed: onLeave,
-            child: const Text('Leave'),
-          ),
+          ElevatedButton(onPressed: onResume, child: const Text('Resume')),
+          TextButton(onPressed: onLeave, child: const Text('Leave')),
         ],
       ),
     );
