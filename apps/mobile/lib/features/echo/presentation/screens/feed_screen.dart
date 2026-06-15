@@ -901,40 +901,6 @@ class _FeedAppBarState extends State<_FeedAppBar> {
   }
 
   @override
-  State<_FeedAppBar> createState() => _FeedAppBarState();
-}
-
-class _FeedAppBarState extends State<_FeedAppBar> {
-  int _gameTapCount = 0;
-  DateTime? _lastGameTapAt;
-  Offset? _lastLogoGlobalPosition;
-
-  void _openSignalDrift([Offset? origin]) {
-    _gameTapCount = 0;
-    _lastGameTapAt = null;
-    HapticFeedback.selectionClick();
-    context.push('/signal-drift', extra: origin ?? _lastLogoGlobalPosition);
-  }
-
-  void _handleLogoTap() {
-    // ten quick taps is the fallback when long press is missed
-    final now = DateTime.now();
-    if (_lastGameTapAt == null ||
-        now.difference(_lastGameTapAt!) > const Duration(seconds: 3)) {
-      _gameTapCount = 0;
-    }
-    _lastGameTapAt = now;
-    _gameTapCount++;
-
-    if (_gameTapCount == 7) {
-      HapticFeedback.selectionClick();
-    }
-    if (_gameTapCount >= 10) {
-      _openSignalDrift();
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
     return AppBar(
       backgroundColor: Colors.white,
