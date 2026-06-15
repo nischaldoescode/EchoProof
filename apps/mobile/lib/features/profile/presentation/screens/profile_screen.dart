@@ -5751,6 +5751,230 @@ class _FollowUsersTabState extends State<_FollowUsersTab>
     );
   }
 
+  Future<bool> _confirmAction({
+    required String title,
+    required String message,
+    required String actionLabel,
+  }) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(context.l(title)),
+            content: Text(context.l(message)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text(context.l('Cancel')),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text(context.l(actionLabel)),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<void> _removeFollower(Map<String, dynamic> user) async {
+    final userId = user['id'] as String?;
+    if (userId == null || _busyUserIds.contains(userId)) return;
+
+    final confirmed = await _confirmAction(
+      title: 'Remove follower?',
+      message: 'They will no longer see private profile updates.',
+      actionLabel: 'Remove',
+    );
+    if (!confirmed || !mounted) return;
+
+    setState(() => _busyUserIds.add(userId));
+    try {
+      await Supabase.instance.client.rpc(
+        'remove_profile_follower',
+        params: {'p_follower_id': userId},
+      );
+      if (mounted) showInfoSnack(context, context.l('Follower removed'));
+      await _refresh();
+    } catch (e) {
+      if (mounted) {
+        showErrorSnack(context, context.l('Could not remove follower'));
+      }
+    } finally {
+      if (mounted) setState(() => _busyUserIds.remove(userId));
+    }
+  }
+
+  Future<void> _unfollow(Map<String, dynamic> user) async {
+    final userId = user['id'] as String?;
+    if (userId == null || _busyUserIds.contains(userId)) return;
+
+    final confirmed = await _confirmAction(
+      title: 'Unfollow account?',
+      message: 'Their public echoes will no longer be prioritized for you.',
+      actionLabel: 'Unfollow',
+    );
+    if (!confirmed || !mounted) return;
+
+    setState(() => _busyUserIds.add(userId));
+    try {
+      await Supabase.instance.client
+          .from('user_follows')
+          .delete()
+          .eq('follower_id', widget.ownerId)
+          .eq('following_id', userId);
+      if (mounted) showInfoSnack(context, context.l('Unfollowed'));
+      await _refresh();
+    } catch (e) {
+      if (mounted) showErrorSnack(context, context.l('Could not unfollow'));
+    } finally {
+      if (mounted) setState(() => _busyUserIds.remove(userId));
+    }
+  }
+
+  Future<void> _followBack(Map<String, dynamic> user) async {
+    final userId = user['id'] as String?;
+    if (userId == null || _busyUserIds.contains(userId)) return;
+
+    setState(() => _busyUserIds.add(userId));
+    try {
+      final client = Supabase.instance.client;
+      final isPublic = user['is_public'] as bool? ?? true;
+      if (isPublic) {
+        await client.from('user_follows').upsert({
+          'follower_id': widget.ownerId,
+          'following_id': userId,
+        }, onConflict: 'follower_id,following_id');
+        unawaited(_notifyProfileSocialEvent('new_follower', {
+          'target_id': userId,
+        }));
+        if (mounted) showSuccessSnack(context, context.l('Followed back'));
+      } else {
+        final row = await client
+            .from('follow_requests')
+            .upsert({
+              'requester_id': widget.ownerId,
+              'target_id': userId,
+              'status': 'pending',
+            }, onConflict: 'requester_id,target_id')
+            .select('id')
+            .single();
+        final requestId = row['id'] as String?;
+        if (requestId != null) {
+          unawaited(_notifyProfileSocialEvent('follow_request', {
+            'request_id': requestId,
+          }));
+        }
+        if (mounted) showSuccessSnack(context, context.l('Request sent'));
+      }
+      await _refresh();
+    } catch (e) {
+      if (mounted) showErrorSnack(context, context.l('Could not follow back'));
+    } finally {
+      if (mounted) setState(() => _busyUserIds.remove(userId));
+    }
+  }
+
+  bool _canManageUser(Map<String, dynamic> user) {
+    final userId = user['id'] as String?;
+    return widget.isOwner && userId != null && userId != widget.ownerId;
+  }
+
+  List<PopupMenuEntry<_FollowOwnerAction>> _ownerMenuItems(
+    BuildContext context,
+    Map<String, dynamic> user,
+  ) {
+    final userId = user['id'] as String?;
+    final busy = _busyUserIds.contains(userId);
+    final isFollowing = user['viewer_is_following'] as bool? ?? false;
+    final items = <PopupMenuEntry<_FollowOwnerAction>>[];
+
+    if (widget.mode == 'followers') {
+      if (!isFollowing) {
+        items.add(
+          PopupMenuItem<_FollowOwnerAction>(
+            value: _FollowOwnerAction.followBack,
+            enabled: !busy,
+            child: _FollowMenuRow(
+              icon: Icons.person_add_alt_1_rounded,
+              label: context.l('Follow back'),
+            ),
+          ),
+        );
+      }
+      items.add(
+        PopupMenuItem<_FollowOwnerAction>(
+          value: _FollowOwnerAction.removeFollower,
+          enabled: !busy,
+          child: _FollowMenuRow(
+            icon: Icons.person_remove_alt_1_outlined,
+            label: context.l('Remove follower'),
+            muted: true,
+          ),
+        ),
+      );
+    } else {
+      items.add(
+        PopupMenuItem<_FollowOwnerAction>(
+          value: _FollowOwnerAction.unfollow,
+          enabled: !busy,
+          child: _FollowMenuRow(
+            icon: Icons.person_remove_alt_1_outlined,
+            label: context.l('Unfollow'),
+            muted: true,
+          ),
+        ),
+      );
+    }
+
+    return items;
+  }
+
+  Future<void> _handleOwnerAction(
+    _FollowOwnerAction action,
+    Map<String, dynamic> user,
+  ) async {
+    switch (action) {
+      case _FollowOwnerAction.removeFollower:
+        await _removeFollower(user);
+      case _FollowOwnerAction.followBack:
+        await _followBack(user);
+      case _FollowOwnerAction.unfollow:
+        await _unfollow(user);
+    }
+  }
+
+  Widget _trailingFor(Map<String, dynamic> user) {
+    final userId = user['id'] as String?;
+    final busy = userId != null && _busyUserIds.contains(userId);
+    if (!_canManageUser(user)) {
+      return const Icon(
+        Icons.chevron_right_rounded,
+        color: AppColors.textTertiary,
+      );
+    }
+
+    if (busy) {
+      return const SizedBox(
+        width: 22,
+        height: 22,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: AppColors.fernGreen,
+        ),
+      );
+    }
+
+    return PopupMenuButton<_FollowOwnerAction>(
+      tooltip: context.l('Account actions'),
+      icon: const Icon(
+        Icons.more_horiz_rounded,
+        color: AppColors.textSecondary,
+      ),
+      onSelected: (action) => unawaited(_handleOwnerAction(action, user)),
+      itemBuilder: (context) => _ownerMenuItems(context, user),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
