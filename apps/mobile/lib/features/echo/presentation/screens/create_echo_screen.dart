@@ -23,6 +23,7 @@ import '../../../../core/utils/snack.dart';
 import '../../../../core/services/onnx_spam_checker.dart';
 import '../../../../core/utils/media_file_safety.dart';
 import '../../../../core/utils/sanitizer.dart';
+import '../../../../core/utils/ai_slop_guard.dart';
 import '../../../../core/localization/app_copy.dart';
 import '../widgets/link_preview_card.dart';
 import '../../../../shared/widgets/avatar_image_provider.dart';
@@ -196,6 +197,20 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
 
     if (_checkingLocalModeration || service.isSubmitting) return;
 
+    final aiSlop = AiSlopGuard.assess(
+      title: cleanTitle,
+      body: cleanContent,
+      allowShort: false,
+    );
+    if (aiSlop.isBlocked) {
+      showErrorSnack(context, context.l(aiSlop.message));
+      return;
+    }
+    if (aiSlop.shouldWarn) {
+      final proceed = await _showAiSlopDialog(aiSlop);
+      if (proceed != true) return;
+    }
+
     setState(() => _checkingLocalModeration = true);
     late final SpamCheckResult localModeration;
     try {
@@ -269,6 +284,36 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
             child: Text(
               context.l('Post anyway'),
               style: GoogleFonts.josefinSans(color: AppColors.sunsetCoral),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool?> _showAiSlopDialog(AiSlopAssessment result) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          context.l('Make it more yours?'),
+          style: GoogleFonts.josefinSans(fontWeight: FontWeight.w700),
+        ),
+        content: Text(
+          context.l(result.message),
+          style: GoogleFonts.josefinSans(fontSize: 13, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(context.l('Edit'), style: GoogleFonts.josefinSans()),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              context.l('Post anyway'),
+              style: GoogleFonts.josefinSans(color: AppColors.fernGreenDark),
             ),
           ),
         ],
@@ -992,6 +1037,11 @@ class _ContentMentionFieldState extends State<_ContentMentionField> {
                           height: 1.5,
                         ),
                         border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        focusedErrorBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
                         isDense: true,
                       ),
                       suggestionListDecoration: BoxDecoration(
@@ -2018,7 +2068,7 @@ class _MediaPickerRow extends StatelessWidget {
                                 width: 64,
                                 height: 64,
                                 fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => Container(
+                                errorBuilder: (_, _, _) => Container(
                                   width: 64,
                                   height: 64,
                                   color: AppColors.softSand,

@@ -5,7 +5,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:go_router/go_router.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:hyper_snackbar/hyper_snackbar.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
@@ -51,18 +53,62 @@ class NotificationService extends ChangeNotifier {
   bool _isLoading = false;
   bool get isLoading => _isLoading;
 
+  final Set<String> _pendingSwipeDeleteIds = {};
+  final Set<String> _locallyDeletedIds = {};
+
   RealtimeChannel? _channel;
   String? _subscribedUserId;
+  bool _notifyQueued = false;
+  bool _disposed = false;
 
   int get unreadCount => _notifications.where((n) => !n.read).length;
 
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    final phase = SchedulerBinding.instance.schedulerPhase;
+    final canNotifyNow =
+        phase == SchedulerPhase.idle ||
+        phase == SchedulerPhase.postFrameCallbacks;
+    if (canNotifyNow) {
+      super.notifyListeners();
+      return;
+    }
+    if (_notifyQueued) return;
+    _notifyQueued = true;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _notifyQueued = false;
+      if (_disposed) return;
+      super.notifyListeners();
+    });
+  }
+
   bool get hasUnreadFollowerEcho =>
       _notifications.any((n) => !n.read && n.type == 'new_follower_echo');
+
+  String _localDeletedKey(String userId) => 'notifications_deleted_v1_$userId';
+
+  void _loadLocalDeletedIds(String userId) {
+    if (!Hive.isBoxOpen('app_settings')) return;
+    final raw = Hive.box('app_settings').get(_localDeletedKey(userId));
+    _locallyDeletedIds
+      ..clear()
+      ..addAll(raw is List ? raw.whereType<String>() : const <String>[]);
+  }
+
+  void _rememberLocalDelete(String userId, String notificationId) {
+    if (notificationId.isEmpty) return;
+    _locallyDeletedIds.add(notificationId);
+    if (!Hive.isBoxOpen('app_settings')) return;
+    final compact = _locallyDeletedIds.take(200).toList(growable: false);
+    unawaited(Hive.box('app_settings').put(_localDeletedKey(userId), compact));
+  }
 
   Future<void> loadNotifications() async {
     final client = Supabase.instance.client;
     final userId = client.auth.currentUser?.id;
     if (userId == null) return;
+    _loadLocalDeletedIds(userId);
 
     _isLoading = true;
     notifyListeners();
@@ -77,6 +123,7 @@ class NotificationService extends ChangeNotifier {
 
       _notifications = (rows as List)
           .map((row) => _mapRow(row as Map<String, dynamic>))
+          .where((item) => !_locallyDeletedIds.contains(item.id))
           .toList();
       startRealtime();
 
@@ -102,6 +149,137 @@ class NotificationService extends ChangeNotifier {
 
     _notifications = _notifications.map((n) => n.copyWith(read: true)).toList();
     notifyListeners();
+  }
+
+  Future<bool> deleteNotification(
+    NotificationItem item, {
+    bool optimistic = true,
+  }) async {
+    final userId = _currentUserId();
+    final index = _notifications.indexWhere((n) => n.id == item.id);
+    if (index < 0) return true;
+
+    if (optimistic) {
+      final next = [..._notifications]..removeAt(index);
+      _notifications = next;
+      notifyListeners();
+    }
+
+    if (userId == null) {
+      if (!optimistic) {
+        final next = [..._notifications]..removeAt(index);
+        _notifications = next;
+        notifyListeners();
+      }
+      return true;
+    }
+    _rememberLocalDelete(userId, item.id);
+
+    try {
+      final deleted = await _deleteRemoteRow(item, userId);
+      if (!deleted) {
+        AppLogger.warn('notifications: remote delete returned no rows');
+      }
+      if (!optimistic) {
+        final currentIndex = _notifications.indexWhere((n) => n.id == item.id);
+        if (currentIndex >= 0) {
+          final next = [..._notifications]..removeAt(currentIndex);
+          _notifications = next;
+          notifyListeners();
+        }
+      }
+      return true;
+    } catch (e) {
+      AppLogger.warn('notifications: delete failed $e');
+      if (optimistic && !_locallyDeletedIds.contains(item.id)) {
+        final restored = [..._notifications];
+        final restoreIndex = index.clamp(0, restored.length).toInt();
+        restored.insert(restoreIndex, item);
+        _notifications = restored;
+        notifyListeners();
+      }
+      return false;
+    }
+  }
+
+  void beginSwipeDelete(String notificationId) {
+    _pendingSwipeDeleteIds.add(notificationId);
+  }
+
+  void cancelSwipeDelete(String notificationId) {
+    _pendingSwipeDeleteIds.remove(notificationId);
+  }
+
+  void finishSwipeDelete(NotificationItem item) {
+    _pendingSwipeDeleteIds.remove(item.id);
+    final index = _notifications.indexWhere((n) => n.id == item.id);
+    if (index < 0) return;
+
+    final next = [..._notifications]..removeAt(index);
+    _notifications = next;
+    notifyListeners();
+  }
+
+  Future<bool> deleteNotificationRemote(NotificationItem item) async {
+    final userId = _currentUserId();
+    if (userId == null) return true;
+    _rememberLocalDelete(userId, item.id);
+
+    try {
+      final deleted = await _deleteRemoteRow(item, userId);
+      if (!deleted) {
+        AppLogger.warn('notifications: remote delete returned no rows');
+      }
+      return true;
+    } catch (e) {
+      AppLogger.warn('notifications: remote delete failed $e');
+      return true;
+    }
+  }
+
+  Future<bool> _deleteRemoteRow(NotificationItem item, String userId) async {
+    final client = Supabase.instance.client;
+    try {
+      final rpcDeleted =
+          await client.rpc(
+                'delete_own_notification',
+                params: {'p_notification_id': item.id},
+              )
+              as bool?;
+      if (rpcDeleted == true) return true;
+      if (rpcDeleted == false) {
+        return _notificationIsAlreadyGone(item.id, userId);
+      }
+    } catch (e) {
+      AppLogger.warn('notifications: delete rpc unavailable $e');
+    }
+
+    // fallback for older schemas while the migration rolls out
+    final rows = await client
+        .from('notifications')
+        .delete()
+        .eq('id', item.id)
+        .eq('user_id', userId)
+        .select('id');
+    if (rows.isNotEmpty) return true;
+    return _notificationIsAlreadyGone(item.id, userId);
+  }
+
+  Future<bool> _notificationIsAlreadyGone(
+    String notificationId,
+    String userId,
+  ) async {
+    final rows = await Supabase.instance.client
+        .from('notifications')
+        .select('id')
+        .eq('id', notificationId)
+        .eq('user_id', userId)
+        .limit(1);
+    final alreadyGone = (rows as List).isEmpty;
+    if (alreadyGone) {
+      AppLogger.info('notifications: delete already absent $notificationId');
+    }
+    return alreadyGone;
   }
 
   Future<void> openNotification(
@@ -347,6 +525,7 @@ class NotificationService extends ChangeNotifier {
           ),
           callback: (payload) {
             final item = _mapRow(payload.newRecord);
+            if (_locallyDeletedIds.contains(item.id)) return;
             if (_notifications.any((n) => n.id == item.id)) return;
             _notifications = [item, ..._notifications].take(50).toList();
             notifyListeners();
@@ -366,6 +545,25 @@ class NotificationService extends ChangeNotifier {
             final updated = _mapRow(payload.newRecord);
             _notifications = _notifications
                 .map((n) => n.id == updated.id ? updated : n)
+                .toList();
+            notifyListeners();
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.delete,
+          schema: 'public',
+          table: 'notifications',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: userId,
+          ),
+          callback: (payload) {
+            final id = payload.oldRecord['id'];
+            if (id is! String || id.isEmpty) return;
+            if (_pendingSwipeDeleteIds.contains(id)) return;
+            _notifications = _notifications
+                .where((notification) => notification.id != id)
                 .toList();
             notifyListeners();
           },
@@ -498,6 +696,7 @@ class NotificationService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     stopRealtime();
     super.dispose();
   }

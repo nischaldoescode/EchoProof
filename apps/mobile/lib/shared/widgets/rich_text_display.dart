@@ -147,9 +147,10 @@ class RichTextDisplay extends StatelessWidget {
 
   TextStyle _largeStyle(TextStyle base) {
     final size = base.fontSize ?? 14;
+    final baseHeight = base.height ?? 1.24;
     return base.copyWith(
-      fontSize: size + 4,
-      height: (base.height ?? 1.35) < 1.25 ? 1.25 : base.height,
+      fontSize: size + 2.5,
+      height: baseHeight.clamp(1.16, 1.30).toDouble(),
       fontWeight: base.fontWeight ?? FontWeight.w600,
     );
   }

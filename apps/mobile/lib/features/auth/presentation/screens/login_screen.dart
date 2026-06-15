@@ -107,6 +107,8 @@ class _LoginScreenState extends State<LoginScreen>
   Widget build(BuildContext context) {
     final isLoading = context.select<AuthService, bool>((a) => a.isLoading);
     final error = context.select<AuthService, String?>((a) => a.error);
+    final hasPendingDeepLink =
+        GoRouterState.of(context).uri.queryParameters['continue'] == '1';
 
     if (error != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -118,72 +120,135 @@ class _LoginScreenState extends State<LoginScreen>
 
     return Scaffold(
       backgroundColor: const Color(0xFFF3F8F4),
-      body: AnimatedBuilder(
-        animation: _breathCtrl,
-        builder: (context, _) {
-          return Stack(
-            children: [
-              Positioned.fill(
-                child: CustomPaint(
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: AnimatedBuilder(
+              animation: _breathCtrl,
+              builder: (context, _) {
+                return CustomPaint(
                   painter: _LoginBackdropPainter(progress: _breathCtrl.value),
-                ),
-              ),
-              SafeArea(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final isWide = constraints.maxWidth >= 720;
-                    final horizontal = isWide ? AppSpacing.xxl : AppSpacing.lg;
-                    final maxWidth = isWide ? 620.0 : 540.0;
-                    return Center(
-                      child: SingleChildScrollView(
-                        keyboardDismissBehavior:
-                            ScrollViewKeyboardDismissBehavior.onDrag,
-                        padding: EdgeInsets.fromLTRB(
-                          horizontal,
-                          AppSpacing.xl,
-                          horizontal,
-                          AppSpacing.xl + MediaQuery.paddingOf(context).bottom,
-                        ),
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(maxWidth: maxWidth),
-                          child: FadeTransition(
-                            opacity: _fade,
-                            child: SlideTransition(
-                              position: _slide,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  _LoginPanel(
-                                    formKey: _formKey,
-                                    emailCtrl: _emailCtrl,
-                                    agreed: _agreedToTerms,
-                                    isLoading: isLoading,
-                                    onAgreementChanged: (value) => setState(
-                                      () => _agreedToTerms = value,
-                                    ),
-                                    onSubmit: _submit,
-                                    onGoogle: _googleSignIn,
-                                  ),
-                                  const SizedBox(height: AppSpacing.xl),
-                                  _LoginFooter(
-                                    label: context.l(
-                                      'Your data is safe with us.',
-                                    ),
-                                    sublabel: context.tx('login.secureCopy'),
-                                  ),
-                                ],
+                );
+              },
+            ),
+          ),
+          SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isWide = constraints.maxWidth >= 720;
+                final horizontal = isWide ? AppSpacing.xxl : AppSpacing.lg;
+                final maxWidth = isWide ? 520.0 : 460.0;
+                return Center(
+                  child: SingleChildScrollView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: EdgeInsets.fromLTRB(
+                      horizontal,
+                      AppSpacing.xl,
+                      horizontal,
+                      AppSpacing.xl + MediaQuery.paddingOf(context).bottom,
+                    ),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: maxWidth),
+                      child: FadeTransition(
+                        opacity: _fade,
+                        child: SlideTransition(
+                          position: _slide,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (hasPendingDeepLink) ...[
+                                const _PendingDeepLinkBanner(),
+                                const SizedBox(height: AppSpacing.md),
+                              ],
+                              _LoginPanel(
+                                formKey: _formKey,
+                                emailCtrl: _emailCtrl,
+                                agreed: _agreedToTerms,
+                                isLoading: isLoading,
+                                onAgreementChanged: (value) =>
+                                    setState(() => _agreedToTerms = value),
+                                onSubmit: _submit,
+                                onGoogle: _googleSignIn,
                               ),
-                            ),
+                              const SizedBox(height: AppSpacing.xl),
+                              _LoginFooter(
+                                label: context.l('Your data is safe with us.'),
+                                sublabel: context.tx('login.secureCopy'),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                    );
-                  },
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PendingDeepLinkBanner extends StatelessWidget {
+  const _PendingDeepLinkBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 360),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, (1 - value) * 12),
+            child: child,
+          ),
+        );
+      },
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.9),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.fernGreenLight),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.fernGreenDark.withValues(alpha: 0.08),
+              blurRadius: 22,
+              offset: const Offset(0, 12),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.link_rounded,
+                color: AppColors.fernGreenDark,
+                size: 20,
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  context.l('Sign in to open that echo'),
+                  style: GoogleFonts.josefinSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.charcoal,
+                  ),
                 ),
               ),
             ],
-          );
-        },
+          ),
+        ),
       ),
     );
   }
@@ -340,16 +405,16 @@ class _LoginSubtitle extends StatelessWidget {
       TextSpan(
         style: style,
         children: [
-          const TextSpan(text: 'Sign in to continue your journey\n'),
-          const TextSpan(text: 'towards a more '),
+          TextSpan(text: '${context.tx('login.journeyLine')}\n'),
+          TextSpan(text: context.tx('login.journeyPrefix')),
           TextSpan(
-            text: 'trusted',
+            text: context.tx('login.journeyTrust'),
             style: style.copyWith(
               color: AppColors.fernGreenDark,
               fontWeight: FontWeight.w800,
             ),
           ),
-          const TextSpan(text: ' world.'),
+          TextSpan(text: context.tx('login.journeySuffix')),
         ],
       ),
     );
@@ -426,14 +491,14 @@ class _LoginPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
-    final horizontalPadding = width < 360 ? 22.0 : 28.0;
+    final horizontalPadding = width < 360 ? 18.0 : 22.0;
 
     return Container(
       padding: EdgeInsets.fromLTRB(
         horizontalPadding,
-        24,
+        18,
         horizontalPadding,
-        28,
+        20,
       ),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.96),
@@ -456,11 +521,11 @@ class _LoginPanel extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _PanelAccent(isLoading: isLoading),
-            const SizedBox(height: 42),
+            const SizedBox(height: 26),
             Text(
               context.tx('login.signIn'),
               style: GoogleFonts.josefinSans(
-                fontSize: 34,
+                fontSize: width < 360 ? 30 : 32,
                 height: 1.02,
                 fontWeight: FontWeight.w800,
                 color: const Color(0xFF183D35),
@@ -469,21 +534,21 @@ class _LoginPanel extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             const _LoginSubtitle(),
-            const SizedBox(height: 42),
-            _EmailField(ctrl: emailCtrl, enabled: !isLoading),
             const SizedBox(height: 24),
+            _EmailField(ctrl: emailCtrl, enabled: !isLoading),
+            const SizedBox(height: 16),
             _AgreementCheckbox(
               agreed: agreed,
               enabled: !isLoading,
               onChanged: onAgreementChanged,
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 18),
             _ContinueButton(
               isLoading: isLoading,
               enabled: agreed,
               onTap: onSubmit,
             ),
-            const SizedBox(height: 26),
+            const SizedBox(height: 18),
             Row(
               children: [
                 const Expanded(child: Divider(color: AppColors.borderSubtle)),
@@ -502,7 +567,7 @@ class _LoginPanel extends StatelessWidget {
                 const Expanded(child: Divider(color: AppColors.borderSubtle)),
               ],
             ),
-            const SizedBox(height: 26),
+            const SizedBox(height: 18),
             _GoogleButton(
               isLoading: isLoading,
               enabled: agreed,
@@ -557,7 +622,9 @@ class _PanelAccentState extends State<_PanelAccent>
                   ? 0.40 + math.sin(_controller.value * math.pi * 2) * 0.18
                   : 0.50;
               return CustomPaint(
-                painter: _PanelAccentPainter(progress: value.clamp(0.28, 0.72)),
+                painter: _PanelAccentPainter(
+                  progress: value.clamp(0.28, 0.72).toDouble(),
+                ),
               );
             },
           ),
@@ -662,12 +729,19 @@ class _EmailFieldState extends State<_EmailField> {
             prefixIcon: Icon(
               Icons.mail_outline_rounded,
               size: 27,
-              color: _focused ? AppColors.fernGreenDark : const Color(0xFF7C8490),
+              color: _focused
+                  ? AppColors.fernGreenDark
+                  : const Color(0xFF7C8490),
             ),
             border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
+            errorBorder: InputBorder.none,
+            focusedErrorBorder: InputBorder.none,
+            disabledBorder: InputBorder.none,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: AppSpacing.xl,
-              vertical: 22,
+              vertical: 15,
             ),
           ),
         ),
@@ -699,7 +773,7 @@ class _ContinueButton extends StatelessWidget {
           onTap: isLoading ? null : onTap,
           borderRadius: BorderRadius.circular(17),
           child: Ink(
-            height: 62,
+            height: 52,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(17),
               gradient: const LinearGradient(
@@ -731,7 +805,7 @@ class _ContinueButton extends StatelessWidget {
                             context.tx('login.continueEmail'),
                             textAlign: TextAlign.center,
                             style: GoogleFonts.josefinSans(
-                              fontSize: 17,
+                              fontSize: 16,
                               fontWeight: FontWeight.w800,
                               color: Colors.white,
                               letterSpacing: 0,
@@ -743,7 +817,7 @@ class _ContinueButton extends StatelessWidget {
                           child: Icon(
                             Icons.arrow_forward_rounded,
                             color: Colors.white.withValues(alpha: 0.96),
-                            size: 30,
+                            size: 27,
                           ),
                         ),
                       ],
@@ -779,7 +853,7 @@ class _GoogleButton extends StatelessWidget {
           onTap: isLoading ? null : onTap,
           borderRadius: BorderRadius.circular(17),
           child: Ink(
-            height: 62,
+            height: 52,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(17),
               border: Border.all(color: const Color(0xFFDADDD8), width: 1.1),
@@ -808,7 +882,7 @@ class _GoogleButton extends StatelessWidget {
                 Text(
                   context.tx('login.continueGoogle'),
                   style: GoogleFonts.josefinSans(
-                    fontSize: 17,
+                    fontSize: 16,
                     fontWeight: FontWeight.w800,
                     color: const Color(0xFF737B86),
                     letterSpacing: 0,
@@ -845,11 +919,11 @@ class _AgreementCheckbox extends StatelessWidget {
           AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
-            width: 27,
-            height: 27,
+            width: 22,
+            height: 22,
             decoration: BoxDecoration(
               color: agreed ? AppColors.fernGreen : Colors.white,
-              borderRadius: BorderRadius.circular(7),
+              borderRadius: BorderRadius.circular(6),
               border: Border.all(
                 color: agreed ? AppColors.fernGreen : const Color(0xFFBFC5CE),
                 width: 1.5,
@@ -869,7 +943,7 @@ class _AgreementCheckbox extends StatelessWidget {
                   ? const Icon(
                       Icons.check_rounded,
                       key: ValueKey('checked'),
-                      size: 20,
+                      size: 16,
                       color: Colors.white,
                     )
                   : const SizedBox(key: ValueKey('empty')),
@@ -981,7 +1055,7 @@ class _AnimatedGoogleIconState extends State<_AnimatedGoogleIcon>
 }
 
 class _LiquidLoader extends StatefulWidget {
-  const _LiquidLoader({super.key});
+  const _LiquidLoader();
 
   @override
   State<_LiquidLoader> createState() => _LiquidLoaderState();

@@ -122,7 +122,7 @@ class _SearchScreenState extends State<SearchScreen>
             'public_verdict_at, public_context_closes_at, '
             'public_context_min_count, public_context_decision_reason, '
             'reply_count, created_at, '
-            'users_public!inner(username, display_name, trust_tier, avatar_url, is_pro, is_public)',
+            'users_public!echoes_user_id_fkey!inner(username, display_name, trust_tier, avatar_url, is_pro, is_public)',
           )
           .not('status', 'in', '("hidden","rejected")')
           .eq('users_public.is_public', true);
@@ -322,6 +322,11 @@ class _SearchFieldState extends State<_SearchField> {
                 )
               : null,
           border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          errorBorder: InputBorder.none,
+          focusedErrorBorder: InputBorder.none,
+          disabledBorder: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(vertical: 10),
         ),
       ),
@@ -348,7 +353,7 @@ class _UserResults extends StatelessWidget {
     return ListView.separated(
       padding: const EdgeInsets.only(top: AppSpacing.sm, bottom: 96),
       itemCount: users.length,
-      separatorBuilder: (_, __) => const Divider(height: 1, indent: 72),
+      separatorBuilder: (_, _) => const Divider(height: 1, indent: 72),
       itemBuilder: (_, i) {
         return _AnimatedResult(
           index: i,

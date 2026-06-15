@@ -156,7 +156,7 @@ class _NotificationsHeader extends StatelessWidget {
   }
 }
 
-class _NotificationCard extends StatelessWidget {
+class _NotificationCard extends StatefulWidget {
   const _NotificationCard({
     required this.item,
     required this.index,
@@ -170,10 +170,24 @@ class _NotificationCard extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
+  State<_NotificationCard> createState() => _NotificationCardState();
+}
+
+class _NotificationCardState extends State<_NotificationCard> {
+  @override
   Widget build(BuildContext context) {
+    final service = context.read<NotificationService>();
+
+    final card = Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: _buildCardSurface(),
+    );
+
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
-      duration: Duration(milliseconds: 260 + (index.clamp(0, 5).toInt() * 35)),
+      duration: Duration(
+        milliseconds: 260 + (widget.index.clamp(0, 5).toInt() * 35),
+      ),
       curve: Curves.easeOutCubic,
       builder: (context, value, child) {
         return Opacity(
@@ -184,92 +198,173 @@ class _NotificationCard extends StatelessWidget {
           ),
         );
       },
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-        child: Material(
-          color: item.read
-              ? AppColors.white
-              : AppColors.fernGreenLight.withValues(alpha: 0.45),
-          borderRadius: BorderRadius.circular(20),
-          child: InkWell(
-            onTap: onTap,
+      child: Dismissible(
+        key: ValueKey('notification_${widget.item.id}'),
+        direction: DismissDirection.endToStart,
+        resizeDuration: const Duration(milliseconds: 220),
+        movementDuration: const Duration(milliseconds: 260),
+        dismissThresholds: const {DismissDirection.endToStart: 0.36},
+        background: const SizedBox.shrink(),
+        secondaryBackground: const _DeleteNotificationBackground(),
+        confirmDismiss: (_) async {
+          service.beginSwipeDelete(widget.item.id);
+          final deleted = await service.deleteNotificationRemote(widget.item);
+          if (!deleted && context.mounted) {
+            service.cancelSwipeDelete(widget.item.id);
+            showErrorSnack(context, context.l('Could not delete notification'));
+          }
+          return deleted;
+        },
+        onDismissed: (_) => service.finishSwipeDelete(widget.item),
+        child: card,
+      ),
+    );
+  }
+
+  Widget _buildCardSurface() {
+    return Material(
+      color: widget.item.read
+          ? AppColors.white
+          : AppColors.fernGreenLight.withValues(alpha: 0.55),
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: widget.onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            child: Container(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: item.read
-                      ? AppColors.borderSubtle
-                      : AppColors.fernGreen.withValues(alpha: 0.22),
+            border: Border.all(
+              color: widget.item.read
+                  ? AppColors.borderSubtle
+                  : AppColors.fernGreen.withValues(alpha: 0.25),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(
+                  alpha: widget.item.read ? 0.018 : 0.032,
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.024),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
+                blurRadius: widget.item.read ? 10 : 14,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _NotificationIcon(type: widget.item.type),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(child: _buildNotificationText()),
+              if (!widget.item.read) ...[
+                const SizedBox(width: AppSpacing.sm),
+                Container(
+                  width: 8,
+                  height: 8,
+                  margin: const EdgeInsets.only(top: 5),
+                  decoration: const BoxDecoration(
+                    color: AppColors.fernGreen,
+                    shape: BoxShape.circle,
                   ),
-                ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNotificationText() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                widget.item.title,
+                style: AppTypography.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            Text(
+              widget.timeAgo(widget.item.createdAt),
+              style: AppTypography.textTheme.labelMedium,
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          widget.item.body,
+          style: AppTypography.textTheme.bodySmall?.copyWith(
+            color: AppColors.textSecondary,
+          ),
+        ),
+        if (widget.item.type == 'follow_request' &&
+            widget.item.data?['handled'] != true) ...[
+          const SizedBox(height: AppSpacing.sm),
+          _FollowRequestActions(item: widget.item),
+        ],
+        if (widget.item.type == 'new_follower') ...[
+          const SizedBox(height: AppSpacing.sm),
+          _NewFollowerActions(item: widget.item),
+        ],
+        if (widget.item.type == 'account_device_login_attempt') ...[
+          const SizedBox(height: AppSpacing.sm),
+          _AccountDeviceAlertActions(item: widget.item),
+        ],
+      ],
+    );
+  }
+}
+
+class _DeleteNotificationBackground extends StatelessWidget {
+  const _DeleteNotificationBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              AppColors.sunsetCoral.withValues(alpha: 0.82),
+              AppColors.sunsetCoralDark,
+            ],
+          ),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Align(
+          alignment: Alignment.centerRight,
+          child: Padding(
+            padding: const EdgeInsets.only(right: AppSpacing.lg),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              decoration: BoxDecoration(
+                color: AppColors.white.withValues(alpha: 0.22),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: AppColors.white.withValues(alpha: 0.25),
+                ),
               ),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  _NotificationIcon(type: item.type),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                item.title,
-                                style: AppTypography.textTheme.titleSmall
-                                    ?.copyWith(fontWeight: FontWeight.w800),
-                              ),
-                            ),
-                            Text(
-                              timeAgo(item.createdAt),
-                              style: AppTypography.textTheme.labelMedium,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          item.body,
-                          style: AppTypography.textTheme.bodySmall?.copyWith(
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                        if (item.type == 'follow_request' &&
-                            item.data?['handled'] != true) ...[
-                          const SizedBox(height: AppSpacing.sm),
-                          _FollowRequestActions(item: item),
-                        ],
-                        if (item.type == 'new_follower') ...[
-                          const SizedBox(height: AppSpacing.sm),
-                          _NewFollowerActions(item: item),
-                        ],
-                        if (item.type == 'account_device_login_attempt') ...[
-                          const SizedBox(height: AppSpacing.sm),
-                          _AccountDeviceAlertActions(item: item),
-                        ],
-                      ],
+                  const Icon(
+                    Icons.delete_outline_rounded,
+                    color: AppColors.white,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    context.l('Delete'),
+                    style: AppTypography.textTheme.labelMedium?.copyWith(
+                      color: AppColors.white,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                  if (!item.read) ...[
-                    const SizedBox(width: AppSpacing.sm),
-                    Container(
-                      width: 8,
-                      height: 8,
-                      margin: const EdgeInsets.only(top: 5),
-                      decoration: const BoxDecoration(
-                        color: AppColors.fernGreen,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -504,13 +599,15 @@ class _AccountDeviceAlertActionsState
     if (_isBusy) return;
     setState(() => _isBusy = true);
     try {
-      await context.read<NotificationService>().markDeviceAlertHandled(
-        widget.item,
-        'dismissed',
-      );
+      final deleted = await context
+          .read<NotificationService>()
+          .deleteNotification(widget.item);
+      if (!deleted && mounted) {
+        showErrorSnack(context, context.l('Could not delete notification'));
+      }
     } catch (_) {
       if (mounted) {
-        showErrorSnack(context, context.l('Could not update notification'));
+        showErrorSnack(context, context.l('Could not delete notification'));
       }
     } finally {
       if (mounted) setState(() => _isBusy = false);
@@ -522,13 +619,10 @@ class _AccountDeviceAlertActionsState
     final handled = widget.item.data?['handled'] == true;
     final status = widget.item.data?['status'] as String?;
     if (handled) {
+      if (status != 'secured') return const SizedBox.shrink();
       return _NotificationStatusChip(
-        icon: status == 'secured'
-            ? Icons.lock_outline_rounded
-            : Icons.check_rounded,
-        label: status == 'secured'
-            ? context.l('Secured')
-            : context.l('Dismissed'),
+        icon: Icons.lock_outline_rounded,
+        label: context.l('Secured'),
       );
     }
 

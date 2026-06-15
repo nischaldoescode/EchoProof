@@ -1,10 +1,8 @@
-// echo action sheet report, share, copy link
+// echo action sheet report and moderation actions
 // themed to match echoproof design system
 // no riverpod uses supabase instance directly
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../app/theme/colors.dart';
 import '../../app/theme/spacing.dart';
@@ -158,43 +156,6 @@ class _EchoActionSheet extends StatelessWidget {
                 endIndent: AppSpacing.lg,
               ),
             ],
-            _SheetTile(
-              icon: Icons.ios_share_outlined,
-              label: 'Share echo',
-              iconColor: AppColors.charcoal,
-              onTap: () async {
-                Navigator.pop(context);
-                final url = 'https://echoproof.online/echo/$echoId';
-                try {
-                  await SharePlus.instance.share(
-                    ShareParams(
-                      text: 'Read this echo on EchoProof\n$url',
-                      subject: 'EchoProof echo',
-                    ),
-                  );
-                } catch (_) {
-                  if (parentContext.mounted) {
-                    showErrorSnack(parentContext, 'Could not open share sheet');
-                  }
-                }
-              },
-            ),
-            const Divider(
-              height: 1,
-              indent: AppSpacing.lg,
-              endIndent: AppSpacing.lg,
-            ),
-            _SheetTile(
-              icon: Icons.link_outlined,
-              label: 'Copy link',
-              iconColor: AppColors.charcoal,
-              onTap: () {
-                Navigator.pop(context);
-                final url = 'https://echoproof.online/echo/$echoId';
-                Clipboard.setData(ClipboardData(text: url));
-                showSuccessSnack(parentContext, 'Link copied');
-              },
-            ),
           ],
         ),
       ),

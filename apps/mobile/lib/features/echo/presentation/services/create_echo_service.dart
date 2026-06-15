@@ -11,6 +11,7 @@ import '../../../../core/utils/logger.dart';
 import '../../../../core/utils/media_file_safety.dart';
 import '../../../../core/utils/sanitizer.dart';
 import '../../../../core/services/onnx_spam_checker.dart';
+import '../../../../core/utils/ai_slop_guard.dart';
 
 const _kDraftKey = 'echo_draft';
 
@@ -78,7 +79,9 @@ class CreateEchoService extends ChangeNotifier {
       final path = '$userId/$name';
       final file = File(localPath);
 
-      await client.storage.from('media').uploadBinary(
+      await client.storage
+          .from('media')
+          .uploadBinary(
             path,
             await file.readAsBytes(),
             fileOptions: FileOptions(
@@ -206,6 +209,15 @@ class CreateEchoService extends ChangeNotifier {
         );
       }
 
+      final aiSlop = AiSlopGuard.assess(
+        title: _title,
+        body: _content,
+        allowShort: false,
+      );
+      if (aiSlop.isBlocked) {
+        throw _LocalModerationException(aiSlop.message);
+      }
+
       final localModeration = await _safeLocalModerationCheck();
       if (localModeration.isSpam) {
         throw _LocalModerationException(
@@ -278,8 +290,8 @@ class CreateEchoService extends ChangeNotifier {
         label: score >= OnnxSpamChecker.blockThreshold
             ? SpamLabel.spam
             : score >= OnnxSpamChecker.suspiciousThreshold
-                ? SpamLabel.suspicious
-                : SpamLabel.ham,
+            ? SpamLabel.suspicious
+            : SpamLabel.ham,
         score: score,
         spamProbability: score / 100,
         hamProbability: 1 - (score / 100),
@@ -295,10 +307,7 @@ class CreateEchoService extends ChangeNotifier {
     try {
       final response = await client.functions.invoke(
         'solana-memo',
-        body: {
-          'kind': 'echo_created',
-          'echo_id': echoId,
-        },
+        body: {'kind': 'echo_created', 'echo_id': echoId},
       );
       AppLogger.info('echo: solana anchor requested ${response.data}');
     } catch (e) {
@@ -334,19 +343,23 @@ class CreateEchoService extends ChangeNotifier {
     required int maxActions,
   }) async {
     try {
-      final response = await client.rpc('get_action_cooldown_status', params: {
-        'p_action': action,
-        'p_subject': subject,
-        'p_window_seconds': windowSeconds,
-        'p_max_actions': maxActions,
-        'p_include_ip': false,
-      });
+      final response = await client.rpc(
+        'get_action_cooldown_status',
+        params: {
+          'p_action': action,
+          'p_subject': subject,
+          'p_window_seconds': windowSeconds,
+          'p_max_actions': maxActions,
+          'p_include_ip': false,
+        },
+      );
       final map = Map<String, dynamic>.from(response as Map);
       final retryAfter = (map['retry_after_seconds'] as num?)?.toInt() ?? 0;
       return _CooldownStatus(retryAfterSeconds: retryAfter);
     } catch (e) {
       AppLogger.warn(
-          'echo: cooldown status unavailable, relying on insert guard $e');
+        'echo: cooldown status unavailable, relying on insert guard $e',
+      );
       return const _CooldownStatus(retryAfterSeconds: 0);
     }
   }

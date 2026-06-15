@@ -147,22 +147,16 @@ class _AppBannerAdState extends State<AppBannerAd>
       return const SizedBox.shrink();
     }
 
-    return SafeArea(
-      top: false,
-      left: false,
-      right: false,
-      bottom: true,
-      child: FadeTransition(
-        opacity: _fade,
-        child: Align(
-          alignment: Alignment.center,
-          child: Container(
-            margin: EdgeInsets.zero,
-            color: Colors.white,
-            width: _bannerAd!.size.width.toDouble(),
-            height: _bannerAd!.size.height.toDouble(),
-            child: AdWidget(ad: _bannerAd!),
-          ),
+    return FadeTransition(
+      opacity: _fade,
+      child: Align(
+        alignment: Alignment.center,
+        child: Container(
+          margin: EdgeInsets.zero,
+          color: Colors.white,
+          width: _bannerAd!.size.width.toDouble(),
+          height: _bannerAd!.size.height.toDouble(),
+          child: AdWidget(ad: _bannerAd!),
         ),
       ),
     );

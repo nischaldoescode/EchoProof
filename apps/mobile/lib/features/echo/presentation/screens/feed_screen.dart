@@ -33,6 +33,7 @@ import '../../../../core/utils/snack.dart';
 import '../../../notifications/presentation/services/notification_service.dart';
 import '../../../../shared/widgets/brand_wordmark.dart';
 import '../../../../shared/widgets/top_flow_loader.dart';
+import '../../../../shared/widgets/avatar_image_provider.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
@@ -45,6 +46,8 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   final _scrollCtrl = ScrollController();
   FeedFilter _filter = const FeedFilter();
   _FeedLane _lane = _FeedLane.forYou;
+  int _laneSwitchEpoch = 0;
+  bool _hasPlayedInitialFeedStagger = false;
   Timer? _feedAdTimer;
   DateTime _lastActiveAt = DateTime.now();
 
@@ -292,6 +295,16 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
     return filtered.length + (hasMore ? 1 : 0);
   }
 
+  void _changeLane(_FeedLane lane) {
+    if (_lane == lane) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _lane = lane;
+      _laneSwitchEpoch++;
+      _hasPlayedInitialFeedStagger = true;
+    });
+  }
+
   Widget _refreshableState(Widget child) {
     final minHeight =
         MediaQuery.sizeOf(context).height -
@@ -324,7 +337,7 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
       currentLocation: '/feed',
       child: ExitConfirmWrapper(
         child: Scaffold(
-          backgroundColor: AppColors.surfaceSecondary,
+          backgroundColor: AppColors.white,
           appBar: _FeedAppBar(
             filterActive: _filter.isActive,
             onFilterTap: _openFilter,
@@ -390,13 +403,7 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
 
     return Column(
       children: [
-        _FeedModeTabs(
-          selected: _lane,
-          onChanged: (lane) {
-            HapticFeedback.selectionClick();
-            setState(() => _lane = lane);
-          },
-        ),
+        _FeedModeTabs(selected: _lane, onChanged: _changeLane),
         AnimatedSize(
           duration: const Duration(milliseconds: 250),
           curve: Curves.easeInOut,
@@ -409,35 +416,52 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
               : const SizedBox.shrink(),
         ),
         Expanded(
-          child: RefreshIndicator(
-            color: AppColors.fernGreen,
-            onRefresh: _refreshFeed,
-            child: ListView.builder(
-              controller: _scrollCtrl,
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.only(top: AppSpacing.xs, bottom: 120),
-              itemCount: _itemCount(filtered, feed.hasMore),
-              itemBuilder: (ctx, index) {
-                if (index >= filtered.length) {
-                  if (!feed.hasMore) return const SizedBox.shrink();
-                  return const Padding(
-                    padding: EdgeInsets.all(AppSpacing.xl),
-                    child: EchoLogoLoader(size: 46),
-                  );
-                }
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 120),
+            reverseDuration: const Duration(milliseconds: 90),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) {
+              final slide = Tween<Offset>(
+                begin: const Offset(0.018, 0),
+                end: Offset.zero,
+              ).animate(animation);
+              return FadeTransition(
+                opacity: animation,
+                child: SlideTransition(position: slide, child: child),
+              );
+            },
+            child: RefreshIndicator(
+              key: ValueKey('feed-lane-$_laneSwitchEpoch'),
+              color: AppColors.fernGreen,
+              onRefresh: _refreshFeed,
+              child: ListView.builder(
+                controller: _scrollCtrl,
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.only(top: 2, bottom: 92),
+                itemCount: _itemCount(filtered, feed.hasMore),
+                itemBuilder: (ctx, index) {
+                  if (index >= filtered.length) {
+                    if (!feed.hasMore) return const SizedBox.shrink();
+                    return const Padding(
+                      padding: EdgeInsets.all(AppSpacing.xl),
+                      child: EchoLogoLoader(size: 46),
+                    );
+                  }
 
-                return Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 900),
-                    child: _AnimatedCard(
-                      key: ValueKey(filtered[index].id),
-                      echoId: filtered[index].id,
-                      initialEcho: filtered[index],
-                      index: index,
+                  return Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 900),
+                      child: _AnimatedCard(
+                        key: ValueKey('${_lane.name}-${filtered[index].id}'),
+                        echo: filtered[index],
+                        index: index,
+                        stagger: !_hasPlayedInitialFeedStagger,
+                      ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
           ),
         ),
@@ -471,12 +495,7 @@ class _FeedModeTabs extends StatelessWidget {
         border: Border(bottom: BorderSide(color: AppColors.borderSubtle)),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg,
-          AppSpacing.sm,
-          AppSpacing.lg,
-          AppSpacing.sm,
-        ),
+        padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 2, AppSpacing.lg, 0),
         child: Row(
           children: [
             for (final item in items)
@@ -513,24 +532,21 @@ class _FeedModeTab extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 3),
       child: InkWell(
-        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+        borderRadius: BorderRadius.circular(10),
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOutCubic,
           padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.sm,
-            vertical: 10,
+            vertical: 7,
           ),
           decoration: BoxDecoration(
-            color: selected
-                ? AppColors.fernGreenLight.withValues(alpha: 0.58)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
-            border: Border.all(
-              color: selected
-                  ? AppColors.fernGreen.withValues(alpha: 0.22)
-                  : Colors.transparent,
+            border: Border(
+              bottom: BorderSide(
+                width: 2,
+                color: selected ? AppColors.fernGreen : Colors.transparent,
+              ),
             ),
           ),
           child: Row(
@@ -538,16 +554,16 @@ class _FeedModeTab extends StatelessWidget {
             children: [
               Icon(
                 icon,
-                size: 18,
+                size: 15,
                 color: selected
                     ? AppColors.fernGreenDark
                     : AppColors.textSecondary,
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Text(
                 label,
                 style: GoogleFonts.josefinSans(
-                  fontSize: 14,
+                  fontSize: 12.5,
                   fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
                   color: selected
                       ? AppColors.fernGreenDark
@@ -682,14 +698,14 @@ class _ActiveFilterBar extends StatelessWidget {
 class _AnimatedCard extends StatefulWidget {
   const _AnimatedCard({
     super.key,
-    required this.echoId,
-    required this.initialEcho,
+    required this.echo,
     required this.index,
+    required this.stagger,
   });
 
-  final String echoId;
-  final EchoEntity initialEcho;
+  final EchoEntity echo;
   final int index;
+  final bool stagger;
 
   @override
   State<_AnimatedCard> createState() => _AnimatedCardState();
@@ -706,7 +722,7 @@ class _AnimatedCardState extends State<_AnimatedCard>
     super.initState();
     _c = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 380),
+      duration: const Duration(milliseconds: 240),
     );
     _opacity = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(
@@ -715,12 +731,12 @@ class _AnimatedCardState extends State<_AnimatedCard>
       ),
     );
     _y = Tween<double>(
-      begin: 16,
+      begin: 8,
       end: 0,
     ).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
 
-    final delay = widget.index < 8
-        ? Duration(milliseconds: widget.index * 45)
+    final delay = widget.stagger && widget.index < 5
+        ? Duration(milliseconds: widget.index * 22)
         : Duration.zero;
     Future.delayed(delay, () {
       if (mounted) _c.forward();
@@ -741,20 +757,18 @@ class _AnimatedCardState extends State<_AnimatedCard>
         opacity: _opacity.value,
         child: Transform.translate(offset: Offset(0, _y.value), child: child),
       ),
-      child: Selector<EchoFeedService, EchoEntity>(
-        selector: (_, feed) => feed.echoes.firstWhere(
-          (e) => e.id == widget.echoId,
-          orElse: () => widget.initialEcho,
-        ),
-        shouldRebuild: (previous, next) => previous != next,
-        builder: (context, echo, _) {
+      child: Builder(
+        builder: (context) {
+          final echo = widget.echo;
           final followedReply = _followedReplyFor(echo);
+          final hasThread = followedReply != null;
           return RepaintBoundary(
             child: Column(
               children: [
                 EchoCard(
                   echo: echo,
                   showReplyPreview: false,
+                  showThreadTail: hasThread,
                   onTap: () => context.push('/feed/echo/${echo.id}'),
                 ),
                 if (followedReply != null)
@@ -815,7 +829,7 @@ class _FeedAppBar extends StatefulWidget implements PreferredSizeWidget {
   final VoidCallback onFilterTap;
 
   @override
-  Size get preferredSize => const Size.fromHeight(70);
+  Size get preferredSize => const Size.fromHeight(58);
 
   @override
   State<_FeedAppBar> createState() => _FeedAppBarState();
@@ -825,6 +839,29 @@ class _FeedAppBarState extends State<_FeedAppBar> {
   int _gameTapCount = 0;
   DateTime? _lastGameTapAt;
   Offset? _lastLogoGlobalPosition;
+  late final Future<String?> _avatarFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _avatarFuture = _loadAvatarUrl();
+  }
+
+  Future<String?> _loadAvatarUrl() async {
+    final client = Supabase.instance.client;
+    final userId = client.auth.currentUser?.id;
+    if (userId == null) return null;
+    try {
+      final row = await client
+          .from('users_public')
+          .select('avatar_url')
+          .eq('id', userId)
+          .maybeSingle();
+      return row?['avatar_url'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
 
   void _openSignalDrift([Offset? origin]) {
     _gameTapCount = 0;
@@ -858,8 +895,8 @@ class _FeedAppBarState extends State<_FeedAppBar> {
       elevation: 0,
       scrolledUnderElevation: 0.5,
       shadowColor: AppColors.borderSubtle,
-      toolbarHeight: 70,
-      titleSpacing: AppSpacing.lg,
+      toolbarHeight: 58,
+      titleSpacing: AppSpacing.md,
       shape: const Border(
         bottom: BorderSide(color: AppColors.borderSubtle, width: 0.5),
       ),
@@ -874,9 +911,9 @@ class _FeedAppBarState extends State<_FeedAppBar> {
         },
         child: Padding(
           // wider hidden target keeps the easter egg reachable on dense screens
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
           child: const EchoProofWordmark(
-            fontSize: 26,
+            fontSize: 23,
             proofColor: AppColors.fernGreenDark,
           ),
         ),
@@ -911,41 +948,69 @@ class _FeedAppBarState extends State<_FeedAppBar> {
               ),
           ],
         ),
-        Consumer<NotificationService>(
-          builder: (context, notif, child) {
-            return Stack(
-              clipBehavior: Clip.none,
-              children: [
-                _FeedHeaderIconButton(
-                  icon: Icons.notifications_none_rounded,
-                  onPressed: () => context.push('/notifications'),
-                  tooltip: context.l('Notifications'),
-                ),
-                if (notif.unreadCount > 0)
-                  Positioned(
-                    right: 10,
-                    top: 9,
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: AppColors.fernGreen,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 1.4),
-                      ),
+        FutureBuilder<String?>(
+          future: _avatarFuture,
+          builder: (context, snapshot) => _FeedHeaderAvatarButton(
+            avatarUrl: snapshot.data,
+            onPressed: () => context.push('/profile'),
+            tooltip: context.l('Profile'),
+          ),
+        ),
+        const SizedBox(width: 6),
+      ],
+    );
+  }
+}
+
+class _FeedHeaderAvatarButton extends StatelessWidget {
+  const _FeedHeaderAvatarButton({
+    required this.avatarUrl,
+    required this.onPressed,
+    required this.tooltip,
+  });
+
+  final String? avatarUrl;
+  final VoidCallback onPressed;
+  final String tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final imageProvider = avatarImageProvider(avatarUrl);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Tooltip(
+        message: tooltip,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(18),
+          child: Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: AppColors.surfaceSecondary,
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.borderSubtle),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: imageProvider == null
+                ? const Icon(
+                    Icons.person_rounded,
+                    size: 19,
+                    color: AppColors.textSecondary,
+                  )
+                : Image(
+                    image: imageProvider,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => const Icon(
+                      Icons.person_rounded,
+                      size: 19,
+                      color: AppColors.textSecondary,
                     ),
                   ),
-              ],
-            );
-          },
+          ),
         ),
-        _FeedHeaderIconButton(
-          icon: Icons.account_circle_outlined,
-          onPressed: () => context.push('/profile'),
-          tooltip: context.l('Profile'),
-        ),
-        const SizedBox(width: AppSpacing.sm),
-      ],
+      ),
     );
   }
 }
@@ -977,10 +1042,10 @@ class _FeedHeaderIconButton extends StatelessWidget {
           foregroundColor: selected
               ? AppColors.fernGreenDark
               : AppColors.charcoal,
-          minimumSize: const Size(40, 40),
+          minimumSize: const Size(36, 36),
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
-        icon: Icon(icon, size: 23),
+        icon: Icon(icon, size: 21),
       ),
     );
   }

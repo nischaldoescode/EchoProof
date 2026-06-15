@@ -229,7 +229,7 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
     if (size == Size.zero) return 1;
     final widthFactor = ((size.width - 390) / 390).clamp(0.0, 1.0).toDouble();
     final heightFactor = ((size.height - 640) / 360).clamp(0.0, 1.0).toDouble();
-    return 1 + widthFactor * 0.08 + heightFactor * 0.06;
+    return 1 + widthFactor * 0.14 + heightFactor * 0.10;
   }
 
   double _speedDifficulty(Size size) {
@@ -241,17 +241,17 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
     final widePressure = ((size.width - 520) / 360).clamp(0.0, 1.0).toDouble();
     final tallPressure = ((size.height - 780) / 420).clamp(0.0, 1.0).toDouble();
     return (_arenaDifficulty(size) +
-            compactWidth * 0.14 +
-            compactHeight * 0.08 +
-            widePressure * 0.18 +
-            tallPressure * 0.13)
-        .clamp(1.08, 1.62)
+            compactWidth * 0.28 +
+            compactHeight * 0.16 +
+            widePressure * 0.56 +
+            tallPressure * 0.38)
+        .clamp(1.22, 2.24)
         .toDouble();
   }
 
   List<_SignalReflectorPlan> _createReflectorPlans(Size size) {
     final difficulty = _speedDifficulty(size);
-    final largeShift = ((difficulty - 1) * 12).round();
+    final largeShift = ((difficulty - 1) * 16).round();
     final wideArena = size.width >= 520 || size.height >= 760;
     const patterns = <List<Offset>>[
       [
@@ -292,7 +292,7 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
       required double drift,
     }) {
       final jitter = _rng.nextInt(variance + 1);
-      final unlock = math.max(4, baseUnlock + jitter - largeShift);
+      final unlock = math.max(3, baseUnlock + jitter - largeShift);
       final baseX = mirror ? 1 - anchor.dx : anchor.dx;
       return _SignalReflectorPlan(
         id: id,
@@ -360,9 +360,9 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
       _signal = Offset(size.width * 0.5, size.height * 0.34);
       _velocity = Offset(
         (_rng.nextBool() ? 1 : -1) *
-            (218 + _rng.nextDouble() * 92) *
+            (252 + _rng.nextDouble() * 112) *
             difficulty,
-        -318 * difficulty,
+        -364 * difficulty,
       );
       _paddleCenter = 0.5;
       _score = 0;
@@ -478,12 +478,12 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
       score += 1 + (isPerfect ? 1 : 0) + (combo >= 4 ? 1 : 0) + focusBonus;
       final difficulty = _speedDifficulty(_arena);
       final speedUp = math.min(
-        1.22 + score * 0.011 + (difficulty - 1) * 0.38,
-        1.88,
+        1.38 + score * 0.016 + (difficulty - 1) * 0.62,
+        2.24,
       );
       velocity = _capVelocity(
         Offset(
-          offset * (300 + score * 9.2) * math.min(difficulty, 1.24),
+          offset * (318 + score * 10.4) * math.min(difficulty, 1.34),
           -velocity.dy.abs() * speedUp,
         ),
       );
@@ -649,8 +649,8 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
     required double radius,
   }) {
     final travel = velocity.distance * dt;
-    final maxStep = math.max(2.5, radius * 0.25);
-    final stepCap = _liteMode ? 24 : 34;
+    final maxStep = math.max(0.65, radius * 0.055);
+    final stepCap = _liteMode ? 140 : 220;
     final steps = travel <= maxStep
         ? 1
         : math.min(stepCap, math.max(2, (travel / maxStep).ceil()));
@@ -705,9 +705,9 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
   }) {
     for (final reflector in _reflectors) {
       final lastHit = reflector.lastHitAt;
-      if (lastHit != null && now.difference(lastHit).inMilliseconds < 70) {
+      if (lastHit != null && now.difference(lastHit).inMilliseconds < 20) {
         final stillSeparating = reflector.rect
-            .inflate(radius + 8)
+            .inflate(radius + 14)
             .contains(previous);
         final movingBackIn = _movingTowardRect(
           previous,
@@ -720,13 +720,15 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
       }
       if (lastHit != null &&
           reflector.lastHitAt != null &&
-          now.difference(lastHit).inMilliseconds < 70) {
+          now.difference(lastHit).inMilliseconds < 20) {
         continue;
       }
 
       final rect = reflector.rect;
-      final expandedRect = rect.inflate(radius + 4);
-      final sweepHit = _segmentRectHit(previous, signal, expandedRect);
+      final expandedRect = rect.inflate(radius + 18);
+      final sweepHit =
+          _segmentRectHit(previous, signal, expandedRect) ??
+          _segmentBandHit(previous, signal, expandedRect);
       final hitPath = expandedRect.contains(signal) || sweepHit != null;
       if (!hitPath) continue;
 
@@ -870,6 +872,31 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
     return _SegmentRectHit(tMin, normal);
   }
 
+  _SegmentRectHit? _segmentBandHit(Offset start, Offset end, Rect rect) {
+    final delta = end - start;
+    _SegmentRectHit? best;
+
+    void consider(double t, Offset normal) {
+      if (t < 0 || t > 1) return;
+      final point = start + delta * t;
+      if (!rect.contains(point)) return;
+      if (best == null || t < best!.time) {
+        best = _SegmentRectHit(t, normal);
+      }
+    }
+
+    // fallback for very fast frames crossing a thin reflector band
+    if (delta.dy.abs() > 0.0001) {
+      consider((rect.top - start.dy) / delta.dy, const Offset(0, -1));
+      consider((rect.bottom - start.dy) / delta.dy, const Offset(0, 1));
+    }
+    if (delta.dx.abs() > 0.0001) {
+      consider((rect.left - start.dx) / delta.dx, const Offset(-1, 0));
+      consider((rect.right - start.dx) / delta.dx, const Offset(1, 0));
+    }
+    return best;
+  }
+
   bool _movingTowardRect(Offset point, Offset velocity, Rect rect) {
     final nearest = Offset(
       point.dx.clamp(rect.left, rect.right).toDouble(),
@@ -882,14 +909,14 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
 
   Offset _capVelocity(Offset velocity) {
     final difficulty = _speedDifficulty(_arena);
-    final baseMaxSpeed = _liteMode ? 760.0 : 940.0;
+    final baseMaxSpeed = _liteMode ? 820.0 : 1020.0;
     final maxSpeed = math.min(
       baseMaxSpeed * difficulty,
-      _liteMode ? 910.0 : 1260.0,
+      _liteMode ? 1040.0 : 1480.0,
     );
     final speed = velocity.distance;
     var capped = speed > maxSpeed ? velocity * (maxSpeed / speed) : velocity;
-    final minVertical = 208.0 * math.min(difficulty, 1.26);
+    final minVertical = 224.0 * math.min(difficulty, 1.36);
     if (capped.dy.abs() < minVertical) {
       final direction = capped.dy < 0 ? -1.0 : 1.0;
       capped = Offset(capped.dx, direction * minVertical);
@@ -1172,10 +1199,10 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
       _ => 1.0,
     };
     final fieldEase = _fragments >= 180 ? 0.03 : 0.0;
-    final largeScreenPenalty = 1 - (difficulty - 1) * 0.58;
+    final largeScreenPenalty = 1 - (difficulty - 1) * 0.82;
     return base *
         math.min(0.98, scoreScale + fieldEase) *
-        largeScreenPenalty.clamp(0.86, 1.0).toDouble();
+        largeScreenPenalty.clamp(0.80, 1.0).toDouble();
   }
 
   int get _phase {

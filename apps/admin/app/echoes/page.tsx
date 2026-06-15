@@ -23,7 +23,7 @@ export default async function EchoesPage() {
       public_context_min_count, public_context_decision_reason,
       admin_override_used, admin_verified, admin_note,
       verified_record_tx, created_at,
-      users_public!inner(username, trust_tier)
+      users_public!echoes_user_id_fkey!inner(username, trust_tier)
     `)
     .order("report_score", { ascending: false })
     .limit(100);

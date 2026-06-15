@@ -45,9 +45,10 @@ class _OtpScreenState extends State<OtpScreen>
       vsync: this,
       duration: const Duration(milliseconds: 500),
     );
-    _shakeAnim = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _shakeCtrl, curve: Curves.elasticIn),
-    );
+    _shakeAnim = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _shakeCtrl, curve: Curves.elasticIn));
     _startTimer();
   }
 
@@ -61,8 +62,9 @@ class _OtpScreenState extends State<OtpScreen>
 
   void _startTimer() {
     _cooldownTimer?.cancel();
-    final authCooldown =
-        context.read<AuthService>().otpCooldownRemaining(widget.email);
+    final authCooldown = context.read<AuthService>().otpCooldownRemaining(
+      widget.email,
+    );
     setState(() {
       _canResend = false;
       _resendSecs = math.max(_resendCooldownSeconds, authCooldown).toInt();
@@ -144,10 +146,7 @@ class _OtpScreenState extends State<OtpScreen>
     });
 
     final auth = context.read<AuthService>();
-    final success = await auth.verifyOtp(
-      email: widget.email,
-      otp: otp,
-    );
+    final success = await auth.verifyOtp(email: widget.email, otp: otp);
 
     if (!mounted) return;
 
@@ -162,7 +161,9 @@ class _OtpScreenState extends State<OtpScreen>
     } else {
       _shakeCtrl.forward(from: 0);
       _showOtpErrorSnack(auth.error ?? context.tx('otp.incorrect'));
+      _ctrl.clear();
       setState(() {
+        _otp = '';
         _isVerifying = false;
         _hasError = true;
       });
@@ -205,7 +206,8 @@ class _OtpScreenState extends State<OtpScreen>
             physics: const ClampingScrollPhysics(),
             child: ConstrainedBox(
               constraints: BoxConstraints(
-                minHeight: MediaQuery.of(context).size.height -
+                minHeight:
+                    MediaQuery.of(context).size.height -
                     MediaQuery.of(context).padding.top -
                     MediaQuery.of(context).padding.bottom,
               ),
@@ -270,8 +272,8 @@ class _OtpScreenState extends State<OtpScreen>
                           _canLeave
                               ? context.l('Not you? Use another email')
                               : context
-                                  .tx('otp.backCooldown')
-                                  .replaceAll('{s}', '$_resendSecs'),
+                                    .tx('otp.backCooldown')
+                                    .replaceAll('{s}', '$_resendSecs'),
                           style: GoogleFonts.josefinSans(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
@@ -325,7 +327,6 @@ class _OtpScreenState extends State<OtpScreen>
                               _otp = v;
                               if (_hasError) _hasError = false;
                             });
-                            if (v.length == 6) _verify();
                           },
                           onCompleted: (_) => _verify(),
                         ),
@@ -336,12 +337,16 @@ class _OtpScreenState extends State<OtpScreen>
                         duration: const Duration(milliseconds: 200),
                         child: _hasError
                             ? Padding(
-                                padding:
-                                    const EdgeInsets.only(top: AppSpacing.sm),
+                                padding: const EdgeInsets.only(
+                                  top: AppSpacing.sm,
+                                ),
                                 child: Row(
                                   children: [
-                                    const Icon(Icons.error_outline,
-                                        size: 14, color: AppColors.sunsetCoral),
+                                    const Icon(
+                                      Icons.error_outline,
+                                      size: 14,
+                                      color: AppColors.sunsetCoral,
+                                    ),
                                     const SizedBox(width: 4),
                                     Text(
                                       context.read<AuthService>().error ??
@@ -365,8 +370,8 @@ class _OtpScreenState extends State<OtpScreen>
                           onPressed: _canVerify ? _verify : null,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.charcoal,
-                            disabledBackgroundColor:
-                                AppColors.borderMedium.withValues(alpha: 0.7),
+                            disabledBackgroundColor: AppColors.borderMedium
+                                .withValues(alpha: 0.7),
                             disabledForegroundColor: AppColors.textTertiary,
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             shape: RoundedRectangleBorder(
@@ -382,11 +387,13 @@ class _OtpScreenState extends State<OtpScreen>
                                     color: Colors.white,
                                   ),
                                 )
-                              : Text(context.tx('otp.verify'),
+                              : Text(
+                                  context.tx('otp.verify'),
                                   style: GoogleFonts.josefinSans(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w600,
-                                  )),
+                                  ),
+                                ),
                         ),
                       ),
 
@@ -420,7 +427,8 @@ class _OtpScreenState extends State<OtpScreen>
                               _startTimer();
                             } else {
                               AppLogger.info(
-                                  'otp: resend failed ${auth.error}');
+                                'otp: resend failed ${auth.error}',
+                              );
                               setState(() => _canResend = true);
                               _showOtpErrorSnack(
                                 auth.error ?? 'Could not resend the code.',
@@ -431,8 +439,8 @@ class _OtpScreenState extends State<OtpScreen>
                             _canResend
                                 ? context.tx('otp.resend')
                                 : context
-                                    .tx('otp.resendIn')
-                                    .replaceAll('{s}', '$_resendSecs'),
+                                      .tx('otp.resendIn')
+                                      .replaceAll('{s}', '$_resendSecs'),
                             style: GoogleFonts.josefinSans(
                               fontSize: 13,
                               color: _canResend

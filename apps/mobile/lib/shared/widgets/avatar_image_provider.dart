@@ -2,6 +2,7 @@
 // @params none
 
 import 'package:flutter/widgets.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 const echoProofLogoAsset = 'assets/images/logo.png';
 
@@ -25,7 +26,7 @@ ImageProvider<Object>? avatarImageProvider(String? value) {
   final uri = Uri.tryParse(url);
   if (uri == null) return null;
   if (uri.scheme == 'https' || uri.scheme == 'http') {
-    return NetworkImage(url);
+    return CachedNetworkImageProvider(url, cacheKey: url);
   }
   return null;
 }
