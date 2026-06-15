@@ -8,6 +8,11 @@ import { useEffect, useRef, useState } from "react";
 
 const PLAY_STORE_URL =
   "https://play.google.com/store/apps/details?id=com.echoproof.app";
+const UPTODOWN_URL = "https://echoproof.en.uptodown.com/android";
+const UPTODOWN_BADGE_DARK =
+  "https://stc.utdstc.com/img/mediakit/download-aao-big-b.png";
+const UPTODOWN_BADGE_LIGHT =
+  "https://stc.utdstc.com/img/mediakit/download-aao-big-w.png";
 
 // loader
 
@@ -500,6 +505,81 @@ function PlayStoreBadge({ light = false }: { light?: boolean }) {
   );
 }
 
+function UptodownBadge({ light = false }: { light?: boolean }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <a
+      href={UPTODOWN_URL}
+      title="Download Echoproof on Uptodown"
+      aria-label="Download Echoproof on Uptodown"
+      target="_blank"
+      rel="noreferrer"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        height: 52,
+        minWidth: 170,
+        padding: "0 12px",
+        borderRadius: 14,
+        background: light
+          ? hovered
+            ? "rgba(255,255,255,0.16)"
+            : "rgba(255,255,255,0.10)"
+          : hovered
+            ? "#FFFFFF"
+            : "#F8F7F5",
+        border: light
+          ? "1px solid rgba(255,255,255,0.20)"
+          : "1px solid #E6E6E6",
+        boxShadow: hovered
+          ? light
+            ? "0 8px 28px rgba(0,0,0,0.22)"
+            : "0 8px 24px rgba(0,0,0,0.10)"
+          : "none",
+        transform: hovered ? "translateY(-2px)" : "none",
+        transition: "background 0.2s, box-shadow 0.2s, transform 0.2s",
+        flexShrink: 0,
+        textDecoration: "none",
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          display: "block",
+          width: "156px",
+          maxWidth: "100%",
+          height: "40px",
+          backgroundImage: `url(${light ? UPTODOWN_BADGE_LIGHT : UPTODOWN_BADGE_DARK})`,
+          backgroundRepeat: "no-repeat",
+          backgroundPosition: "center",
+          backgroundSize: "contain",
+        }}
+      />
+    </a>
+  );
+}
+
+function DownloadBadges({ light = false }: { light?: boolean }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 12,
+        justifyContent: "center",
+        alignItems: "center",
+      }}
+    >
+      {/* paired store badges stay together but wrap independently on compact phones */}
+      <PlayStoreBadge light={light} />
+      <UptodownBadge light={light} />
+    </div>
+  );
+}
+
 function TickerCard({ echo }: { echo: (typeof tickerEchoes)[0] }) {
   const cfg = statusConfig[echo.status] ?? statusConfig.active;
   return (
@@ -962,7 +1042,7 @@ export default function LandingClient() {
                 alignItems: "center",
               }}
             >
-              <PlayStoreBadge />
+              <DownloadBadges />
               <a
                 href="#how-it-works"
                 style={{
@@ -1631,7 +1711,7 @@ export default function LandingClient() {
                 shut down. It lives independently, and it travels with you to
                 any platform that reads the ledger.
               </p>
-              <PlayStoreBadge />
+              <DownloadBadges />
             </Reveal>
           </div>
         </section>
@@ -1720,7 +1800,7 @@ export default function LandingClient() {
                 Available on Android. Post echoes, earn trust, stake claims,
                 and help the community establish what is actually true.
               </p>
-              <PlayStoreBadge light />
+              <DownloadBadges light />
             </Reveal>
           </div>
         </section>
