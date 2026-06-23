@@ -3,6 +3,8 @@
 // uses onboardingservice via provider no riverpod
 // this is a stateful widget since it has local state for error/loading, and
 // it also asks for a display name
+import 'dart:async';
+
 import 'package:echoproof/core/utils/snack.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,6 +17,7 @@ import '../../../../app/theme/spacing.dart';
 import '../../../../core/localization/app_copy.dart';
 import '../../../../core/utils/sanitizer.dart';
 import '../services/onboarding_service.dart';
+import '../widgets/onboarding_story_frame.dart';
 import '../../../auth/presentation/services/auth_service.dart';
 import '../../../../core/utils/logger.dart';
 
@@ -34,6 +37,8 @@ class _StepUsernameState extends State<StepUsername> {
   bool _isSaving = false;
   bool _usernameOk = false;
   String? _usernameError;
+  Timer? _usernameDebounce;
+  int _usernameCheckVersion = 0;
 
   @override
   void initState() {
@@ -49,17 +54,20 @@ class _StepUsernameState extends State<StepUsername> {
 
   @override
   void dispose() {
+    _usernameDebounce?.cancel();
     _usernameCtrl.dispose();
     _displayNameCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _checkUsername(String value) async {
+    final version = ++_usernameCheckVersion;
     final v = Sanitizer.username(value);
     if (v.length < 3) {
       setState(() {
         _usernameOk = false;
         _usernameError = context.l('At least 3 characters');
+        _isChecking = false;
       });
       return;
     }
@@ -67,6 +75,7 @@ class _StepUsernameState extends State<StepUsername> {
       setState(() {
         _usernameOk = false;
         _usernameError = context.l('Only letters, numbers, and underscores');
+        _isChecking = false;
       });
       return;
     }
@@ -87,7 +96,7 @@ class _StepUsernameState extends State<StepUsername> {
           .neq('id', myId ?? '')
           .maybeSingle();
 
-      if (!mounted) return;
+      if (!mounted || version != _usernameCheckVersion) return;
 
       if (row != null) {
         setState(() {
@@ -103,13 +112,41 @@ class _StepUsernameState extends State<StepUsername> {
         });
       }
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || version != _usernameCheckVersion) return;
       setState(() {
         _usernameOk = false;
         _usernameError = null;
         _isChecking = false;
       });
     }
+  }
+
+  void _queueUsernameCheck(String value) {
+    _usernameDebounce?.cancel();
+    final sanitized = Sanitizer.username(value);
+
+    // debounce remote checks so typing quickly does not create a burst of
+    // requests. the version counter also prevents older responses from
+    // overwriting the latest visible availability state.
+    if (sanitized.length < 3) {
+      _usernameCheckVersion++;
+      setState(() {
+        _usernameOk = false;
+        _usernameError = null;
+        _isChecking = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _usernameOk = false;
+      _usernameError = null;
+      _isChecking = true;
+    });
+    _usernameDebounce = Timer(
+      const Duration(milliseconds: 320),
+      () => _checkUsername(sanitized),
+    );
   }
 
   Future<void> _save() async {
@@ -132,12 +169,15 @@ class _StepUsernameState extends State<StepUsername> {
 
       if (userId == null) throw Exception('not authenticated');
 
-      await client.from('users_public').update({
-        'username': onboarding.username,
-        'display_name': onboarding.displayName.isNotEmpty
-            ? onboarding.displayName
-            : onboarding.username,
-      }).eq('id', userId);
+      await client
+          .from('users_public')
+          .update({
+            'username': onboarding.username,
+            'display_name': onboarding.displayName.isNotEmpty
+                ? onboarding.displayName
+                : onboarding.username,
+          })
+          .eq('id', userId);
 
       AppLogger.info('onboarding: username set to $username');
 
@@ -170,8 +210,10 @@ class _StepUsernameState extends State<StepUsername> {
         final leave = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: Text(context.l('Cancel setup?'),
-                style: GoogleFonts.josefinSans(fontWeight: FontWeight.w700)),
+            title: Text(
+              context.l('Cancel setup?'),
+              style: GoogleFonts.josefinSans(fontWeight: FontWeight.w700),
+            ),
             content: Text(
               context.l(
                 'Your account won\'t be fully set up. You\'ll need to complete this next time.',
@@ -181,16 +223,20 @@ class _StepUsernameState extends State<StepUsername> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: Text(context.l('Stay'),
-                    style: GoogleFonts.josefinSans(color: AppColors.fernGreen)),
+                child: Text(
+                  context.l('Stay'),
+                  style: GoogleFonts.josefinSans(color: AppColors.fernGreen),
+                ),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(ctx, true),
                 style: TextButton.styleFrom(
-                    foregroundColor: AppColors.sunsetCoral),
-                child: Text(context.l('Leave'),
-                    style:
-                        GoogleFonts.josefinSans(fontWeight: FontWeight.w600)),
+                  foregroundColor: AppColors.sunsetCoral,
+                ),
+                child: Text(
+                  context.l('Leave'),
+                  style: GoogleFonts.josefinSans(fontWeight: FontWeight.w600),
+                ),
               ),
             ],
           ),
@@ -202,278 +248,226 @@ class _StepUsernameState extends State<StepUsername> {
           context.go('/login');
         }
       },
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF5FAF7),
-        body: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final minHeight = constraints.maxHeight > AppSpacing.xl * 2
-                  ? constraints.maxHeight - AppSpacing.xl * 2
-                  : 0.0;
-
-              return SingleChildScrollView(
-                keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.onDrag,
-                padding: const EdgeInsets.all(AppSpacing.xl),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: minHeight),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: AppSpacing.xl),
-
-                        // step indicator
-                        Row(
-                          children: List.generate(
-                              5,
-                              (i) => AnimatedContainer(
-                                    duration: const Duration(milliseconds: 300),
-                                    margin: const EdgeInsets.only(right: 6),
-                                    width: i == 2 ? 24 : 8,
-                                    height: 8,
-                                    decoration: BoxDecoration(
-                                      color: i <= 2
-                                          ? AppColors.charcoal
-                                          : AppColors.borderMedium,
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                  )),
-                        ),
-
-                        const SizedBox(height: AppSpacing.xxl),
-
-                        Text(
-                          context.l('Set your identity'),
-                          style: GoogleFonts.josefinSans(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.charcoal,
-                          ),
-                        ),
-                        const SizedBox(height: AppSpacing.sm),
-                        Text(
-                          context.l(
-                            'Your display name is what people see. Your username is your unique handle.',
-                          ),
-                          style: GoogleFonts.josefinSans(
-                            fontSize: 14,
-                            color: AppColors.textSecondary,
-                            height: 1.5,
-                          ),
-                        ),
-
-                        const SizedBox(height: AppSpacing.xxl),
-
-                        // display name field
-                        Text(
-                          context.l('Display name'),
-                          style: GoogleFonts.josefinSans(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.charcoal,
-                          ),
-                        ),
-                        const SizedBox(height: AppSpacing.sm),
-                        TextFormField(
-                          controller: _displayNameCtrl,
-                          maxLength: 50,
-                          buildCounter: (_,
-                                  {required currentLength,
-                                  required isFocused,
-                                  maxLength}) =>
-                              null,
-                          textCapitalization: TextCapitalization.words,
-                          style: GoogleFonts.josefinSans(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.charcoal,
-                          ),
-                          decoration: InputDecoration(
-                            hintText: context.l('Your name'),
-                            hintStyle: GoogleFonts.josefinSans(
-                              fontSize: 15,
-                              color: AppColors.textTertiary,
-                            ),
-                            filled: true,
-                            fillColor: Colors.white,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: const BorderSide(
-                                  color: AppColors.borderSubtle),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: const BorderSide(
-                                  color: AppColors.fernGreen, width: 2),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 14),
-                          ),
-                          validator: (v) => (v == null || v.trim().isEmpty)
-                              ? context.l('Enter your name')
-                              : null,
-                        ),
-
-                        const SizedBox(height: AppSpacing.lg),
-
-                        // username field
-                        Text(
-                          context.l('Username'),
-                          style: GoogleFonts.josefinSans(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.charcoal,
-                          ),
-                        ),
-                        const SizedBox(height: AppSpacing.sm),
-                        TextFormField(
-                          controller: _usernameCtrl,
-                          maxLength: 20,
-                          buildCounter: (_,
-                                  {required currentLength,
-                                  required isFocused,
-                                  maxLength}) =>
-                              null,
-                          autocorrect: false,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(
-                                RegExp(r'[a-zA-Z0-9_]')),
-                            LengthLimitingTextInputFormatter(20),
-                          ],
-                          onChanged: (v) {
-                            if (v.length >= 3) {
-                              _checkUsername(v);
-                            } else {
-                              setState(() {
-                                _usernameOk = false;
-                                _usernameError = null;
-                              });
-                            }
-                          },
-                          style: GoogleFonts.josefinSans(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.charcoal,
-                          ),
-                          decoration: InputDecoration(
-                            hintText: context.l('username'),
-                            hintStyle: GoogleFonts.josefinSans(
-                              fontSize: 15,
-                              color: AppColors.textTertiary,
-                            ),
-                            prefixText: '@',
-                            prefixStyle: GoogleFonts.josefinSans(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.fernGreen,
-                            ),
-                            suffixIcon: _isChecking
-                                ? const Padding(
-                                    padding: EdgeInsets.all(12),
-                                    child: SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: AppColors.fernGreen,
-                                      ),
-                                    ),
-                                  )
-                                : _usernameOk
-                                    ? const Icon(Icons.check_circle_rounded,
-                                        color: AppColors.fernGreen, size: 20)
-                                    : null,
-                            errorText: _usernameError,
-                            filled: true,
-                            fillColor: Colors.white,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: const BorderSide(
-                                  color: AppColors.borderSubtle),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: BorderSide(
-                                color: _usernameOk
-                                    ? AppColors.fernGreen
-                                    : AppColors.fernGreen,
-                                width: 2,
-                              ),
-                            ),
-                            errorBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(14),
-                              borderSide: const BorderSide(
-                                  color: AppColors.sunsetCoral),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 14),
-                          ),
-                          validator: (v) {
-                            if (v == null || v.trim().isEmpty) {
-                              return context.l('Enter a username');
-                            }
-                            if (v.length < 3) {
-                              return context.l('At least 3 characters');
-                            }
-                            if (!_usernameOk) {
-                              return _usernameError ??
-                                  context.l('Check username');
-                            }
-                            return null;
-                          },
-                        ),
-
-                        if (_usernameOk && _usernameCtrl.text.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 6),
-                            child: Text(
-                              context.l('Available!'),
-                              style: GoogleFonts.josefinSans(
-                                fontSize: 12,
-                                color: AppColors.fernGreen,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-
-                        const SizedBox(height: AppSpacing.xxl),
-
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed:
-                                (_usernameOk && !_isSaving) ? _save : null,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.charcoal,
-                              disabledBackgroundColor: AppColors.borderMedium,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
-                            child: _isSaving
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2, color: Colors.white),
-                                  )
-                                : Text(context.l('Continue'),
-                                    style: GoogleFonts.josefinSans(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w600)),
-                          ),
-                        ),
-                        const SizedBox(height: AppSpacing.xl),
-                      ],
+      child: Form(
+        key: _formKey,
+        child: OnboardingStoryFrame(
+          currentStep: 4,
+          totalSteps: 7,
+          title: context.l('Now leave a handle, not a trail.'),
+          body: context.l(
+            'Your display name is friendly. Your username is the stable handle people can mention.',
+          ),
+          sceneIcon: Icons.alternate_email_rounded,
+          sceneLabel: context.l('a public handle without public identity'),
+          footer: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: (_usernameOk && !_isSaving) ? _save : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.charcoal,
+                disabledBackgroundColor: AppColors.borderMedium,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              child: _isSaving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(
+                      context.l('Continue'),
+                      style: GoogleFonts.josefinSans(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
+            ),
+          ),
+          children: [
+            Text(
+              context.l('Display name'),
+              style: GoogleFonts.josefinSans(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.charcoal,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            TextFormField(
+              controller: _displayNameCtrl,
+              maxLength: 50,
+              buildCounter:
+                  (
+                    _, {
+                    required currentLength,
+                    required isFocused,
+                    maxLength,
+                  }) => null,
+              textCapitalization: TextCapitalization.words,
+              style: GoogleFonts.josefinSans(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: AppColors.charcoal,
+              ),
+              decoration: InputDecoration(
+                hintText: context.l('Your name'),
+                hintStyle: GoogleFonts.josefinSans(
+                  fontSize: 15,
+                  color: AppColors.textTertiary,
+                ),
+                filled: true,
+                fillColor: AppColors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: AppColors.borderSubtle),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(
+                    color: AppColors.fernGreen,
+                    width: 2,
                   ),
                 ),
-              );
-            },
-          ),
+                focusedErrorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(
+                    color: AppColors.sunsetCoral,
+                    width: 2,
+                  ),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+              ),
+              validator: (v) => (v == null || v.trim().isEmpty)
+                  ? context.l('Enter your name')
+                  : null,
+            ),
+            const SizedBox(height: AppSpacing.lg),
+            Text(
+              context.l('Username'),
+              style: GoogleFonts.josefinSans(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.charcoal,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            TextFormField(
+              controller: _usernameCtrl,
+              maxLength: 20,
+              buildCounter:
+                  (
+                    _, {
+                    required currentLength,
+                    required isFocused,
+                    maxLength,
+                  }) => null,
+              autocorrect: false,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]')),
+                LengthLimitingTextInputFormatter(20),
+              ],
+              onChanged: _queueUsernameCheck,
+              style: GoogleFonts.josefinSans(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: AppColors.charcoal,
+              ),
+              decoration: InputDecoration(
+                hintText: context.l('username'),
+                hintStyle: GoogleFonts.josefinSans(
+                  fontSize: 15,
+                  color: AppColors.textTertiary,
+                ),
+                prefixText: '@',
+                prefixStyle: GoogleFonts.josefinSans(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.fernGreen,
+                ),
+                suffixIcon: _isChecking
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppColors.fernGreen,
+                          ),
+                        ),
+                      )
+                    : _usernameOk
+                    ? const Icon(
+                        Icons.check_circle_rounded,
+                        color: AppColors.fernGreen,
+                        size: 20,
+                      )
+                    : null,
+                errorText: _usernameError,
+                filled: true,
+                fillColor: AppColors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: AppColors.borderSubtle),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(
+                    color: AppColors.fernGreen,
+                    width: 2,
+                  ),
+                ),
+                errorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: AppColors.sunsetCoral),
+                ),
+                focusedErrorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(
+                    color: AppColors.sunsetCoral,
+                    width: 2,
+                  ),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+              ),
+              validator: (v) {
+                if (v == null || v.trim().isEmpty) {
+                  return context.l('Enter a username');
+                }
+                if (v.length < 3) {
+                  return context.l('At least 3 characters');
+                }
+                if (!_usernameOk) {
+                  return _usernameError ?? context.l('Check username');
+                }
+                return null;
+              },
+            ),
+            if (_usernameOk && _usernameCtrl.text.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  context.l('Available!'),
+                  style: GoogleFonts.josefinSans(
+                    fontSize: 12,
+                    color: AppColors.fernGreen,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

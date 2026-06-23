@@ -22,6 +22,8 @@ import 'core/security/secure_screen.dart';
 import 'core/services/ad_service.dart';
 import 'core/services/account_device_service.dart';
 import 'core/services/app_update_service.dart';
+import 'core/services/app_analytics_service.dart';
+import 'core/services/offline_mutation_outbox.dart';
 import 'core/services/quick_action_service.dart';
 import 'core/services/push_notification_service.dart';
 import 'core/utils/app_haptics.dart';
@@ -58,6 +60,7 @@ Future<void> main() async {
 
   // initialize firebase first required before any firebase service
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await AppAnalyticsService.instance.initialize();
 
   // suppress all debug prints in release
   if (kReleaseMode) {
@@ -76,6 +79,7 @@ Future<void> main() async {
   await Hive.initFlutter();
   await Hive.openBox('app_settings');
   await Hive.openBox('echo_cache');
+  await Hive.openBox('offline_outbox');
   tz.initializeTimeZones();
   tz.setLocalLocation(tz.getLocation('Asia/Kolkata'));
 
@@ -94,6 +98,7 @@ Future<void> main() async {
 
   AppLogger.info('main: supabase initialized');
   await ConnectivityService.instance.initialize();
+  await OfflineMutationOutbox.instance.initialize();
 
   final authService = AuthService();
   final onboardingService = OnboardingService();
@@ -111,7 +116,9 @@ Future<void> main() async {
   if (authService.isLoggedIn) {
     notificationService.loadNotifications();
     notificationService.startRealtime();
+    echoFeedService.startRealtime();
     unawaited(bookmarkService.loadBookmarks());
+    unawaited(OfflineMutationOutbox.instance.flush());
     unawaited(_startPushIfEnabled());
   }
 
@@ -120,6 +127,7 @@ Future<void> main() async {
     onboardingService: onboardingService,
     subscriptionService: subscriptionService,
   );
+  AppAnalyticsService.instance.attachRouter(router);
   unawaited(
     QuickActionService.attach(
       router,
@@ -131,6 +139,11 @@ Future<void> main() async {
   if (wasLoggedIn) {
     adService.onUserLoggedIn();
     unawaited(
+      AppAnalyticsService.instance.setAuthenticatedUser(
+        userId: authService.currentUser?.id,
+      ),
+    );
+    unawaited(
       _registerAccountDevice(accountDeviceService, authService, router),
     );
   }
@@ -141,13 +154,20 @@ Future<void> main() async {
     if (isLoggedIn && !wasLoggedIn) {
       adService.onUserLoggedIn();
       unawaited(
+        AppAnalyticsService.instance.setAuthenticatedUser(
+          userId: authService.currentUser?.id,
+        ),
+      );
+      unawaited(
         QuickActionService.syncForAuth(
           profileEnabled: _quickActionsAllowed(authService),
         ),
       );
       notificationService.loadNotifications();
       notificationService.startRealtime();
+      echoFeedService.startRealtime();
       unawaited(bookmarkService.loadBookmarks());
+      unawaited(OfflineMutationOutbox.instance.flush());
       unawaited(_startPushIfEnabled());
       unawaited(
         _registerAccountDevice(accountDeviceService, authService, router),
@@ -162,8 +182,12 @@ Future<void> main() async {
       }
     } else if (!isLoggedIn && wasLoggedIn) {
       adService.onUserLoggedOut();
+      unawaited(
+        AppAnalyticsService.instance.setAuthenticatedUser(userId: null),
+      );
       unawaited(QuickActionService.syncForAuth(profileEnabled: false));
       notificationService.stopRealtime();
+      unawaited(echoFeedService.stopRealtime());
       bookmarkService.clearForLogout();
       accountDeviceService.stopRealtime();
       unawaited(PushNotificationService.instance.removeToken());

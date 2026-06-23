@@ -22,6 +22,7 @@ import '../widgets/solana_status_chip.dart';
 import '../../../../shared/widgets/image_viewer.dart';
 import '../../../../shared/widgets/avatar_image_provider.dart';
 import '../../../../shared/widgets/rich_text_display.dart';
+import '../../../../shared/widgets/social_action_button.dart';
 import '../../../../shared/widgets/verified_badges.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/logger.dart';
@@ -155,6 +156,12 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
     if (echo.username.isNotEmpty) {
       context.push('/profile/${Uri.encodeComponent(echo.username)}');
     }
+  }
+
+  void _openMentionProfile(String username) {
+    final clean = username.trim().replaceFirst('@', '');
+    if (clean.isEmpty) return;
+    context.push('/profile/${Uri.encodeComponent(clean)}');
   }
 
   Future<void> _loadProofs() async {
@@ -707,6 +714,7 @@ class _EchoDetailScreenState extends State<EchoDetailScreen> {
                         hideUrlText: hideUrlText,
                         onAuthorTap: () => _openAuthorProfile(displayed),
                         onHashtagTap: _openHashtag,
+                        onMentionTap: _openMentionProfile,
                         onPreviewUnavailable: () {
                           if (mounted) {
                             setState(() => _previewUnavailable = true);
@@ -938,6 +946,7 @@ class _DetailMainPostCard extends StatelessWidget {
     required this.hideUrlText,
     required this.onAuthorTap,
     required this.onHashtagTap,
+    required this.onMentionTap,
     required this.onPreviewUnavailable,
   });
 
@@ -946,6 +955,7 @@ class _DetailMainPostCard extends StatelessWidget {
   final bool hideUrlText;
   final VoidCallback onAuthorTap;
   final ValueChanged<String> onHashtagTap;
+  final ValueChanged<String> onMentionTap;
   final VoidCallback onPreviewUnavailable;
 
   @override
@@ -1001,6 +1011,7 @@ class _DetailMainPostCard extends StatelessWidget {
                     ),
                     hideUrls: hideUrlText,
                     onHashtagTap: onHashtagTap,
+                    onMentionTap: onMentionTap,
                   ),
                   const SizedBox(height: AppSpacing.md),
                 ],
@@ -1012,6 +1023,7 @@ class _DetailMainPostCard extends StatelessWidget {
                   ),
                   hideUrls: hideUrlText,
                   onHashtagTap: onHashtagTap,
+                  onMentionTap: onMentionTap,
                 ),
                 if (previewUrl != null)
                   EchoLinkPreview(
@@ -2206,6 +2218,16 @@ class _ContextRowState extends State<_ContextRow> {
     final mediaUrls =
         (widget.row['media_urls'] as List?)?.cast<String>() ?? const <String>[];
     final created = _parseContextDate(widget.row['created_at']);
+    void openProfile(String targetUsername, {String? userId}) {
+      final clean = targetUsername.trim().replaceFirst('@', '');
+      if (clean.isEmpty) return;
+      final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId != null && userId == currentUserId) {
+        context.push('/profile');
+        return;
+      }
+      context.push('/profile/${Uri.encodeComponent(clean)}');
+    }
 
     return Container(
       padding: EdgeInsets.fromLTRB(
@@ -2228,17 +2250,22 @@ class _ContextRowState extends State<_ContextRow> {
             width: 30,
             child: Column(
               children: [
-                CircleAvatar(
-                  radius: 14,
-                  backgroundColor: AppColors.softSand,
-                  backgroundImage: avatarImageProvider(avatarUrl),
-                  child: avatarImageProvider(avatarUrl) == null
-                      ? const Icon(
-                          Icons.person_outline_rounded,
-                          size: 15,
-                          color: AppColors.textTertiary,
-                        )
-                      : null,
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () =>
+                      openProfile(username, userId: user['id'] as String?),
+                  child: CircleAvatar(
+                    radius: 14,
+                    backgroundColor: AppColors.softSand,
+                    backgroundImage: avatarImageProvider(avatarUrl),
+                    child: avatarImageProvider(avatarUrl) == null
+                        ? const Icon(
+                            Icons.person_outline_rounded,
+                            size: 15,
+                            color: AppColors.textTertiary,
+                          )
+                        : null,
+                  ),
                 ),
                 if (!widget.isLast)
                   Container(
@@ -2263,16 +2290,26 @@ class _ContextRowState extends State<_ContextRow> {
                   runSpacing: 2,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Text(
-                      displayName,
-                      style: AppTypography.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.charcoal,
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () =>
+                          openProfile(username, userId: user['id'] as String?),
+                      child: Text(
+                        displayName,
+                        style: AppTypography.textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.charcoal,
+                        ),
                       ),
                     ),
-                    Text(
-                      '@$username${created == null ? '' : ' · ${Formatters.timeAgo(created)}'}',
-                      style: AppTypography.textTheme.labelSmall,
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () =>
+                          openProfile(username, userId: user['id'] as String?),
+                      child: Text(
+                        '@$username${created == null ? '' : ' · ${Formatters.timeAgo(created)}'}',
+                        style: AppTypography.textTheme.labelSmall,
+                      ),
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(
@@ -2300,6 +2337,7 @@ class _ContextRowState extends State<_ContextRow> {
                   text: widget.row['content'] as String? ?? '',
                   style: AppTypography.textTheme.bodyMedium,
                   hideUrls: false,
+                  onMentionTap: (username) => openProfile(username),
                 ),
                 if (mediaUrls.isNotEmpty) ...[
                   const SizedBox(height: AppSpacing.sm),
@@ -2309,36 +2347,19 @@ class _ContextRowState extends State<_ContextRow> {
                   ),
                 ],
                 const SizedBox(height: AppSpacing.xs),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
+                SocialActionButton(
+                  icon: Icons.favorite_border_rounded,
+                  activeIcon: Icons.favorite_rounded,
+                  label: _likeCount > 0
+                      ? Formatters.compactNumber(_likeCount)
+                      : 'Like context',
+                  active: _liked,
+                  compact: true,
+                  minWidth: _likeCount > 0 ? 46 : 92,
+                  activeColor: AppColors.fernGreen,
+                  inactiveColor: AppColors.textTertiary,
+                  showBurst: true,
                   onTap: _toggleLike,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _liked
-                              ? Icons.favorite_rounded
-                              : Icons.favorite_border_rounded,
-                          size: 15,
-                          color: _liked
-                              ? AppColors.fernGreen
-                              : AppColors.textTertiary,
-                        ),
-                        const SizedBox(width: 5),
-                        Text(
-                          _likeCount > 0 ? '$_likeCount' : 'Like context',
-                          style: AppTypography.textTheme.labelSmall?.copyWith(
-                            color: _liked
-                                ? AppColors.fernGreenDark
-                                : AppColors.textTertiary,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                 ),
               ],
             ),
@@ -2693,6 +2714,16 @@ class _InlineReplyState extends State<_InlineReply> {
     final isPro = user['is_pro'] as bool? ?? false;
     final trustTier = user['trust_tier'] as String? ?? 'unverified';
     final isTrusted = trustTier == 'high' || trustTier == 'elite';
+    void openProfile(String targetUsername, {String? userId}) {
+      final clean = targetUsername.trim().replaceFirst('@', '');
+      if (clean.isEmpty) return;
+      final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId != null && userId == currentUserId) {
+        context.push('/profile');
+        return;
+      }
+      context.push('/profile/${Uri.encodeComponent(clean)}');
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
@@ -2702,7 +2733,11 @@ class _InlineReplyState extends State<_InlineReply> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _VerifiedAvatar(avatarUrl: avatarUrl),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => openProfile(username, userId: user['id'] as String?),
+            child: _VerifiedAvatar(avatarUrl: avatarUrl),
+          ),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Column(
@@ -2711,11 +2746,18 @@ class _InlineReplyState extends State<_InlineReply> {
                 Row(
                   children: [
                     Flexible(
-                      child: Text(
-                        displayName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.textTheme.titleSmall,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => openProfile(
+                          username,
+                          userId: user['id'] as String?,
+                        ),
+                        child: Text(
+                          displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.textTheme.titleSmall,
+                        ),
                       ),
                     ),
                     const SizedBox(width: AppSpacing.xs),
@@ -2724,11 +2766,18 @@ class _InlineReplyState extends State<_InlineReply> {
                       const SizedBox(width: AppSpacing.xs),
                     ],
                     Expanded(
-                      child: Text(
-                        '@$username · ${Formatters.timeAgo(created)}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTypography.textTheme.labelMedium,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => openProfile(
+                          username,
+                          userId: user['id'] as String?,
+                        ),
+                        child: Text(
+                          '@$username · ${Formatters.timeAgo(created)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.textTheme.labelMedium,
+                        ),
                       ),
                     ),
                   ],
@@ -2738,6 +2787,7 @@ class _InlineReplyState extends State<_InlineReply> {
                   text: content,
                   style: AppTypography.textTheme.bodyMedium,
                   hideUrls: hideUrlText,
+                  onMentionTap: (username) => openProfile(username),
                 ),
                 if (previewUrl != null)
                   EchoLinkPreview(

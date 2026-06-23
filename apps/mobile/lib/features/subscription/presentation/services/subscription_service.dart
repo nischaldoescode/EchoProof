@@ -20,6 +20,14 @@ import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 import 'package:in_app_purchase_android/billing_client_wrappers.dart'
     show ReplacementMode;
+import 'package:pointycastle/api.dart' show PublicKeyParameter;
+import 'package:pointycastle/asn1.dart'
+    show ASN1BitString, ASN1Integer, ASN1Parser, ASN1Sequence;
+import 'package:pointycastle/asymmetric/api.dart'
+    show RSAPublicKey, RSASignature;
+import 'package:pointycastle/digests/sha1.dart' show SHA1Digest;
+import 'package:pointycastle/digests/sha256.dart' show SHA256Digest;
+import 'package:pointycastle/signers/rsa_signer.dart' show RSASigner;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/play_licensing.dart';
 import '../../../../core/services/connectivity_service.dart';
@@ -108,9 +116,9 @@ class SubscriptionService extends ChangeNotifier {
   Future<void> _init() async {
     AppLogger.info('subscription: init started');
     _recordBillingEvent('service init started');
-    _recordBillingEvent(
-      'play licensing key bundled length=${PlayLicensing.publicKey.length}',
-    );
+    // the ignored play licensing file is used only for local signature
+    // pre-checks. entitlement is still granted only after server validation.
+    // never log the public key, signed json, purchase signature, or token.
 
     // check server-side subscription status on startup
     await checkSubscriptionStatus();
@@ -753,6 +761,24 @@ class SubscriptionService extends ChangeNotifier {
       String? orderId;
       int? purchaseTimeMs;
       if (purchase is GooglePlayPurchaseDetails) {
+        final localSignatureValid = _verifyGooglePlaySignature(purchase);
+        if (!localSignatureValid) {
+          _recordCheckoutDiagnostic(
+            'Google Play signature verification failed before server validation.',
+            notify: false,
+          );
+          _recordBillingEvent(
+            'local play signature rejected product=${purchase.productID}',
+            notify: true,
+          );
+          throw const _PurchaseValidationException(
+            'Purchase could not be verified. Please try again or contact support.',
+          );
+        }
+        _recordBillingEvent(
+          'local play signature accepted product=${purchase.productID}',
+          notify: true,
+        );
         purchaseToken = purchase.billingClientPurchase.purchaseToken;
         orderId = purchase.billingClientPurchase.orderId;
         purchaseTimeMs = purchase.billingClientPurchase.purchaseTime;
@@ -823,6 +849,14 @@ class SubscriptionService extends ChangeNotifier {
         notify: false,
       );
       _recordBillingEvent('server validation timeout $e', notify: true);
+    } on _PurchaseValidationException catch (e) {
+      _error = e.message;
+      _recordCheckoutDiagnostic(
+        'Purchase stopped before entitlement activation because local verification failed.',
+        notify: false,
+      );
+      AppLogger.error('subscription: local purchase validation failed');
+      _recordBillingEvent('local purchase validation failed', notify: true);
     } catch (e) {
       _error = 'Purchase validation failed. Please contact support.';
       _recordCheckoutDiagnostic(
@@ -835,6 +869,84 @@ class SubscriptionService extends ChangeNotifier {
 
     _isLoading = false;
     notifyListeners();
+  }
+
+  /// verifies google play's signed purchase payload before server validation.
+  /// this protects the local client from forwarding obviously tampered purchase
+  /// records, but it intentionally does not grant pro. local checks can be
+  /// bypassed on compromised devices, so the backend must still verify the
+  /// purchase token with google play developer api before entitlement changes.
+  bool _verifyGooglePlaySignature(GooglePlayPurchaseDetails purchase) {
+    final signedData = purchase.billingClientPurchase.originalJson;
+    final signature = purchase.billingClientPurchase.signature;
+    if (signedData.isEmpty || signature.isEmpty) return false;
+
+    try {
+      final publicKey = _parseGooglePlayPublicKey(PlayLicensing.publicKey);
+      final message = Uint8List.fromList(utf8.encode(signedData));
+      final rsaSignature = RSASignature(
+        Uint8List.fromList(base64Decode(signature)),
+      );
+      return _verifyRsaSignature(
+            publicKey: publicKey,
+            message: message,
+            signature: rsaSignature,
+            signer: RSASigner(SHA1Digest(), '06052b0e03021a'),
+          ) ||
+          _verifyRsaSignature(
+            publicKey: publicKey,
+            message: message,
+            signature: rsaSignature,
+            signer: RSASigner(SHA256Digest(), '0609608648016503040201'),
+          );
+    } catch (e) {
+      // malformed local key material, malformed purchase json, invalid base64,
+      // or an unexpected asn.1 layout should all fail closed. the event is kept
+      // generic so release diagnostics never expose purchase payload material.
+      AppLogger.error('subscription: local play signature check crashed', e);
+      return false;
+    }
+  }
+
+  /// parses the play console rsa public key from x.509 subjectpublickeyinfo der.
+  /// google provides the key as base64 text. inside that wrapper the actual rsa
+  /// modulus and exponent live in a bit string containing a pkcs#1 rsa sequence.
+  /// this parser is intentionally narrow because the app only accepts google's
+  /// rsa public key shape; accepting multiple formats would add avoidable risk.
+  RSAPublicKey _parseGooglePlayPublicKey(String encodedKey) {
+    final keyBytes = Uint8List.fromList(base64Decode(encodedKey));
+    final subjectPublicKeyInfo =
+        ASN1Parser(keyBytes).nextObject() as ASN1Sequence;
+    final publicKeyBitString =
+        subjectPublicKeyInfo.elements!.elementAt(1) as ASN1BitString;
+    final rsaBytes = Uint8List.fromList(publicKeyBitString.stringValues!);
+    final rsaSequence = ASN1Parser(rsaBytes).nextObject() as ASN1Sequence;
+    final modulus = (rsaSequence.elements!.elementAt(0) as ASN1Integer).integer;
+    final exponent =
+        (rsaSequence.elements!.elementAt(1) as ASN1Integer).integer;
+    if (modulus == null || exponent == null) {
+      throw const FormatException('invalid google play public key');
+    }
+    return RSAPublicKey(modulus, exponent);
+  }
+
+  /// verifies one rsa digest variant without leaking purchase material.
+  /// google play purchase signatures are pkcs#1 v1.5 rsa signatures. sha-1 is
+  /// the historical play billing digest; sha-256 is accepted defensively so a
+  /// platform-side digest migration does not block valid purchases. both paths
+  /// still require google's private key and are followed by server validation.
+  bool _verifyRsaSignature({
+    required RSAPublicKey publicKey,
+    required Uint8List message,
+    required RSASignature signature,
+    required RSASigner signer,
+  }) {
+    try {
+      signer.init(false, PublicKeyParameter<RSAPublicKey>(publicKey));
+      return signer.verifySignature(message, signature);
+    } catch (_) {
+      return false;
+    }
   }
 
   // restore purchases (google play)
@@ -1236,6 +1348,12 @@ class SubscriptionService extends ChangeNotifier {
         return 'Purchase failed (code: $code). Please try again or contact support.';
     }
   }
+}
+
+class _PurchaseValidationException implements Exception {
+  const _PurchaseValidationException(this.message);
+
+  final String message;
 }
 
 extension _BillingIntFormat on int {

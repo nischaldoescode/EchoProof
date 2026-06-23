@@ -232,6 +232,19 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
     unawaited(notifications.markFollowerEchoesRead());
   }
 
+  Future<void> _showPendingFeedUpdates() async {
+    if (_scrollCtrl.hasClients && _scrollCtrl.offset > 0) {
+      await _scrollCtrl.animateTo(
+        0,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+    }
+    if (!mounted) return;
+    await context.read<EchoFeedService>().refreshPendingNewEchoes();
+    if (mounted) setState(() => _hasPlayedInitialFeedStagger = true);
+  }
+
   Future<void> _handleFeedNavTap() async {
     if (_scrollCtrl.hasClients && _scrollCtrl.offset > 8) {
       await _scrollCtrl.animateTo(
@@ -401,68 +414,105 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
       );
     }
 
-    return Column(
+    return Stack(
       children: [
-        _FeedModeTabs(selected: _lane, onChanged: _changeLane),
-        AnimatedSize(
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeInOut,
-          child: _filter.isActive
-              ? _ActiveFilterBar(
-                  filter: _filter,
-                  onClear: () => setState(() => _filter = const FeedFilter()),
-                  onTap: _openFilter,
-                )
-              : const SizedBox.shrink(),
-        ),
-        Expanded(
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 120),
-            reverseDuration: const Duration(milliseconds: 90),
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeInCubic,
-            transitionBuilder: (child, animation) {
-              final slide = Tween<Offset>(
-                begin: const Offset(0.018, 0),
-                end: Offset.zero,
-              ).animate(animation);
-              return FadeTransition(
-                opacity: animation,
-                child: SlideTransition(position: slide, child: child),
-              );
-            },
-            child: RefreshIndicator(
-              key: ValueKey('feed-lane-$_laneSwitchEpoch'),
-              color: AppColors.fernGreen,
-              onRefresh: _refreshFeed,
-              child: ListView.builder(
-                controller: _scrollCtrl,
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.only(top: 2, bottom: 92),
-                itemCount: _itemCount(filtered, feed.hasMore),
-                itemBuilder: (ctx, index) {
-                  if (index >= filtered.length) {
-                    if (!feed.hasMore) return const SizedBox.shrink();
-                    return const Padding(
-                      padding: EdgeInsets.all(AppSpacing.xl),
-                      child: EchoLogoLoader(size: 46),
-                    );
-                  }
+        Column(
+          children: [
+            _FeedModeTabs(selected: _lane, onChanged: _changeLane),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeInOut,
+              child: _filter.isActive
+                  ? _ActiveFilterBar(
+                      filter: _filter,
+                      onClear: () =>
+                          setState(() => _filter = const FeedFilter()),
+                      onTap: _openFilter,
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 120),
+                reverseDuration: const Duration(milliseconds: 90),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) {
+                  final reduceMotion = MediaQuery.disableAnimationsOf(context);
+                  return AnimatedBuilder(
+                    animation: animation,
+                    child: RepaintBoundary(child: child),
+                    builder: (context, child) {
+                      final progress = animation.value
+                          .clamp(0.0, 1.0)
+                          .toDouble();
+                      if (reduceMotion) {
+                        return Opacity(opacity: progress, child: child);
+                      }
 
-                  return Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 900),
-                      child: _AnimatedCard(
-                        key: ValueKey('${_lane.name}-${filtered[index].id}'),
-                        echo: filtered[index],
-                        index: index,
-                        stagger: !_hasPlayedInitialFeedStagger,
-                      ),
-                    ),
+                      final devicePixelRatio = MediaQuery.devicePixelRatioOf(
+                        context,
+                      );
+                      final offset = (1 - progress) * 8;
+                      final snappedOffset =
+                          (offset * devicePixelRatio).roundToDouble() /
+                          devicePixelRatio;
+
+                      return Opacity(
+                        opacity: progress,
+                        child: Transform.translate(
+                          offset: Offset(snappedOffset, 0),
+                          child: child,
+                        ),
+                      );
+                    },
                   );
                 },
+                child: RefreshIndicator(
+                  key: ValueKey('feed-lane-$_laneSwitchEpoch'),
+                  color: AppColors.fernGreen,
+                  onRefresh: _refreshFeed,
+                  child: ListView.builder(
+                    controller: _scrollCtrl,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.only(top: 2, bottom: 92),
+                    itemCount: _itemCount(filtered, feed.hasMore),
+                    itemBuilder: (ctx, index) {
+                      if (index >= filtered.length) {
+                        if (!feed.hasMore) return const SizedBox.shrink();
+                        return const Padding(
+                          padding: EdgeInsets.all(AppSpacing.xl),
+                          child: EchoLogoLoader(size: 46),
+                        );
+                      }
+
+                      return Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 900),
+                          child: _AnimatedCard(
+                            key: ValueKey(
+                              '${_lane.name}-${filtered[index].id}',
+                            ),
+                            echo: filtered[index],
+                            index: index,
+                            stagger: !_hasPlayedInitialFeedStagger,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
               ),
             ),
+          ],
+        ),
+        Positioned(
+          top: _filter.isActive ? 98 : 50,
+          left: 0,
+          right: 0,
+          child: _PendingFeedUpdates(
+            count: feed.pendingNewEchoCount,
+            onPressed: _showPendingFeedUpdates,
           ),
         ),
       ],
@@ -471,6 +521,56 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
 }
 
 enum _FeedLane { forYou, following }
+
+class _PendingFeedUpdates extends StatelessWidget {
+  const _PendingFeedUpdates({required this.count, required this.onPressed});
+
+  final int count;
+  final Future<void> Function() onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = count > 0;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final label = count == 1 ? 'New echo' : 'New echoes';
+
+    return IgnorePointer(
+      ignoring: !visible,
+      child: AnimatedOpacity(
+        opacity: visible ? 1 : 0,
+        duration: reduceMotion
+            ? Duration.zero
+            : const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
+        child: AnimatedSlide(
+          offset: visible || reduceMotion ? Offset.zero : const Offset(0, -0.2),
+          duration: reduceMotion
+              ? Duration.zero
+              : const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: FilledButton.icon(
+              onPressed: () => onPressed(),
+              icon: const Icon(Icons.arrow_upward_rounded, size: 16),
+              label: Text(label),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.charcoal,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(0, 36),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                shape: const StadiumBorder(),
+                textStyle: AppTypography.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _FeedModeTabs extends StatelessWidget {
   const _FeedModeTabs({required this.selected, required this.onChanged});
@@ -716,27 +816,32 @@ class _AnimatedCardState extends State<_AnimatedCard>
   late final AnimationController _c;
   late final Animation<double> _opacity;
   late final Animation<double> _y;
+  late final Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
     _c = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 240),
+      duration: const Duration(milliseconds: 320),
     );
     _opacity = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(
         parent: _c,
-        curve: const Interval(0, 0.6, curve: Curves.easeOut),
+        curve: const Interval(0, 0.74, curve: Curves.easeOutCubic),
       ),
     );
     _y = Tween<double>(
-      begin: 8,
+      begin: 14,
       end: 0,
+    ).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
+    _scale = Tween<double>(
+      begin: 0.982,
+      end: 1,
     ).animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic));
 
     final delay = widget.stagger && widget.index < 5
-        ? Duration(milliseconds: widget.index * 22)
+        ? Duration(milliseconds: widget.index * 34)
         : Duration.zero;
     Future.delayed(delay, () {
       if (mounted) _c.forward();
@@ -751,12 +856,25 @@ class _AnimatedCardState extends State<_AnimatedCard>
 
   @override
   Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return AnimatedBuilder(
       animation: _c,
-      builder: (_, child) => Opacity(
-        opacity: _opacity.value,
-        child: Transform.translate(offset: Offset(0, _y.value), child: child),
-      ),
+      builder: (_, child) {
+        if (reduceMotion) {
+          return Opacity(opacity: _opacity.value, child: child);
+        }
+        return Opacity(
+          opacity: _opacity.value,
+          child: Transform(
+            alignment: Alignment.topCenter,
+            transform: Matrix4.identity()
+              ..setEntry(3, 2, 0.0007)
+              ..translateByDouble(0.0, _y.value, 0.0, 1.0)
+              ..scaleByDouble(_scale.value, _scale.value, _scale.value, 1.0),
+            child: child,
+          ),
+        );
+      },
       child: Builder(
         builder: (context) {
           final echo = widget.echo;
@@ -777,6 +895,8 @@ class _AnimatedCardState extends State<_AnimatedCard>
                     reply: followedReply,
                     totalReplyCount: echo.replyCount,
                     onHashtagTap: _openHashtag,
+                    onMentionTap: (username) =>
+                        _openReplyAuthor(username, null),
                     onTap: () => _openReplies(echo),
                     onAuthorTap: _openReplyAuthor,
                   ),

@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
   BadgeDollarSign,
+  BarChart3,
   Flag,
   LayoutDashboard,
   LogOut,
@@ -29,6 +30,7 @@ const nav: Array<{
   { href: "/echoes", label: "Echoes", Icon: MessageSquareText },
   { href: "/users", label: "Users", Icon: Users },
   { href: "/reports", label: "Reports", Icon: Flag },
+  { href: "/analytics", label: "Analytics", Icon: BarChart3 },
   {
     href: "/subscription",
     label: "Subscriptions",

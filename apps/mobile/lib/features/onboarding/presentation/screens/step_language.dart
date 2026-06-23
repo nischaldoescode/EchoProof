@@ -9,6 +9,7 @@ import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../../../core/localization/app_copy.dart';
 import '../services/onboarding_service.dart';
+import '../widgets/onboarding_story_frame.dart';
 import 'package:flutter/services.dart';
 
 class StepLanguage extends StatefulWidget {
@@ -18,12 +19,7 @@ class StepLanguage extends StatefulWidget {
   State<StepLanguage> createState() => _StepLanguageState();
 }
 
-class _StepLanguageState extends State<StepLanguage>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _anim;
-  late Animation<double> _fade;
-  late Animation<Offset> _slide;
-
+class _StepLanguageState extends State<StepLanguage> {
   static const _languages = [
     ('English', '🇬🇧', 'en'),
     ('हिन्दी', '🇮🇳', 'hi'),
@@ -44,147 +40,126 @@ class _StepLanguageState extends State<StepLanguage>
   @override
   void initState() {
     super.initState();
-    // pre-select whatever was saved previously (defaults to 'en')
+    // pre-select whatever was saved previously, defaulting to english.
     _selected = context.read<OnboardingService>().language;
-
-    _anim = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 480),
-    );
-    _fade = CurvedAnimation(parent: _anim, curve: Curves.easeOut);
-    _slide = Tween<Offset>(
-      begin: const Offset(0, 0.06),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _anim, curve: Curves.easeOut));
-    _anim.forward();
-  }
-
-  @override
-  void dispose() {
-    _anim.dispose();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.white,
-      body: SafeArea(
-        child: FadeTransition(
-          opacity: _fade,
-          child: SlideTransition(
-            position: _slide,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: AppSpacing.xxl),
-                  Text(
-                    context.tx('onboarding.languageTitle'),
-                    style: AppTypography.textTheme.headlineMedium,
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  Text(
-                    context.tx('onboarding.languageHelp'),
-                    style: AppTypography.textTheme.bodyMedium?.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
-                  Expanded(
-                    child: GridView.builder(
-                      itemCount: _languages.length,
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        childAspectRatio: 3.2,
-                        crossAxisSpacing: 10,
-                        mainAxisSpacing: 10,
+    return OnboardingStoryFrame(
+      currentStep: 1,
+      totalSteps: 7,
+      title: context.tx('onboarding.languageTitle'),
+      body: context.tx('onboarding.languageHelp'),
+      sceneIcon: Icons.translate_rounded,
+      sceneLabel: context.l('Your story starts in the language you choose.'),
+      footer: _LanguageContinueButton(
+        selected: _selected,
+        onPressed: () {
+          HapticFeedback.mediumImpact();
+          final svc = context.read<OnboardingService>();
+          svc.setLanguage(_selected);
+          // wait one short beat so the selected language is visible before the
+          // step changes. keeping this below a frame sequence avoids feeling
+          // like the onboarding flow is blocked.
+          Future.delayed(const Duration(milliseconds: 180), () {
+            if (mounted) svc.nextStep();
+          });
+        },
+      ),
+      children: [
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth;
+            final crossAxisCount = width < 340
+                ? 1
+                : width > 520
+                ? 3
+                : 2;
+            final aspectRatio = crossAxisCount == 1 ? 5.2 : 3.1;
+
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _languages.length,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: crossAxisCount,
+                childAspectRatio: aspectRatio,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+              ),
+              itemBuilder: (context, i) {
+                final lang = _languages[i];
+                final isSelected = _selected == lang.$3;
+
+                return Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      setState(() => _selected = lang.$3);
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOutCubic,
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? AppColors.fernGreenLight
+                            : AppColors.surfaceSecondary,
+                        borderRadius: BorderRadius.circular(
+                          AppSpacing.radiusMd,
+                        ),
+                        border: Border.all(
+                          color: isSelected
+                              ? AppColors.fernGreen
+                              : AppColors.borderSubtle,
+                          width: isSelected ? 1.5 : 1,
+                        ),
                       ),
-                      itemBuilder: (context, i) {
-                        final lang = _languages[i];
-                        final isSelected = _selected == lang.$3;
-                        return GestureDetector(
-                          onTap: () {
-                            HapticFeedback.selectionClick();
-                            setState(() => _selected = lang.$3);
-                          },
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 180),
-                            curve: Curves.easeInOut,
-                            decoration: BoxDecoration(
-                              // use softsand (already in appcolors) for unselected
-                              color: isSelected
-                                  ? AppColors.fernGreenLight
-                                  : AppColors.softSand,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: isSelected
-                                    ? AppColors.fernGreen
-                                    : AppColors.borderSubtle,
-                                width: isSelected ? 1.5 : 1,
-                              ),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            child: Row(
-                              children: [
-                                Text(lang.$2,
-                                    style: const TextStyle(fontSize: 20)),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    lang.$1,
-                                    style: AppTypography.textTheme.bodyMedium
-                                        ?.copyWith(
-                                      fontWeight: isSelected
-                                          ? FontWeight.w600
-                                          : FontWeight.normal,
-                                      color: isSelected
-                                          ? AppColors.fernGreen
-                                          : AppColors.textPrimary,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.md,
+                        vertical: AppSpacing.sm,
+                      ),
+                      child: Row(
+                        children: [
+                          Text(lang.$2, style: const TextStyle(fontSize: 20)),
+                          const SizedBox(width: AppSpacing.sm),
+                          Expanded(
+                            child: Text(
+                              lang.$1,
+                              style: AppTypography.textTheme.bodyMedium
+                                  ?.copyWith(
+                                    fontWeight: isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.w400,
+                                    color: isSelected
+                                        ? AppColors.fernGreenDark
+                                        : AppColors.textPrimary,
+                                    letterSpacing: 0,
                                   ),
-                                ),
-                                if (isSelected)
-                                  const Icon(
-                                    Icons.check_circle_rounded,
-                                    size: 16,
-                                    color: AppColors.fernGreen,
-                                  ),
-                              ],
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                        );
-                      },
+                          AnimatedOpacity(
+                            opacity: isSelected ? 1 : 0,
+                            duration: const Duration(milliseconds: 150),
+                            child: const Icon(
+                              Icons.check_circle_rounded,
+                              size: 16,
+                              color: AppColors.fernGreen,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                  const SizedBox(height: AppSpacing.lg),
-                  _LanguageContinueButton(
-                    selected: _selected,
-                    onPressed: () {
-                      HapticFeedback.mediumImpact();
-                      final svc = context.read<OnboardingService>();
-                      svc.setLanguage(_selected);
-                      // brief delay so the locale rebuild animates before
-                      // advancing the step gives the user visual feedback
-                      // that the language actually changed
-                      Future.delayed(const Duration(milliseconds: 350), () {
-                        if (mounted) svc.nextStep();
-                      });
-                    },
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
-                ],
-              ),
-            ),
-          ),
+                );
+              },
+            );
+          },
         ),
-      ),
+      ],
     );
   }
 }
@@ -215,9 +190,10 @@ class _LanguageContinueButtonState extends State<_LanguageContinueButton>
       vsync: this,
       duration: const Duration(milliseconds: 120),
     );
-    _scale = Tween<double>(begin: 1.0, end: 0.95).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeIn),
-    );
+    _scale = Tween<double>(
+      begin: 1.0,
+      end: 0.95,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeIn));
   }
 
   @override

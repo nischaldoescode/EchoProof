@@ -1,6 +1,3 @@
-// app update guard
-// @params reason force
-
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -17,11 +14,21 @@ import '../utils/logger.dart';
 
 enum AppUpdateCheckReason { launch, resume, retry }
 
+@visibleForTesting
+enum AppUpdateFlow { none, completeDownloaded, immediate, requiredSheet }
+
+/// owns google play in-app update checks and the required update fallback sheet.
+///
+/// the play api only works on eligible android installs that are owned by
+/// google play. debug, sideloaded, ios, desktop, and web builds are expected to
+/// skip or fail quietly instead of blocking the user with an unusable prompt.
 class AppUpdateService {
   static const _packageName = 'com.echoproof.app';
   static const _checkTimeout = Duration(seconds: 7);
   static const _checkCooldown = Duration(seconds: 25);
   static const _nativeFlowCooldown = Duration(seconds: 16);
+  static const _sheetHorizontalMargin = 14.0;
+  static const _sheetMaxWidth = 520.0;
 
   bool _checking = false;
   bool _sheetOpen = false;
@@ -68,16 +75,17 @@ class AppUpdateService {
         'staleDays=${info.clientVersionStalenessDays}',
       );
 
-      if (!_needsUpdate(info)) return;
-
-      if (info.immediateUpdateAllowed ||
-          info.updateAvailability ==
-              UpdateAvailability.developerTriggeredUpdateInProgress) {
-        await _runImmediateUpdate(info, reason);
-        return;
+      switch (selectFlow(info)) {
+        case AppUpdateFlow.none:
+          return;
+        case AppUpdateFlow.completeDownloaded:
+        case AppUpdateFlow.requiredSheet:
+          await _showRequiredUpdateSheet(info, reason: reason);
+          return;
+        case AppUpdateFlow.immediate:
+          await _runImmediateUpdate(info, reason);
+          return;
       }
-
-      await _showRequiredUpdateSheet(info, reason: reason);
     } on TimeoutException {
       AppLogger.warn('app update: check timed out reason=${reason.name}');
     } on PlatformException catch (e) {
@@ -93,11 +101,29 @@ class AppUpdateService {
     return !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
   }
 
-  bool _needsUpdate(AppUpdateInfo info) {
+  static bool _needsUpdate(AppUpdateInfo info) {
     return info.updateAvailability == UpdateAvailability.updateAvailable ||
         info.updateAvailability ==
             UpdateAvailability.developerTriggeredUpdateInProgress ||
         info.installStatus == InstallStatus.downloaded;
+  }
+
+  /// chooses the update path before opening native or custom ui.
+  ///
+  /// downloaded flexible updates are handled first because google play expects
+  /// completeupdate() for that state instead of starting a new immediate flow.
+  @visibleForTesting
+  static AppUpdateFlow selectFlow(AppUpdateInfo info) {
+    if (!_needsUpdate(info)) return AppUpdateFlow.none;
+    if (info.installStatus == InstallStatus.downloaded) {
+      return AppUpdateFlow.completeDownloaded;
+    }
+    if (info.immediateUpdateAllowed ||
+        info.updateAvailability ==
+            UpdateAvailability.developerTriggeredUpdateInProgress) {
+      return AppUpdateFlow.immediate;
+    }
+    return AppUpdateFlow.requiredSheet;
   }
 
   Future<void> _runImmediateUpdate(
@@ -275,8 +301,22 @@ class _UpdateRequiredSheetState extends State<_UpdateRequiredSheet>
     _pulse = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1400),
-    )..repeat(reverse: true);
+    );
     _message = _initialMessage();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final disableAnimations =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (disableAnimations) {
+      _pulse.stop();
+      return;
+    }
+    if (!_pulse.isAnimating) {
+      _pulse.repeat(reverse: true);
+    }
   }
 
   @override
@@ -291,6 +331,9 @@ class _UpdateRequiredSheetState extends State<_UpdateRequiredSheet>
     }
     if (widget.lastResult == AppUpdateResult.inAppUpdateFailed) {
       return 'Google Play could not start the update';
+    }
+    if (widget.info.installStatus == InstallStatus.downloaded) {
+      return 'Google Play has already downloaded this update';
     }
     if (widget.info.flexibleUpdateAllowed &&
         !widget.info.immediateUpdateAllowed) {
@@ -324,187 +367,211 @@ class _UpdateRequiredSheetState extends State<_UpdateRequiredSheet>
     final availableVersion = widget.info.availableVersionCode == null
         ? 'new build'
         : 'build ${widget.info.availableVersionCode}';
+    final availableWidth =
+        media.size.width -
+        media.padding.left -
+        media.padding.right -
+        (AppUpdateService._sheetHorizontalMargin * 2);
+    final sheetWidth = availableWidth < AppUpdateService._sheetMaxWidth
+        ? availableWidth
+        : AppUpdateService._sheetMaxWidth;
+    final disableAnimations = media.disableAnimations;
 
     return PopScope(
       canPop: false,
       child: Padding(
         padding: EdgeInsets.only(
-          left: 14,
-          right: 14,
-          bottom: media.viewInsets.bottom + 14,
+          left: AppUpdateService._sheetHorizontalMargin,
+          right: AppUpdateService._sheetHorizontalMargin,
+          bottom:
+              media.viewInsets.bottom + AppUpdateService._sheetHorizontalMargin,
         ),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: AppColors.white,
-            borderRadius: BorderRadius.circular(28),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.16),
-                blurRadius: 34,
-                offset: const Offset(0, 18),
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: SizedBox(
+            width: sheetWidth < 0 ? 0 : sheetWidth,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: AppColors.white,
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.16),
+                    blurRadius: 34,
+                    offset: const Offset(0, 18),
+                  ),
+                ],
               ),
-            ],
-          ),
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(22, 12, 22, 22),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 42,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: AppColors.borderMedium,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 12, 22, 22),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      AnimatedBuilder(
-                        animation: _pulse,
-                        builder: (context, child) {
-                          final value = 0.94 + (_pulse.value * 0.08);
-                          return Transform.scale(scale: value, child: child);
-                        },
+                      Center(
                         child: Container(
-                          width: 58,
-                          height: 58,
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [Color(0xFFE8F5EE), Color(0xFFCFEBDD)],
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.system_update_alt_rounded,
-                            color: AppColors.fernGreenDark,
-                            size: 28,
+                          width: 42,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: AppColors.borderMedium,
+                            borderRadius: BorderRadius.circular(999),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 16),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'A newer EchoProof is ready',
-                              style: TextStyle(
-                                color: AppColors.textPrimary,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w800,
-                                height: 1.15,
-                              ),
-                            ),
-                            SizedBox(height: 8),
-                            Text(
-                              'Update from Google Play to keep feed, rooms, and payments working cleanly',
-                              style: TextStyle(
-                                color: AppColors.textSecondary,
-                                fontSize: 14,
-                                height: 1.45,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceSecondary,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: AppColors.borderSubtle),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Row(
+                      const SizedBox(height: 24),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Icon(
-                            Icons.verified_user_outlined,
-                            color: AppColors.fernGreenDark,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              '$currentVersion  to  $availableVersion',
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: AppColors.textSecondary,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
+                          AnimatedBuilder(
+                            animation: _pulse,
+                            builder: (context, child) {
+                              final value = disableAnimations
+                                  ? 1.0
+                                  : 0.94 + (_pulse.value * 0.08);
+                              return Transform.scale(
+                                scale: value,
+                                child: child,
+                              );
+                            },
+                            child: Container(
+                              width: 58,
+                              height: 58,
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    Color(0xFFE8F5EE),
+                                    Color(0xFFCFEBDD),
+                                  ],
+                                ),
                               ),
+                              child: const Icon(
+                                Icons.system_update_alt_rounded,
+                                color: AppColors.fernGreenDark,
+                                size: 28,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'A newer EchoProof is ready',
+                                  style: TextStyle(
+                                    color: AppColors.textPrimary,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w800,
+                                    height: 1.15,
+                                  ),
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  'Update from Google Play to keep feed, rooms, and payments working cleanly',
+                                  style: TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 14,
+                                    height: 1.45,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  ),
-                  if (_message != null) ...[
-                    const SizedBox(height: 12),
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 220),
-                      child: Text(
-                        _message!,
-                        key: ValueKey(_message),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: AppColors.fernGreenDark,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
+                      const SizedBox(height: 20),
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceSecondary,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: AppColors.borderSubtle),
                         ),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 18),
-                  SizedBox(
-                    height: 52,
-                    child: FilledButton(
-                      onPressed: _busy ? null : _handleUpdate,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.fernGreenDark,
-                        foregroundColor: AppColors.white,
-                        disabledBackgroundColor: AppColors.fernGreenDark
-                            .withValues(alpha: 0.55),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 180),
-                        child: _busy
-                            ? const SizedBox(
-                                key: ValueKey('busy'),
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.4,
-                                  color: AppColors.white,
-                                ),
-                              )
-                            : const Text(
-                                'Update now',
-                                key: ValueKey('idle'),
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w800,
+                        child: Padding(
+                          padding: const EdgeInsets.all(14),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.verified_user_outlined,
+                                color: AppColors.fernGreenDark,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  '$currentVersion  to  $availableVersion',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
+                      if (_message != null) ...[
+                        const SizedBox(height: 12),
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 220),
+                          child: Text(
+                            _message!,
+                            key: ValueKey(_message),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: AppColors.fernGreenDark,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 18),
+                      SizedBox(
+                        height: 52,
+                        child: FilledButton(
+                          onPressed: _busy ? null : _handleUpdate,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppColors.fernGreenDark,
+                            foregroundColor: AppColors.white,
+                            disabledBackgroundColor: AppColors.fernGreenDark
+                                .withValues(alpha: 0.55),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 180),
+                            child: _busy
+                                ? const SizedBox(
+                                    key: ValueKey('busy'),
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.4,
+                                      color: AppColors.white,
+                                    ),
+                                  )
+                                : const Text(
+                                    'Update now',
+                                    key: ValueKey('idle'),
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),

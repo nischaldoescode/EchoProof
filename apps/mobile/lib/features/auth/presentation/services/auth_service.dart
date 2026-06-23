@@ -11,6 +11,7 @@ import '../../../../core/services/device_service.dart';
 import '../../../../core/utils/logger.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../../../core/services/avatar_service.dart';
+import '../../../../core/services/app_analytics_service.dart';
 
 class AuthService extends ChangeNotifier {
   static const _settingsBox = 'app_settings';
@@ -261,6 +262,12 @@ class AuthService extends ChangeNotifier {
         emailRedirectTo: _authRedirectUrl,
       );
       await _markOtpRequested(normalizedEmail);
+      unawaited(
+        AppAnalyticsService.instance.logEvent(
+          'auth_otp_requested',
+          parameters: const {'method': 'email'},
+        ),
+      );
       AppLogger.info('auth: OTP sent to $normalizedEmail');
       _setLoading(false);
       return true;
@@ -291,6 +298,7 @@ class AuthService extends ChangeNotifier {
       AppLogger.info('auth: OTP verified ${res.user!.id}');
       await _prepareLocalStateForUser(res.user!.id);
       await checkUsername();
+      unawaited(AppAnalyticsService.instance.logLogin(method: 'email_otp'));
       _setLoading(false);
       return true;
     } on AuthException catch (e) {
@@ -354,6 +362,7 @@ class AuthService extends ChangeNotifier {
 
       await _prepareLocalStateForUser(user.id);
       await checkUsername();
+      unawaited(AppAnalyticsService.instance.logLogin(method: 'email_link'));
       _setLoading(false);
       return true;
     } on AuthException catch (e) {
@@ -436,6 +445,7 @@ class AuthService extends ChangeNotifier {
       AppLogger.info(
         'auth: Supabase sign in successful, clearing stale state then checking',
       );
+      unawaited(AppAnalyticsService.instance.logLogin(method: 'google'));
 
       // clear stale hive onboarding state before checking username
       // must run before checkusername so the router never sees a stale
@@ -582,6 +592,7 @@ class AuthService extends ChangeNotifier {
         }
       }
 
+      unawaited(AppAnalyticsService.instance.logEvent('logout'));
       await _markCurrentDeviceSignedOut();
       await _google.signOut();
       await _client.auth.signOut();

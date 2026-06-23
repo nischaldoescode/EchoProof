@@ -16,8 +16,14 @@ import '../../../../core/localization/app_copy.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../core/utils/ai_slop_guard.dart';
+import '../../../../core/services/app_analytics_service.dart';
+import '../../../../core/services/offline_mutation_outbox.dart';
+import '../../../../core/services/connectivity_service.dart';
+import '../../../../core/utils/link_launcher.dart';
 import '../../../../shared/widgets/avatar_image_provider.dart';
+import '../../../../shared/widgets/mention_helpers.dart' as mention_ui;
 import '../../../../shared/widgets/rich_text_display.dart';
+import '../../../../shared/widgets/social_action_button.dart';
 import '../../../../shared/widgets/verified_badges.dart';
 import 'package:go_router/go_router.dart';
 import '../widgets/link_preview_card.dart';
@@ -53,6 +59,8 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
   bool _isSubmitting = false;
   String? _replyingToId;
   String? _replyingToUsername;
+  bool _quoteOriginal = false;
+  String? _evidenceUrl;
 
   @override
   void initState() {
@@ -85,16 +93,20 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
       final client = Supabase.instance.client;
       final rows = await client
           .from('users_public')
-          .select('id, username, avatar_url, trust_tier')
+          .select('id, username, display_name, avatar_url, trust_tier')
           .eq('is_suspended', false)
           .limit(50);
 
+      if (!mounted) return;
       setState(() {
         _mentionableUsers = (rows as List).map((r) {
           final map = r as Map<String, dynamic>;
+          final username = map['username'] as String? ?? 'unknown';
+          final displayName = (map['display_name'] as String?)?.trim();
           return {
             'id': map['id'] as String,
-            'display': map['username'] as String,
+            'display': username,
+            'name': displayName?.isNotEmpty == true ? displayName : username,
             'avatar_url': map['avatar_url'] as String? ?? '',
             'trust_tier': map['trust_tier'] as String? ?? 'unverified',
           };
@@ -112,7 +124,8 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
       final rows = await client
           .from('echo_replies')
           .select('''
-            id, content, parent_reply_id, created_at, mentioned_users,
+            id, content, parent_reply_id, quoted_echo_id, evidence_url,
+            created_at, mentioned_users,
             like_count, child_reply_count,
             users_public!inner(id, username, display_name, avatar_url, trust_tier, is_pro)
           ''')
@@ -169,36 +182,45 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
     HapticFeedback.lightImpact();
 
     try {
-      final client = Supabase.instance.client;
-      final userId = client.auth.currentUser?.id;
-      if (userId == null) throw Exception('not authenticated');
-
-      final inserted = await client
-          .from('echo_replies')
-          .insert({
-            'echo_id': widget.echoId,
-            'user_id': userId,
-            'content': content,
-            'parent_reply_id': _replyingToId,
-          })
-          .select('id')
-          .single();
-      final replyId = inserted['id'] as String?;
-      if (replyId != null) {
-        unawaited(_notifySocialEvent('echo_reply', {'reply_id': replyId}));
-      }
-
-      await client.rpc(
-        'increment_reply_count',
-        params: {'p_echo_id': widget.echoId},
+      final hadEvidence = _evidenceUrl != null;
+      final quotedOriginal = _quoteOriginal;
+      final submission = await OfflineMutationOutbox.instance.submitReply(
+        echoId: widget.echoId,
+        content: content,
+        parentReplyId: _replyingToId,
+        quotedEchoId: quotedOriginal ? widget.echoId : null,
+        evidenceUrl: _evidenceUrl,
       );
 
       _replyKey.currentState?.controller?.clear();
       setState(() {
         _replyingToId = null;
         _replyingToUsername = null;
+        _quoteOriginal = false;
+        _evidenceUrl = null;
         _isSubmitting = false;
       });
+
+      unawaited(
+        AppAnalyticsService.instance.logEvent(
+          'reply_submitted',
+          parameters: {
+            'queued_offline': submission.queued,
+            'has_evidence': hadEvidence,
+            'quoted_original': quotedOriginal,
+          },
+        ),
+      );
+
+      if (submission.queued) {
+        if (mounted) {
+          showInfoSnack(
+            context,
+            'You are offline. Your reply will send when you reconnect.',
+          );
+        }
+        return;
+      }
 
       await _loadReplies();
 
@@ -215,9 +237,23 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
       AppLogger.error('replies: submit failed', e);
       setState(() => _isSubmitting = false);
       if (mounted) {
-        showErrorSnack(context, e.toString());
+        showErrorSnack(context, _friendlyReplyError(e));
       }
     }
+  }
+
+  String _friendlyReplyError(Object error) {
+    final message = error.toString().toLowerCase();
+    if (message.contains('ai_generated_text')) {
+      return 'Please rewrite this reply in your own words.';
+    }
+    if (message.contains('moderation_unavailable')) {
+      return 'Reply review is unavailable right now. Try again shortly.';
+    }
+    if (message.contains('content_policy')) {
+      return 'This reply could not be posted under the content policy.';
+    }
+    return 'Could not post reply. Try again.';
   }
 
   Future<bool?> _showAiSlopDialog(AiSlopAssessment result) {
@@ -260,15 +296,53 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
   }
 
   Future<void> _toggleReplyLike(String replyId) async {
+    final wasLiked = _likedReplyIds.contains(replyId);
+    final nextLiked = !wasLiked;
+    final previousReplies = List<Map<String, dynamic>>.from(_replies);
+    final previousLikedIds = Set<String>.from(_likedReplyIds);
+
+    setState(() {
+      _likedReplyIds = {..._likedReplyIds};
+      if (wasLiked) {
+        _likedReplyIds.remove(replyId);
+      } else {
+        _likedReplyIds.add(replyId);
+      }
+      _replies = _replies.map((reply) {
+        if (reply['id'] != replyId) return reply;
+        final current = (reply['like_count'] as num?)?.toInt() ?? 0;
+        return {
+          ...reply,
+          'like_count': (current + (wasLiked ? -1 : 1))
+              .clamp(0, 1 << 31)
+              .toInt(),
+        };
+      }).toList();
+    });
+
+    if (!ConnectivityService.instance.isOnline) {
+      await OfflineMutationOutbox.instance.setReplyLike(
+        replyId: replyId,
+        liked: nextLiked,
+      );
+      if (mounted) {
+        showInfoSnack(
+          context,
+          'You are offline. This will sync when you reconnect.',
+        );
+      }
+      return;
+    }
+
     try {
       final rows =
           await Supabase.instance.client.rpc(
-                'toggle_echo_reply_like',
-                params: {'p_reply_id': replyId},
+                'set_echo_reply_like',
+                params: {'p_reply_id': replyId, 'p_liked': nextLiked},
               )
               as List;
-      final row = rows.isEmpty ? null : rows.first as Map<String, dynamic>;
-      final liked = row?['liked'] as bool? ?? !_likedReplyIds.contains(replyId);
+      final row = rows.isEmpty ? null : rows.first as Map<String, dynamic>?;
+      final liked = row?['liked'] as bool? ?? nextLiked;
       final nextCount = (row?['like_count'] as num?)?.toInt();
 
       setState(() {
@@ -284,15 +358,40 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
             ...reply,
             'like_count':
                 nextCount ??
-                ((reply['like_count'] as num?)?.toInt() ?? 0) +
-                    (liked ? 1 : -1),
+                ((reply['like_count'] as num?)?.toInt() ?? 0)
+                    .clamp(0, 1 << 31)
+                    .toInt(),
           };
         }).toList();
       });
       if (liked) {
         unawaited(_notifySocialEvent('reply_like', {'reply_id': replyId}));
       }
+      unawaited(
+        AppAnalyticsService.instance.logEvent(
+          'reply_like_changed',
+          parameters: {'liked': liked, 'queued_offline': false},
+        ),
+      );
     } catch (e) {
+      if (e is! PostgrestException) {
+        await OfflineMutationOutbox.instance.setReplyLike(
+          replyId: replyId,
+          liked: nextLiked,
+        );
+        if (mounted) {
+          showInfoSnack(
+            context,
+            'Connection is unstable. This will sync when you reconnect.',
+          );
+        }
+        return;
+      }
+      if (!mounted) return;
+      setState(() {
+        _likedReplyIds = previousLikedIds;
+        _replies = previousReplies;
+      });
       if (mounted) showErrorSnack(context, 'Could not update reply like.');
     }
   }
@@ -415,6 +514,90 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
     _replyKey.currentState?.controller?.clear();
   }
 
+  void _toggleQuoteOriginal() {
+    setState(() => _quoteOriginal = !_quoteOriginal);
+  }
+
+  Future<void> _editEvidenceUrl() async {
+    final controller = TextEditingController(text: _evidenceUrl ?? '');
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: AppColors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return AnimatedPadding(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              AppSpacing.lg,
+              AppSpacing.lg,
+              AppSpacing.xl,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Add source', style: AppTypography.textTheme.titleMedium),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  'Use a secure link that supports your reply.',
+                  style: AppTypography.textTheme.bodySmall?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.url,
+                  autofocus: true,
+                  textInputAction: TextInputAction.done,
+                  decoration: const InputDecoration(
+                    hintText: 'https://source.example',
+                    prefixIcon: Icon(Icons.link_rounded),
+                  ),
+                  onSubmitted: (value) => Navigator.pop(sheetContext, value),
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                Row(
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(sheetContext, ''),
+                      child: const Text('Remove'),
+                    ),
+                    const Spacer(),
+                    FilledButton(
+                      onPressed: () =>
+                          Navigator.pop(sheetContext, controller.text),
+                      child: const Text('Add source'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    controller.dispose();
+    if (result == null || !mounted) return;
+
+    final value = result.trim();
+    if (value.isNotEmpty && Uri.tryParse(value)?.scheme != 'https') {
+      showWarningSnack(context, 'Use a secure https link for a source.');
+      return;
+    }
+    setState(() => _evidenceUrl = value.isEmpty ? null : value);
+  }
+
   @override
   Widget build(BuildContext context) {
     // group replies into threads: top-level and their children
@@ -479,6 +662,7 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
                             content: widget.echoContent,
                             onAuthorTap: (username, userId) =>
                                 _openProfile(username, userId: userId),
+                            onMentionTap: (username) => _openProfile(username),
                           );
                         }
                         final reply = topLevel[index - 1];
@@ -508,8 +692,12 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
             replyingToUsername: _replyingToUsername,
             mentionableUsers: _mentionableUsers,
             isSubmitting: _isSubmitting,
+            quoteOriginal: _quoteOriginal,
+            evidenceUrl: _evidenceUrl,
             onSubmit: _submitReply,
             onCancelReply: _cancelReply,
+            onQuoteTap: _toggleQuoteOriginal,
+            onEvidenceTap: _editEvidenceUrl,
           ),
         ],
       ),
@@ -524,6 +712,7 @@ class _OriginalEchoHeader extends StatefulWidget {
     required this.authorId,
     required this.content,
     required this.onAuthorTap,
+    required this.onMentionTap,
   });
 
   final String authorUsername;
@@ -531,6 +720,7 @@ class _OriginalEchoHeader extends StatefulWidget {
   final String? authorId;
   final String content;
   final void Function(String username, String? userId) onAuthorTap;
+  final ValueChanged<String> onMentionTap;
 
   @override
   State<_OriginalEchoHeader> createState() => _OriginalEchoHeaderState();
@@ -587,6 +777,7 @@ class _OriginalEchoHeaderState extends State<_OriginalEchoHeader> {
             text: widget.content,
             style: AppTypography.textTheme.bodyLarge,
             hideUrls: hideUrlText,
+            onMentionTap: widget.onMentionTap,
           ),
           if (previewUrl != null)
             EchoLinkPreview(
@@ -702,6 +893,9 @@ class _ReplyThread extends StatelessWidget {
                       const SizedBox(height: AppSpacing.xs),
                       _ReplyTextWithPreview(
                         content: reply['content'] as String? ?? '',
+                        quotedOriginal: reply['quoted_echo_id'] != null,
+                        evidenceUrl: reply['evidence_url'] as String?,
+                        onMentionTap: (username) => onAuthorTap(username, null),
                       ),
                       const SizedBox(height: AppSpacing.xs),
                       _ReplyActions(
@@ -830,6 +1024,9 @@ class _NestedReply extends StatelessWidget {
                 const SizedBox(height: AppSpacing.xs),
                 _ReplyTextWithPreview(
                   content: reply['content'] as String? ?? '',
+                  quotedOriginal: reply['quoted_echo_id'] != null,
+                  evidenceUrl: reply['evidence_url'] as String?,
+                  onMentionTap: (username) => onAuthorTap(username, null),
                 ),
                 const SizedBox(height: AppSpacing.xs),
                 _ReplyActions(
@@ -899,9 +1096,17 @@ class _ReplyHeader extends StatelessWidget {
 }
 
 class _ReplyTextWithPreview extends StatefulWidget {
-  const _ReplyTextWithPreview({required this.content});
+  const _ReplyTextWithPreview({
+    required this.content,
+    required this.quotedOriginal,
+    required this.evidenceUrl,
+    required this.onMentionTap,
+  });
 
   final String content;
+  final bool quotedOriginal;
+  final String? evidenceUrl;
+  final ValueChanged<String> onMentionTap;
 
   @override
   State<_ReplyTextWithPreview> createState() => _ReplyTextWithPreviewState();
@@ -930,7 +1135,33 @@ class _ReplyTextWithPreviewState extends State<_ReplyTextWithPreview> {
           text: widget.content,
           style: AppTypography.textTheme.bodyMedium,
           hideUrls: hideUrlText,
+          onMentionTap: widget.onMentionTap,
         ),
+        if (widget.quotedOriginal || widget.evidenceUrl != null)
+          Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.xs),
+            child: Wrap(
+              spacing: AppSpacing.xs,
+              runSpacing: AppSpacing.xs,
+              children: [
+                if (widget.quotedOriginal)
+                  const _ReplyReferenceChip(
+                    icon: Icons.format_quote_rounded,
+                    label: 'Quoted original echo',
+                  ),
+                if (widget.evidenceUrl != null)
+                  _ReplyReferenceChip(
+                    icon: Icons.link_rounded,
+                    label: _sourceLabel(widget.evidenceUrl!),
+                    onTap: () => showOpenLinkSheet(
+                      context,
+                      url: widget.evidenceUrl!,
+                      title: 'Source',
+                    ),
+                  ),
+              ],
+            ),
+          ),
         if (previewUrl != null)
           EchoLinkPreview(
             url: previewUrl,
@@ -940,6 +1171,58 @@ class _ReplyTextWithPreviewState extends State<_ReplyTextWithPreview> {
             },
           ),
       ],
+    );
+  }
+}
+
+String _sourceLabel(String url) {
+  final host = Uri.tryParse(url)?.host.trim();
+  return host == null || host.isEmpty ? 'Source' : host;
+}
+
+class _ReplyReferenceChip extends StatelessWidget {
+  const _ReplyReferenceChip({
+    required this.icon,
+    required this.label,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.fernGreenLight,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 13, color: AppColors.fernGreenDark),
+              const SizedBox(width: 4),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 180),
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.josefinSans(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.fernGreenDark,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -972,9 +1255,11 @@ class _ReplyActions extends StatelessWidget {
     return Row(
       children: [
         _ReplyActionChip(
-          icon: isLiked ? Icons.favorite_rounded : Icons.favorite_border,
+          icon: Icons.favorite_border_rounded,
+          activeIcon: Icons.favorite_rounded,
           label: likeCount > 0 ? Formatters.compactNumber(likeCount) : '',
           active: isLiked,
+          showBurst: true,
           onTap: () => onLike(replyId),
         ),
         const SizedBox(width: AppSpacing.lg),
@@ -984,6 +1269,7 @@ class _ReplyActions extends StatelessWidget {
               ? Formatters.compactNumber(childReplyCount)
               : context.l('Reply'),
           active: false,
+          showBurst: false,
           onTap: () => onReply(replyId, username),
         ),
         const Spacer(),
@@ -1011,48 +1297,33 @@ class _ReplyActions extends StatelessWidget {
 class _ReplyActionChip extends StatelessWidget {
   const _ReplyActionChip({
     required this.icon,
+    this.activeIcon,
     required this.label,
     required this.active,
+    required this.showBurst,
     required this.onTap,
   });
 
   final IconData icon;
+  final IconData? activeIcon;
   final String label;
   final bool active;
+  final bool showBurst;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final color = active ? AppColors.sunsetCoral : AppColors.textTertiary;
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
+    return SocialActionButton(
+      icon: icon,
+      activeIcon: activeIcon,
+      label: label,
+      active: active,
+      compact: true,
+      minWidth: label.isEmpty ? 34 : 46,
+      activeColor: AppColors.sunsetCoral,
+      inactiveColor: AppColors.textTertiary,
+      showBurst: showBurst,
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AnimatedScale(
-              scale: active ? 1.08 : 1.0,
-              duration: const Duration(milliseconds: 160),
-              curve: Curves.easeOutBack,
-              child: Icon(icon, size: 16, color: color),
-            ),
-            if (label.isNotEmpty) ...[
-              const SizedBox(width: 4),
-              AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 160),
-                style: GoogleFonts.josefinSans(
-                  fontSize: 12,
-                  color: color,
-                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                ),
-                child: Text(label),
-              ),
-            ],
-          ],
-        ),
-      ),
     );
   }
 }
@@ -1093,16 +1364,24 @@ class _ReplyInput extends StatefulWidget {
     required this.replyingToUsername,
     required this.mentionableUsers,
     required this.isSubmitting,
+    required this.quoteOriginal,
+    required this.evidenceUrl,
     required this.onSubmit,
     required this.onCancelReply,
+    required this.onQuoteTap,
+    required this.onEvidenceTap,
   });
 
   final GlobalKey<FlutterMentionsState> replyKey;
   final String? replyingToUsername;
   final List<Map<String, dynamic>> mentionableUsers;
   final bool isSubmitting;
+  final bool quoteOriginal;
+  final String? evidenceUrl;
   final VoidCallback onSubmit;
   final VoidCallback onCancelReply;
+  final VoidCallback onQuoteTap;
+  final Future<void> Function() onEvidenceTap;
 
   @override
   State<_ReplyInput> createState() => _ReplyInputState();
@@ -1110,13 +1389,30 @@ class _ReplyInput extends StatefulWidget {
 
 class _ReplyInputState extends State<_ReplyInput> {
   bool _focused = false;
+  String _mentionSearch = '';
+  bool _mentionSuggestionsVisible = false;
+
+  void _hideMentionSuggestions() {
+    mention_ui.hideMentionSuggestions(widget.replyKey);
+    if (_mentionSuggestionsVisible || _mentionSearch.isNotEmpty) {
+      setState(() {
+        _mentionSuggestionsVisible = false;
+        _mentionSearch = '';
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final replyKey = widget.replyKey;
     final replyingToUsername = widget.replyingToUsername;
-    final mentionableUsers = widget.mentionableUsers;
+    final mentionableUsers = mention_ui.visibleMentionUsers(
+      _mentionSearch,
+      widget.mentionableUsers,
+    );
     final isSubmitting = widget.isSubmitting;
+    final quoteOriginal = widget.quoteOriginal;
+    final evidenceUrl = widget.evidenceUrl;
     final onSubmit = widget.onSubmit;
     final onCancelReply = widget.onCancelReply;
 
@@ -1163,6 +1459,44 @@ class _ReplyInputState extends State<_ReplyInput> {
                   ],
                 ),
               ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              child: quoteOriginal || evidenceUrl != null
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.lg,
+                        AppSpacing.xs,
+                        AppSpacing.lg,
+                        0,
+                      ),
+                      child: Row(
+                        children: [
+                          if (quoteOriginal)
+                            const _ComposerMetaChip(
+                              icon: Icons.format_quote_rounded,
+                              label: 'Quoting original echo',
+                            ),
+                          if (quoteOriginal && evidenceUrl != null)
+                            const SizedBox(width: AppSpacing.xs),
+                          if (evidenceUrl != null)
+                            Expanded(
+                              child: _ComposerMetaChip(
+                                icon: Icons.link_rounded,
+                                label:
+                                    Uri.tryParse(
+                                          evidenceUrl,
+                                        )?.host.isNotEmpty ==
+                                        true
+                                    ? Uri.parse(evidenceUrl).host
+                                    : 'Source added',
+                              ),
+                            ),
+                        ],
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
             Padding(
               padding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.md,
@@ -1191,18 +1525,17 @@ class _ReplyInputState extends State<_ReplyInput> {
                       onFocusChange: (focused) {
                         if (_focused == focused) return;
                         setState(() => _focused = focused);
+                        if (!focused) _hideMentionSuggestions();
                       },
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 180),
                         curve: Curves.easeOutCubic,
                         decoration: BoxDecoration(
-                          color: _focused
-                              ? AppColors.white
-                              : AppColors.softSand,
+                          color: AppColors.surfaceSecondary,
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
                             color: _focused
-                                ? AppColors.fernGreen.withValues(alpha: 0.48)
+                                ? AppColors.fernGreen
                                 : AppColors.borderSubtle,
                             width: _focused ? 1.2 : 1,
                           ),
@@ -1210,10 +1543,10 @@ class _ReplyInputState extends State<_ReplyInput> {
                             if (_focused)
                               BoxShadow(
                                 color: AppColors.fernGreen.withValues(
-                                  alpha: 0.08,
+                                  alpha: 0.10,
                                 ),
-                                blurRadius: 14,
-                                offset: const Offset(0, 5),
+                                blurRadius: 16,
+                                offset: const Offset(0, 8),
                               ),
                           ],
                         ),
@@ -1221,73 +1554,147 @@ class _ReplyInputState extends State<_ReplyInput> {
                           horizontal: AppSpacing.md,
                           vertical: AppSpacing.xs,
                         ),
-                        child: FlutterMentions(
-                          key: replyKey,
-                          suggestionPosition: SuggestionPosition.Top,
-                          maxLines: 5,
-                          minLines: 1,
-                          style: AppTypography.textTheme.bodyMedium,
-                          decoration: InputDecoration(
-                            hintText: replyingToUsername != null
-                                ? context.l('Reply to @{username}...', {
-                                    'username': replyingToUsername,
-                                  })
-                                : context.l('Add a reply...'),
-                            hintStyle: GoogleFonts.josefinSans(
-                              fontSize: 14,
-                              color: AppColors.textTertiary,
-                            ),
-                            border: InputBorder.none,
-                            enabledBorder: InputBorder.none,
-                            focusedBorder: InputBorder.none,
-                            errorBorder: InputBorder.none,
-                            focusedErrorBorder: InputBorder.none,
-                            disabledBorder: InputBorder.none,
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(
-                              vertical: 8,
-                            ),
-                          ),
-                          suggestionListDecoration: BoxDecoration(
-                            color: AppColors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppColors.borderSubtle),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.08),
-                                blurRadius: 12,
-                                offset: const Offset(0, -4),
-                              ),
-                            ],
-                          ),
-                          mentions: [
-                            Mention(
-                              trigger: '@',
-                              style: GoogleFonts.josefinSans(
-                                color: AppColors.fernGreen,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              data: mentionableUsers,
-                              suggestionBuilder: (data) {
-                                return _MentionSuggestionTile(data: data);
+                        child: Builder(
+                          builder: (mentionContext) {
+                            final suggestionPosition = mention_ui
+                                .adaptiveMentionSuggestionPosition(
+                                  mentionContext,
+                                  listHeight: 220,
+                                  preferTopWhenCrowded: true,
+                                  forceTop: true,
+                                );
+                            final suggestionHeight = mention_ui
+                                .adaptiveMentionSuggestionHeight(
+                                  mentionContext,
+                                  position: suggestionPosition,
+                                  maxHeight: 220,
+                                );
+
+                            return mention_ui.CompactMentionSuggestions(
+                              visible: _mentionSuggestionsVisible,
+                              position: suggestionPosition,
+                              suggestionHeight: suggestionHeight,
+                              suggestions: mentionableUsers,
+                              mentionKey: replyKey,
+                              onSelected: (_) {
+                                setState(() {
+                                  _mentionSuggestionsVisible = false;
+                                  _mentionSearch = '';
+                                });
                               },
-                            ),
-                            Mention(
-                              trigger: '~',
-                              style: GoogleFonts.josefinSans(
-                                color: AppColors.fernGreen,
-                                fontWeight: FontWeight.w500,
+                              child: FlutterMentions(
+                                key: replyKey,
+                                hideSuggestionList: true,
+                                suggestionPosition: suggestionPosition,
+                                suggestionListHeight: suggestionHeight,
+                                onSuggestionVisibleChanged: (visible) {
+                                  if (_mentionSuggestionsVisible == visible) {
+                                    return;
+                                  }
+                                  setState(() {
+                                    _mentionSuggestionsVisible = visible;
+                                    if (!visible) _mentionSearch = '';
+                                  });
+                                },
+                                onSearchChanged: (trigger, value) {
+                                  if (trigger != '@' ||
+                                      _mentionSearch == value) {
+                                    return;
+                                  }
+                                  setState(() => _mentionSearch = value);
+                                },
+                                maxLines: 5,
+                                minLines: 1,
+                                style: AppTypography.textTheme.bodyMedium,
+                                decoration: InputDecoration(
+                                  hintText: replyingToUsername != null
+                                      ? context.l('Reply to @{username}...', {
+                                          'username': replyingToUsername,
+                                        })
+                                      : context.l('Add a reply...'),
+                                  hintStyle: GoogleFonts.josefinSans(
+                                    fontSize: 14,
+                                    color: AppColors.textTertiary,
+                                  ),
+                                  border: InputBorder.none,
+                                  enabledBorder: InputBorder.none,
+                                  focusedBorder: InputBorder.none,
+                                  errorBorder: InputBorder.none,
+                                  focusedErrorBorder: InputBorder.none,
+                                  disabledBorder: InputBorder.none,
+                                  isDense: true,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    vertical: 8,
+                                  ),
+                                ),
+                                suggestionListDecoration: mention_ui
+                                    .mentionSuggestionDecoration(
+                                      suggestionPosition,
+                                    ),
+                                mentions: [
+                                  Mention(
+                                    trigger: '@',
+                                    style: GoogleFonts.josefinSans(
+                                      color: AppColors.fernGreen,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    data: widget.mentionableUsers,
+                                    suggestionBuilder: (data) =>
+                                        mention_ui.MentionSuggestionTile(
+                                          data: data,
+                                        ),
+                                  ),
+                                  Mention(
+                                    trigger: '~',
+                                    style: GoogleFonts.josefinSans(
+                                      color: AppColors.fernGreen,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    data: const [],
+                                    matchAll: true,
+                                    disableMarkup: true,
+                                  ),
+                                ],
                               ),
-                              data: const [],
-                              matchAll: true,
-                              disableMarkup: true,
-                            ),
-                          ],
+                            );
+                          },
                         ),
                       ),
                     ),
                   ),
                   const SizedBox(width: AppSpacing.sm),
+                  Tooltip(
+                    message: quoteOriginal
+                        ? 'Remove original quote'
+                        : 'Quote original echo',
+                    child: IconButton(
+                      onPressed: isSubmitting ? null : widget.onQuoteTap,
+                      icon: Icon(
+                        quoteOriginal
+                            ? Icons.format_quote_rounded
+                            : Icons.format_quote_outlined,
+                      ),
+                      color: quoteOriginal
+                          ? AppColors.fernGreenDark
+                          : AppColors.textSecondary,
+                    ),
+                  ),
+                  Tooltip(
+                    message: evidenceUrl == null ? 'Add source' : 'Edit source',
+                    child: IconButton(
+                      onPressed: isSubmitting
+                          ? null
+                          : () => widget.onEvidenceTap(),
+                      icon: Icon(
+                        evidenceUrl == null
+                            ? Icons.link_rounded
+                            : Icons.link_off_rounded,
+                      ),
+                      color: evidenceUrl == null
+                          ? AppColors.textSecondary
+                          : AppColors.fernGreenDark,
+                    ),
+                  ),
                   GestureDetector(
                     onTap: isSubmitting ? null : onSubmit,
                     child: AnimatedContainer(
@@ -1342,36 +1749,37 @@ class _ReplyInputState extends State<_ReplyInput> {
   }
 }
 
-class _MentionSuggestionTile extends StatelessWidget {
-  const _MentionSuggestionTile({required this.data});
-  final Map<String, dynamic> data;
+class _ComposerMetaChip extends StatelessWidget {
+  const _ComposerMetaChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
 
   @override
   Widget build(BuildContext context) {
-    final avatarUrl = data['avatar_url'] as String?;
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.md,
-        vertical: AppSpacing.sm,
+      constraints: const BoxConstraints(maxWidth: 220),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: AppColors.fernGreenLight,
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          CircleAvatar(
-            radius: 16,
-            backgroundColor: AppColors.softSand,
-            backgroundImage: avatarImageProvider(avatarUrl),
-            child: avatarImageProvider(avatarUrl) == null
-                ? const Icon(
-                    Icons.person_outline,
-                    size: 16,
-                    color: AppColors.textTertiary,
-                  )
-                : null,
-          ),
-          const SizedBox(width: AppSpacing.sm),
-          Text(
-            '@${data['display']}',
-            style: AppTypography.textTheme.titleSmall,
+          Icon(icon, size: 14, color: AppColors.fernGreenDark),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.josefinSans(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppColors.fernGreenDark,
+              ),
+            ),
           ),
         ],
       ),

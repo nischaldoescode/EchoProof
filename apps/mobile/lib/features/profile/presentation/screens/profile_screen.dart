@@ -2,6 +2,7 @@
 // @params username opens a public profile when present
 
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
@@ -27,6 +28,7 @@ import '../../../../shared/widgets/image_viewer.dart';
 import '../../../../shared/widgets/top_flow_loader.dart';
 import '../../../../shared/widgets/verified_badges.dart';
 import '../../../../app/app.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import '../../../../core/utils/snack.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -36,7 +38,14 @@ import '../../../../core/utils/sanitizer.dart';
 import '../../../../core/utils/media_file_safety.dart';
 import '../../../../core/services/storage_service.dart';
 import '../widgets/profile_banner_crop_editor.dart';
+import '../widgets/profile_tribute_overlay.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+/// returns a sheet width that follows the current app window, not the device.
+double _profileSheetMaxWidth(BuildContext context) {
+  final width = MediaQuery.sizeOf(context).width;
+  return math.min(width, 560);
+}
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, this.username});
@@ -60,6 +69,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   bool _isFollowing = false;
   bool _isBlockedByMe = false;
   bool _profileUnavailable = false;
+  bool _isFollowBusy = false;
   String _followRequestStatus = 'none';
   Timer? _debounce;
   bool _isSavingBanner = false;
@@ -71,6 +81,11 @@ class _ProfileScreenState extends State<ProfileScreen>
   bool _mediaTabLoaded = false;
   int _lastProfileTabIndex = 0;
   final Set<int> _visitedProfileTabs = <int>{0};
+  Timer? _profileTributeTapTimer;
+  int _profileTributeTapCount = 0;
+  int? _profileTributePointer;
+  Offset? _profileTributeDownPosition;
+  bool _profileTributeOpen = false;
 
   late final AnimationController _entranceCtrl;
   late final Animation<double> _fade;
@@ -106,6 +121,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     _repliesTabIsEmpty.dispose();
     _mediaTabIsEmpty.dispose();
     _debounce?.cancel();
+    _profileTributeTapTimer?.cancel();
     super.dispose();
   }
 
@@ -262,9 +278,15 @@ class _ProfileScreenState extends State<ProfileScreen>
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
+      enableDrag: true,
       backgroundColor: Colors.white,
+      constraints: BoxConstraints(maxWidth: _profileSheetMaxWidth(context)),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      sheetAnimationStyle: const AnimationStyle(
+        duration: Duration(milliseconds: 260),
+        reverseDuration: Duration(milliseconds: 190),
       ),
       builder: (ctx) {
         return StatefulBuilder(
@@ -283,610 +305,639 @@ class _ProfileScreenState extends State<ProfileScreen>
                 usernameAvailable &&
                 !isCheckingUsername;
 
-            return SingleChildScrollView(
-              padding: EdgeInsets.only(
-                bottom:
-                    MediaQuery.viewInsetsOf(ctx).bottom +
-                    MediaQuery.paddingOf(ctx).bottom +
-                    AppSpacing.xl,
-                left: AppSpacing.xl,
-                right: AppSpacing.xl,
-                top: AppSpacing.xl,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // drag handle
-                  Center(
-                    child: Container(
-                      width: 36,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: AppColors.borderMedium,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
+            return DraggableScrollableSheet(
+              expand: false,
+              initialChildSize: MediaQuery.sizeOf(ctx).height < 640
+                  ? 0.92
+                  : 0.84,
+              minChildSize: 0.34,
+              maxChildSize: 0.94,
+              builder: (sheetContext, scrollController) {
+                return SingleChildScrollView(
+                  controller: scrollController,
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.only(
+                    bottom:
+                        MediaQuery.viewInsetsOf(sheetContext).bottom +
+                        MediaQuery.paddingOf(sheetContext).bottom +
+                        AppSpacing.xl,
+                    left: AppSpacing.xl,
+                    right: AppSpacing.xl,
+                    top: AppSpacing.xl,
                   ),
-                  const SizedBox(height: AppSpacing.lg),
-                  Text(
-                    context.l('Edit profile'),
-                    style: AppTypography.textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  Text(
-                    context.l(
-                      'Username and date of birth changes require email verification.',
-                    ),
-                    style: AppTypography.textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-
-                  // display name
-                  Text(
-                    context.l('Display name'),
-                    style: GoogleFonts.josefinSans(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  TextField(
-                    controller: displayCtrl,
-                    maxLength: 50,
-                    onChanged: (_) => setSheet(() {}),
-                    buildCounter:
-                        (
-                          _, {
-                          required currentLength,
-                          required isFocused,
-                          maxLength,
-                        }) => null,
-                    style: AppTypography.textTheme.bodyMedium,
-                    decoration: InputDecoration(
-                      hintText: context.l('Your display name'),
-                      filled: true,
-                      fillColor: AppColors.softSand,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(
-                          color: AppColors.fernGreen,
-                          width: 1.5,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // drag handle
+                      Center(
+                        child: Container(
+                          width: 36,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: AppColors.borderMedium,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
                         ),
                       ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12,
+                      const SizedBox(height: AppSpacing.lg),
+                      Text(
+                        context.l('Edit profile'),
+                        style: AppTypography.textTheme.titleMedium,
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.md),
+                      const SizedBox(height: AppSpacing.xs),
+                      Text(
+                        context.l(
+                          'Username and date of birth changes require email verification.',
+                        ),
+                        style: AppTypography.textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
 
-                  // bio
-                  Text(
-                    context.l('Bio'),
-                    style: GoogleFonts.josefinSans(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  TextField(
-                    controller: bioCtrl,
-                    maxLength: 160,
-                    maxLines: 3,
-                    onChanged: (_) => setSheet(() {}),
-                    buildCounter:
-                        (
-                          _, {
-                          required currentLength,
-                          required isFocused,
-                          maxLength,
-                        }) => null,
-                    style: AppTypography.textTheme.bodyMedium,
-                    decoration: InputDecoration(
-                      hintText: context.l('A short line about you'),
-                      filled: true,
-                      fillColor: AppColors.softSand,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(
-                          color: AppColors.fernGreen,
-                          width: 1.5,
+                      // display name
+                      Text(
+                        context.l('Display name'),
+                        style: GoogleFonts.josefinSans(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary,
                         ),
                       ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-
-                  // website
-                  Text(
-                    context.l('Website'),
-                    style: GoogleFonts.josefinSans(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  TextField(
-                    controller: websiteCtrl,
-                    keyboardType: TextInputType.url,
-                    autocorrect: false,
-                    maxLength: 120,
-                    onChanged: (_) => setSheet(() {}),
-                    buildCounter:
-                        (
-                          _, {
-                          required currentLength,
-                          required isFocused,
-                          maxLength,
-                        }) => null,
-                    style: AppTypography.textTheme.bodyMedium,
-                    decoration: InputDecoration(
-                      hintText: context.l('https://your.site'),
-                      filled: true,
-                      fillColor: AppColors.softSand,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(
-                          color: AppColors.fernGreen,
-                          width: 1.5,
-                        ),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-
-                  // username
-                  Text(
-                    context.l('Username'),
-                    style: GoogleFonts.josefinSans(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  TextField(
-                    controller: usernameCtrl,
-                    maxLength: 20,
-                    buildCounter:
-                        (
-                          _, {
-                          required currentLength,
-                          required isFocused,
-                          maxLength,
-                        }) => null,
-                    autocorrect: false,
-                    style: AppTypography.textTheme.bodyMedium,
-                    decoration: InputDecoration(
-                      prefixText: '@',
-                      hintText: context.l('username'),
-                      errorText: usernameError,
-                      suffixIcon: isCheckingUsername
-                          ? const Padding(
-                              padding: EdgeInsets.all(12),
-                              child: SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: AppColors.fernGreen,
-                                ),
-                              ),
-                            )
-                          : usernameAvailable && usernameCtrl.text.length >= 3
-                          ? const Icon(
-                              Icons.check_circle_rounded,
-                              size: 18,
+                      const SizedBox(height: AppSpacing.xs),
+                      TextField(
+                        controller: displayCtrl,
+                        maxLength: 50,
+                        onChanged: (_) => setSheet(() {}),
+                        buildCounter:
+                            (
+                              _, {
+                              required currentLength,
+                              required isFocused,
+                              maxLength,
+                            }) => null,
+                        style: AppTypography.textTheme.bodyMedium,
+                        decoration: InputDecoration(
+                          hintText: context.l('Your display name'),
+                          filled: true,
+                          fillColor: AppColors.softSand,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
                               color: AppColors.fernGreen,
-                            )
-                          : null,
-                      filled: true,
-                      fillColor: AppColors.softSand,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(
-                          color: AppColors.fernGreen,
-                          width: 1.5,
+                              width: 1.5,
+                            ),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
                         ),
                       ),
-                      errorBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(
-                          color: AppColors.sunsetCoral,
+                      const SizedBox(height: AppSpacing.md),
+
+                      // bio
+                      Text(
+                        context.l('Bio'),
+                        style: GoogleFonts.josefinSans(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary,
                         ),
                       ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 12,
+                      const SizedBox(height: AppSpacing.xs),
+                      TextField(
+                        controller: bioCtrl,
+                        maxLength: 160,
+                        maxLines: 3,
+                        onChanged: (_) => setSheet(() {}),
+                        buildCounter:
+                            (
+                              _, {
+                              required currentLength,
+                              required isFocused,
+                              maxLength,
+                            }) => null,
+                        style: AppTypography.textTheme.bodyMedium,
+                        decoration: InputDecoration(
+                          hintText: context.l('A short line about you'),
+                          filled: true,
+                          fillColor: AppColors.softSand,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: AppColors.fernGreen,
+                              width: 1.5,
+                            ),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                        ),
                       ),
-                    ),
-                    onChanged: (v) {
-                      _debounce?.cancel();
+                      const SizedBox(height: AppSpacing.lg),
 
-                      setSheet(() {
-                        isCheckingUsername = true;
-                        usernameError = null;
-                      });
+                      // website
+                      Text(
+                        context.l('Website'),
+                        style: GoogleFonts.josefinSans(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      TextField(
+                        controller: websiteCtrl,
+                        keyboardType: TextInputType.url,
+                        autocorrect: false,
+                        maxLength: 120,
+                        onChanged: (_) => setSheet(() {}),
+                        buildCounter:
+                            (
+                              _, {
+                              required currentLength,
+                              required isFocused,
+                              maxLength,
+                            }) => null,
+                        style: AppTypography.textTheme.bodyMedium,
+                        decoration: InputDecoration(
+                          hintText: context.l('https://your.site'),
+                          filled: true,
+                          fillColor: AppColors.softSand,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: AppColors.fernGreen,
+                              width: 1.5,
+                            ),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
 
-                      _debounce = Timer(
-                        const Duration(milliseconds: 400),
-                        () async {
-                          if (!ctx.mounted) return;
-
-                          if (v.length < 3) {
-                            setSheet(() {
-                              isCheckingUsername = false;
-                              usernameAvailable = false;
-                              usernameError = context.l(
-                                'At least 3 characters',
-                              );
-                            });
-                            return;
-                          }
-
-                          final available = await checkUsernameAvailability(
-                            v.toLowerCase(),
-                          );
-
-                          if (!ctx.mounted) return;
+                      // username
+                      Text(
+                        context.l('Username'),
+                        style: GoogleFonts.josefinSans(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      TextField(
+                        controller: usernameCtrl,
+                        maxLength: 20,
+                        buildCounter:
+                            (
+                              _, {
+                              required currentLength,
+                              required isFocused,
+                              maxLength,
+                            }) => null,
+                        autocorrect: false,
+                        style: AppTypography.textTheme.bodyMedium,
+                        decoration: InputDecoration(
+                          prefixText: '@',
+                          hintText: context.l('username'),
+                          errorText: usernameError,
+                          suffixIcon: isCheckingUsername
+                              ? const Padding(
+                                  padding: EdgeInsets.all(12),
+                                  child: SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: AppColors.fernGreen,
+                                    ),
+                                  ),
+                                )
+                              : usernameAvailable &&
+                                    usernameCtrl.text.length >= 3
+                              ? const Icon(
+                                  Icons.check_circle_rounded,
+                                  size: 18,
+                                  color: AppColors.fernGreen,
+                                )
+                              : null,
+                          filled: true,
+                          fillColor: AppColors.softSand,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: AppColors.fernGreen,
+                              width: 1.5,
+                            ),
+                          ),
+                          errorBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: AppColors.sunsetCoral,
+                            ),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                        ),
+                        onChanged: (v) {
+                          _debounce?.cancel();
 
                           setSheet(() {
-                            isCheckingUsername = false;
-                            usernameAvailable = available;
-                            usernameError = available
-                                ? null
-                                : context.l('Username already taken');
+                            isCheckingUsername = true;
+                            usernameError = null;
                           });
+
+                          _debounce = Timer(
+                            const Duration(milliseconds: 400),
+                            () async {
+                              if (!ctx.mounted) return;
+
+                              if (v.length < 3) {
+                                setSheet(() {
+                                  isCheckingUsername = false;
+                                  usernameAvailable = false;
+                                  usernameError = context.l(
+                                    'At least 3 characters',
+                                  );
+                                });
+                                return;
+                              }
+
+                              final available = await checkUsernameAvailability(
+                                v.toLowerCase(),
+                              );
+
+                              if (!ctx.mounted) return;
+
+                              setSheet(() {
+                                isCheckingUsername = false;
+                                usernameAvailable = available;
+                                usernameError = available
+                                    ? null
+                                    : context.l('Username already taken');
+                              });
+                            },
+                          );
                         },
-                      );
-                    },
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  // birth date privacy stays close to identity fields
-                  Container(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    decoration: BoxDecoration(
-                      color: birthdateSurface,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: birthdateBorder),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          showBirthdatePublic
-                              ? Icons.visibility_outlined
-                              : Icons.visibility_off_outlined,
-                          size: 18,
-                          color: birthdateTint,
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      // birth date privacy stays close to identity fields
+                      Container(
+                        padding: const EdgeInsets.all(AppSpacing.md),
+                        decoration: BoxDecoration(
+                          color: birthdateSurface,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: birthdateBorder),
                         ),
-                        const SizedBox(width: AppSpacing.sm),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                context.l('Show birth date'),
-                                style: GoogleFonts.josefinSans(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w800,
-                                  color: birthdateTint,
+                        child: Row(
+                          children: [
+                            Icon(
+                              showBirthdatePublic
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                              size: 18,
+                              color: birthdateTint,
+                            ),
+                            const SizedBox(width: AppSpacing.sm),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    context.l('Show birth date'),
+                                    style: GoogleFonts.josefinSans(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                      color: birthdateTint,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    context.l(
+                                      'Only the month and day are shown publicly.',
+                                    ),
+                                    style: GoogleFonts.josefinSans(
+                                      fontSize: 12,
+                                      color: showBirthdatePublic
+                                          ? AppColors.textSecondary
+                                          : AppColors.textTertiary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.sm),
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 180),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 9,
+                                vertical: 5,
+                              ),
+                              decoration: BoxDecoration(
+                                color: showBirthdatePublic
+                                    ? AppColors.fernGreen.withValues(
+                                        alpha: 0.12,
+                                      )
+                                    : AppColors.white.withValues(alpha: 0.86),
+                                borderRadius: BorderRadius.circular(
+                                  AppSpacing.radiusFull,
+                                ),
+                                border: Border.all(
+                                  color: showBirthdatePublic
+                                      ? AppColors.fernGreen.withValues(
+                                          alpha: 0.22,
+                                        )
+                                      : AppColors.borderSubtle,
                                 ),
                               ),
-                              const SizedBox(height: 2),
-                              Text(
+                              child: Text(
                                 context.l(
-                                  'Only the month and day are shown publicly.',
+                                  showBirthdatePublic ? 'Public' : 'Hidden',
                                 ),
                                 style: GoogleFonts.josefinSans(
-                                  fontSize: 12,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
                                   color: showBirthdatePublic
-                                      ? AppColors.textSecondary
-                                      : AppColors.textTertiary,
+                                      ? AppColors.fernGreenDark
+                                      : AppColors.textSecondary,
                                 ),
+                              ),
+                            ),
+                            Switch.adaptive(
+                              value: showBirthdatePublic,
+                              // keep switch contrast independent from the surrounding card tint
+                              // pale green tracks disappeared on some android skins when enabled
+                              activeThumbColor: AppColors.white,
+                              activeTrackColor: AppColors.fernGreen,
+                              inactiveThumbColor: AppColors.white,
+                              inactiveTrackColor: AppColors.textTertiary,
+                              onChanged: (value) {
+                                HapticFeedback.selectionClick();
+                                setSheet(() => showBirthdatePublic = value);
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+
+                      // date of birth requires otp to change
+                      Text(
+                        context.l('Date of birth'),
+                        style: GoogleFonts.josefinSans(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      GestureDetector(
+                        onTap: () async {
+                          final now = DateTime.now();
+                          final picked = await showDatePicker(
+                            context: ctx,
+                            initialDate:
+                                selectedDob ??
+                                DateTime(now.year - 18, now.month, now.day),
+                            firstDate: DateTime(
+                              now.year - 120,
+                              now.month,
+                              now.day,
+                            ),
+                            lastDate: DateTime(
+                              now.year - 13,
+                              now.month,
+                              now.day,
+                            ),
+                            helpText: context.l('select your date of birth'),
+                            builder: (dateCtx, child) => Theme(
+                              data: Theme.of(dateCtx).copyWith(
+                                colorScheme: ColorScheme.light(
+                                  primary: AppColors.fernGreen,
+                                  onPrimary: Colors.white,
+                                  surface: Colors.white,
+                                  onSurface: AppColors.charcoal,
+                                ),
+                                textButtonTheme: TextButtonThemeData(
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: AppColors.fernGreen,
+                                    textStyle: GoogleFonts.josefinSans(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              child: child!,
+                            ),
+                          );
+                          if (picked != null) {
+                            setSheet(() => selectedDob = picked);
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 14,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.softSand,
+                            borderRadius: BorderRadius.circular(12),
+                            border: selectedDob != currentDob
+                                ? Border.all(
+                                    color: AppColors.fernGreen,
+                                    width: 1.5,
+                                  )
+                                : null,
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.cake_outlined,
+                                size: 16,
+                                color: selectedDob != null
+                                    ? AppColors.fernGreen
+                                    : AppColors.textTertiary,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  selectedDob != null
+                                      ? formatDob(selectedDob!)
+                                      : context.l('Not set'),
+                                  style: GoogleFonts.josefinSans(
+                                    fontSize: 14,
+                                    color: selectedDob != null
+                                        ? AppColors.charcoal
+                                        : AppColors.textTertiary,
+                                  ),
+                                ),
+                              ),
+                              const Icon(
+                                Icons.edit_outlined,
+                                size: 14,
+                                color: AppColors.textTertiary,
                               ),
                             ],
                           ),
                         ),
-                        const SizedBox(width: AppSpacing.sm),
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 180),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 9,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: showBirthdatePublic
-                                ? AppColors.fernGreen.withValues(alpha: 0.12)
-                                : AppColors.white.withValues(alpha: 0.86),
-                            borderRadius: BorderRadius.circular(
-                              AppSpacing.radiusFull,
-                            ),
-                            border: Border.all(
-                              color: showBirthdatePublic
-                                  ? AppColors.fernGreen.withValues(alpha: 0.22)
-                                  : AppColors.borderSubtle,
-                            ),
-                          ),
-                          child: Text(
-                            context.l(
-                              showBirthdatePublic ? 'Public' : 'Hidden',
-                            ),
-                            style: GoogleFonts.josefinSans(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              color: showBirthdatePublic
-                                  ? AppColors.fernGreenDark
-                                  : AppColors.textSecondary,
-                            ),
-                          ),
-                        ),
-                        Switch.adaptive(
-                          value: showBirthdatePublic,
-                          // keep switch contrast independent from the surrounding card tint
-                          // pale green tracks disappeared on some android skins when enabled
-                          activeThumbColor: AppColors.white,
-                          activeTrackColor: AppColors.fernGreen,
-                          inactiveThumbColor: AppColors.white,
-                          inactiveTrackColor: AppColors.textTertiary,
-                          onChanged: (value) {
-                            HapticFeedback.selectionClick();
-                            setSheet(() => showBirthdatePublic = value);
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
 
-                  // date of birth requires otp to change
-                  Text(
-                    context.l('Date of birth'),
-                    style: GoogleFonts.josefinSans(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  GestureDetector(
-                    onTap: () async {
-                      final now = DateTime.now();
-                      final picked = await showDatePicker(
-                        context: ctx,
-                        initialDate:
-                            selectedDob ??
-                            DateTime(now.year - 18, now.month, now.day),
-                        firstDate: DateTime(now.year - 120, now.month, now.day),
-                        lastDate: DateTime(now.year - 13, now.month, now.day),
-                        helpText: context.l('select your date of birth'),
-                        builder: (dateCtx, child) => Theme(
-                          data: Theme.of(dateCtx).copyWith(
-                            colorScheme: ColorScheme.light(
-                              primary: AppColors.fernGreen,
-                              onPrimary: Colors.white,
-                              surface: Colors.white,
-                              onSurface: AppColors.charcoal,
-                            ),
-                            textButtonTheme: TextButtonThemeData(
-                              style: TextButton.styleFrom(
-                                foregroundColor: AppColors.fernGreen,
-                                textStyle: GoogleFonts.josefinSans(
-                                  fontWeight: FontWeight.w600,
+                      // gender selector
+                      Text(
+                        context.l('Gender'),
+                        style: GoogleFonts.josefinSans(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.xs),
+                      GridView.count(
+                        crossAxisCount: 2,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        crossAxisSpacing: AppSpacing.sm,
+                        mainAxisSpacing: AppSpacing.sm,
+                        childAspectRatio: 2.8,
+                        children: genderOptions.map((g) {
+                          final sel = selectedGender == g.value;
+                          return GestureDetector(
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              setSheet(() => selectedGender = g.value);
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              decoration: BoxDecoration(
+                                color: sel ? AppColors.charcoal : Colors.white,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: sel
+                                      ? AppColors.charcoal
+                                      : AppColors.borderSubtle,
+                                  width: sel ? 2 : 1,
                                 ),
                               ),
-                            ),
-                          ),
-                          child: child!,
-                        ),
-                      );
-                      if (picked != null) {
-                        setSheet(() => selectedDob = picked);
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 14,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.softSand,
-                        borderRadius: BorderRadius.circular(12),
-                        border: selectedDob != currentDob
-                            ? Border.all(color: AppColors.fernGreen, width: 1.5)
-                            : null,
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.cake_outlined,
-                            size: 16,
-                            color: selectedDob != null
-                                ? AppColors.fernGreen
-                                : AppColors.textTertiary,
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              selectedDob != null
-                                  ? formatDob(selectedDob!)
-                                  : context.l('Not set'),
-                              style: GoogleFonts.josefinSans(
-                                fontSize: 14,
-                                color: selectedDob != null
-                                    ? AppColors.charcoal
-                                    : AppColors.textTertiary,
-                              ),
-                            ),
-                          ),
-                          const Icon(
-                            Icons.edit_outlined,
-                            size: 14,
-                            color: AppColors.textTertiary,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-
-                  // gender selector
-                  Text(
-                    context.l('Gender'),
-                    style: GoogleFonts.josefinSans(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.xs),
-                  GridView.count(
-                    crossAxisCount: 2,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    crossAxisSpacing: AppSpacing.sm,
-                    mainAxisSpacing: AppSpacing.sm,
-                    childAspectRatio: 2.8,
-                    children: genderOptions.map((g) {
-                      final sel = selectedGender == g.value;
-                      return GestureDetector(
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          setSheet(() => selectedGender = g.value);
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          decoration: BoxDecoration(
-                            color: sel ? AppColors.charcoal : Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: sel
-                                  ? AppColors.charcoal
-                                  : AppColors.borderSubtle,
-                              width: sel ? 2 : 1,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                g.icon,
-                                size: 14,
-                                color: sel
-                                    ? Colors.white
-                                    : AppColors.textSecondary,
-                              ),
-                              const SizedBox(width: 5),
-                              Flexible(
-                                child: Text(
-                                  context.l(g.label),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: GoogleFonts.josefinSans(
-                                    fontSize: 12,
-                                    fontWeight: sel
-                                        ? FontWeight.w600
-                                        : FontWeight.w400,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    g.icon,
+                                    size: 14,
                                     color: sel
                                         ? Colors.white
                                         : AppColors.textSecondary,
                                   ),
-                                ),
+                                  const SizedBox(width: 5),
+                                  Flexible(
+                                    child: Text(
+                                      context.l(g.label),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: GoogleFonts.josefinSans(
+                                        fontSize: 12,
+                                        fontWeight: sel
+                                            ? FontWeight.w600
+                                            : FontWeight.w400,
+                                        color: sel
+                                            ? Colors.white
+                                            : AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: AppSpacing.xl),
+
+                      // save button
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: canSave
+                              ? () async {
+                                  Navigator.pop(ctx);
+                                  await _saveProfileChanges(
+                                    newUsername: usernameCtrl.text
+                                        .trim()
+                                        .toLowerCase(),
+                                    newDisplayName: displayCtrl.text.trim(),
+                                    currentUsername: currentUsername,
+                                    newBio: bioCtrl.text.trim(),
+                                    newWebsite: websiteCtrl.text.trim(),
+                                    newGender:
+                                        selectedGender ?? 'prefer_not_to_say',
+                                    newDob: selectedDob,
+                                    currentDob: currentDob,
+                                    showBirthdatePublic: showBirthdatePublic,
+                                  );
+                                }
+                              : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.charcoal,
+                            disabledBackgroundColor: AppColors.borderMedium,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 0,
+                          ),
+                          child: Text(
+                            context.l('Save changes'),
+                            style: GoogleFonts.josefinSans(
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: AppSpacing.xl),
-
-                  // save button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: canSave
-                          ? () async {
-                              Navigator.pop(ctx);
-                              await _saveProfileChanges(
-                                newUsername: usernameCtrl.text
-                                    .trim()
-                                    .toLowerCase(),
-                                newDisplayName: displayCtrl.text.trim(),
-                                currentUsername: currentUsername,
-                                newBio: bioCtrl.text.trim(),
-                                newWebsite: websiteCtrl.text.trim(),
-                                newGender:
-                                    selectedGender ?? 'prefer_not_to_say',
-                                newDob: selectedDob,
-                                currentDob: currentDob,
-                                showBirthdatePublic: showBirthdatePublic,
-                              );
-                            }
-                          : null,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.charcoal,
-                        disabledBackgroundColor: AppColors.borderMedium,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: 0,
                       ),
-                      child: Text(
-                        context.l('Save changes'),
-                        style: GoogleFonts.josefinSans(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
+                    ],
                   ),
-                ],
-              ),
+                );
+              },
             );
           },
         );
@@ -1518,7 +1569,51 @@ class _ProfileScreenState extends State<ProfileScreen>
     }
   }
 
+  /// applies a visible social counter delta without showing the full loader.
+  ///
+  /// follow state changes are optimistic so the button and count move in the
+  /// same frame. a quiet server refresh follows successful writes to protect
+  /// the count from drift when another session updates the same profile.
+  void _applyProfileCountDelta(String key, int delta) {
+    if (!mounted) return;
+    final profile = _profile;
+    if (profile == null) return;
+    final current = (profile[key] as num?)?.toInt() ?? 0;
+    setState(() {
+      _profile = {...profile, key: math.max(0, current + delta)};
+    });
+  }
+
+  /// refreshes social counters without resetting profile tabs or echo content.
+  ///
+  /// this keeps relationship actions smooth while still converging to the
+  /// database value after concurrent follows, unfollows, or trigger updates.
+  Future<void> _refreshProfileSocialCounts(String targetId) async {
+    try {
+      final row = await Supabase.instance.client
+          .from('users_public')
+          .select('follower_count, following_count')
+          .eq('id', targetId)
+          .maybeSingle();
+
+      if (!mounted || row == null || _profile?['id'] != targetId) return;
+      final followerCount = (row['follower_count'] as num?)?.toInt();
+      final followingCount = (row['following_count'] as num?)?.toInt();
+      final nextProfile = {...?_profile};
+      if (followerCount != null) nextProfile['follower_count'] = followerCount;
+      if (followingCount != null) {
+        nextProfile['following_count'] = followingCount;
+      }
+      setState(() {
+        _profile = nextProfile;
+      });
+    } catch (e) {
+      AppLogger.warn('profile: social counter refresh failed $e');
+    }
+  }
+
   Future<void> _toggleFollow() async {
+    if (_isFollowBusy) return;
     if (_isBlockedByMe) {
       showInfoSnack(context, context.l('Unblock this user before following.'));
       return;
@@ -1530,18 +1625,23 @@ class _ProfileScreenState extends State<ProfileScreen>
     final targetId = _profile!['id'] as String;
     final wasFollowing = _isFollowing;
     final previousRequestStatus = _followRequestStatus;
+    final previousFollowerCount = (_profile!['follower_count'] as num?)
+        ?.toInt();
 
+    setState(() => _isFollowBusy = true);
     try {
       if (_isFollowing) {
         setState(() {
           _isFollowing = false;
           _followRequestStatus = 'none';
         });
+        _applyProfileCountDelta('follower_count', -1);
         await client
             .from('user_follows')
             .delete()
             .eq('follower_id', myId)
             .eq('following_id', targetId);
+        unawaited(_refreshProfileSocialCounts(targetId));
       } else if (!_isPublic) {
         if (_followRequestStatus == 'pending') {
           setState(() => _followRequestStatus = 'none');
@@ -1580,22 +1680,28 @@ class _ProfileScreenState extends State<ProfileScreen>
           _isFollowing = true;
           _followRequestStatus = 'accepted';
         });
+        _applyProfileCountDelta('follower_count', 1);
         await client.from('user_follows').upsert({
           'follower_id': myId,
           'following_id': targetId,
         }, onConflict: 'follower_id,following_id');
         unawaited(_notifySocialEvent('new_follower', {'target_id': targetId}));
+        unawaited(_refreshProfileSocialCounts(targetId));
       }
-      // refresh follower count on profile
-      await _loadProfile();
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isFollowing = wasFollowing;
         _followRequestStatus = previousRequestStatus;
+        if (previousFollowerCount != null && _profile != null) {
+          _profile = {..._profile!, 'follower_count': previousFollowerCount};
+        }
       });
       if (mounted) {
         showErrorSnack(context, context.l('Could not update follow status.'));
       }
+    } finally {
+      if (mounted) setState(() => _isFollowBusy = false);
     }
   }
 
@@ -1619,13 +1725,23 @@ class _ProfileScreenState extends State<ProfileScreen>
 
     final shouldBlock = await showModalBottomSheet<bool>(
       context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.white,
+      constraints: BoxConstraints(maxWidth: _profileSheetMaxWidth(context)),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xl),
+        top: false,
+        child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: EdgeInsets.fromLTRB(
+            AppSpacing.xl,
+            AppSpacing.xl,
+            AppSpacing.xl,
+            AppSpacing.xl + MediaQuery.paddingOf(sheetContext).bottom,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1821,7 +1937,6 @@ class _ProfileScreenState extends State<ProfileScreen>
       final cropped = await showProfileBannerCropEditor(
         context: context,
         bytes: bytes,
-        sourceName: sourceName,
         imageWidth: imageSize.width,
         imageHeight: imageSize.height,
       );
@@ -2016,6 +2131,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                           isFollowing: _isFollowing,
                           requestStatus: _followRequestStatus,
                           isPrivate: !_isPublic,
+                          isBusy: _isFollowBusy,
                           onPressed: _toggleFollow,
                         ),
                 ),
@@ -2094,6 +2210,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.white,
+      constraints: BoxConstraints(maxWidth: _profileSheetMaxWidth(context)),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -2109,14 +2226,17 @@ class _ProfileScreenState extends State<ProfileScreen>
 
     showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: AppColors.white,
+      constraints: BoxConstraints(maxWidth: _profileSheetMaxWidth(context)),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
       builder: (sheetContext) {
         return StatefulBuilder(
-          builder: (ctx, setSheetState) => Padding(
+          builder: (ctx, setSheetState) => SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: EdgeInsets.fromLTRB(
               AppSpacing.xl,
               AppSpacing.lg,
@@ -2251,6 +2371,84 @@ class _ProfileScreenState extends State<ProfileScreen>
     _ => EchoStatus.pendingVerification,
   };
 
+  bool get _canStartProfileTribute {
+    final profile = _profile;
+    if (!_isOwnProfile || _isLoading || profile == null) return false;
+
+    final myId = Supabase.instance.client.auth.currentUser?.id;
+    final profileId = profile['id'] as String?;
+    if (myId == null || profileId == null || myId != profileId) return false;
+
+    final username = profile['username'] as String?;
+    return profileTributeSpecForUsername(username) != null;
+  }
+
+  void _handleProfileTributePointerDown(PointerDownEvent event) {
+    if (!_canStartProfileTribute || _profileTributeOpen) return;
+    if (event.kind != PointerDeviceKind.touch &&
+        event.kind != PointerDeviceKind.mouse &&
+        event.kind != PointerDeviceKind.stylus) {
+      return;
+    }
+
+    _profileTributePointer = event.pointer;
+    _profileTributeDownPosition = event.position;
+  }
+
+  void _handleProfileTributePointerUp(PointerUpEvent event) {
+    if (!_canStartProfileTribute || _profileTributeOpen) return;
+    if (_profileTributePointer != event.pointer) return;
+
+    final downPosition = _profileTributeDownPosition;
+    _profileTributePointer = null;
+    _profileTributeDownPosition = null;
+    if (downPosition == null) return;
+
+    // ignore scrolls and drags so normal profile browsing does not build taps
+    // toward the hidden reveal.
+    if ((event.position - downPosition).distance > 12) return;
+    _recordProfileTributeTap();
+  }
+
+  void _recordProfileTributeTap() {
+    final spec = profileTributeSpecForUsername(
+      _profile?['username'] as String?,
+    );
+    if (spec == null) return;
+
+    _profileTributeTapCount++;
+    _profileTributeTapTimer?.cancel();
+
+    // wait briefly after the third tap so a fourth, fifth, or longer burst can
+    // choose the reveal duration without making the user hold anything down.
+    final wait = _profileTributeTapCount >= 3
+        ? const Duration(milliseconds: 460)
+        : const Duration(milliseconds: 900);
+    _profileTributeTapTimer = Timer(wait, () {
+      final tapCount = _profileTributeTapCount;
+      _profileTributeTapCount = 0;
+      if (tapCount < 3 || !mounted || _profileTributeOpen) return;
+      unawaited(_showProfileTribute(spec, tapCount));
+    });
+  }
+
+  Future<void> _showProfileTribute(
+    ProfileTributeSpec spec,
+    int tapCount,
+  ) async {
+    if (_profileTributeOpen || !mounted) return;
+    _profileTributeOpen = true;
+    try {
+      await showProfileTributeOverlay(
+        context,
+        spec: spec,
+        duration: profileTributeDurationForTapCount(tapCount),
+      );
+    } finally {
+      _profileTributeOpen = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final profileReady = !_isLoading && _profile != null;
@@ -2310,38 +2508,43 @@ class _ProfileScreenState extends State<ProfileScreen>
             ],
           ),
           bottomNavigationBar: AppBottomNav(currentLocation: bottomNavLocation),
-          body: Stack(
-            children: [
-              _isOwnProfile
-                  ? _buildBody()
-                  : kReleaseMode
-                  ? SecureScreen(child: _buildBody())
-                  : _buildBody(),
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: TopFlowLoader(
-                  visible: _isLoading || _isSavingProfile || _isSavingBanner,
+          body: Listener(
+            behavior: HitTestBehavior.translucent,
+            onPointerDown: _handleProfileTributePointerDown,
+            onPointerUp: _handleProfileTributePointerUp,
+            child: Stack(
+              children: [
+                _isOwnProfile
+                    ? _buildBody()
+                    : kReleaseMode
+                    ? SecureScreen(child: _buildBody())
+                    : _buildBody(),
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: TopFlowLoader(
+                    visible: _isLoading || _isSavingProfile || _isSavingBanner,
+                  ),
                 ),
-              ),
-              if (_isSavingProfile)
-                Positioned.fill(
-                  child: AnimatedOpacity(
-                    opacity: _isSavingProfile ? 1.0 : 0.0,
-                    duration: const Duration(milliseconds: 200),
-                    child: Container(
-                      color: Colors.black.withValues(alpha: 0.25),
-                      child: const Center(
-                        child: CircularProgressIndicator(
-                          color: AppColors.fernGreen,
-                          strokeWidth: 2.5,
+                if (_isSavingProfile)
+                  Positioned.fill(
+                    child: AnimatedOpacity(
+                      opacity: _isSavingProfile ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 200),
+                      child: Container(
+                        color: Colors.black.withValues(alpha: 0.25),
+                        child: const Center(
+                          child: CircularProgressIndicator(
+                            color: AppColors.fernGreen,
+                            strokeWidth: 2.5,
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -2380,12 +2583,14 @@ class _ProfileFollowButton extends StatelessWidget {
     required this.isFollowing,
     required this.requestStatus,
     required this.isPrivate,
+    required this.isBusy,
     required this.onPressed,
   });
 
   final bool isFollowing;
   final String requestStatus;
   final bool isPrivate;
+  final bool isBusy;
   final VoidCallback onPressed;
 
   @override
@@ -2412,13 +2617,29 @@ class _ProfileFollowButton extends StatelessWidget {
     final background = (isFollowing || isPending)
         ? AppColors.white
         : AppColors.fernGreenLight;
+    final iconWidget = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 160),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      child: isBusy
+          ? const SizedBox(
+              key: ValueKey('follow_busy'),
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppColors.fernGreen,
+              ),
+            )
+          : Icon(key: ValueKey(icon), icon, size: 16),
+    );
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 200),
       child: TextButton.icon(
         key: ValueKey('$isFollowing-$requestStatus-$isPrivate'),
-        onPressed: onPressed,
-        icon: Icon(icon, size: 16),
+        onPressed: isBusy ? null : onPressed,
+        icon: iconWidget,
         label: Text(
           context.l(label),
           style: GoogleFonts.josefinSans(
@@ -2428,6 +2649,7 @@ class _ProfileFollowButton extends StatelessWidget {
         ),
         style: TextButton.styleFrom(
           foregroundColor: foreground,
+          disabledForegroundColor: foreground,
           side: BorderSide(color: border),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -2435,6 +2657,7 @@ class _ProfileFollowButton extends StatelessWidget {
           minimumSize: const Size(double.infinity, 44),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           backgroundColor: background,
+          disabledBackgroundColor: background,
         ),
       ),
     );
@@ -3009,36 +3232,20 @@ class _FollowTopTabBar extends StatelessWidget implements PreferredSizeWidget {
           indicatorWeight: 2.5,
           dividerColor: Colors.transparent,
           tabs: [
-            _FollowTopTab(
-              label: context.l('Followers'),
-              count: _compactCount(followerCount),
-            ),
-            _FollowTopTab(
-              label: context.l('Following'),
-              count: _compactCount(followingCount),
-            ),
+            _FollowTopTab(label: context.l('Followers'), value: followerCount),
+            _FollowTopTab(label: context.l('Following'), value: followingCount),
           ],
         ),
       ),
     );
   }
-
-  String _compactCount(int value) {
-    if (value >= 1000000) {
-      return '${(value / 1000000).toStringAsFixed(1)}m';
-    }
-    if (value >= 1000) {
-      return '${(value / 1000).toStringAsFixed(1)}k';
-    }
-    return value.toString();
-  }
 }
 
 class _FollowTopTab extends StatelessWidget {
-  const _FollowTopTab({required this.label, required this.count});
+  const _FollowTopTab({required this.label, required this.value});
 
   final String label;
-  final String count;
+  final int value;
 
   @override
   Widget build(BuildContext context) {
@@ -3057,15 +3264,11 @@ class _FollowTopTab extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 2),
-          Text(
-            count,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.josefinSans(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textSecondary,
-            ),
+          _AnimatedProfileCount(
+            value: value,
+            fontSize: 11,
+            color: AppColors.textSecondary,
+            fontWeight: FontWeight.w600,
           ),
         ],
       ),
@@ -3611,22 +3814,12 @@ class _AvatarCard extends StatelessWidget {
                 ],
                 const SizedBox(height: AppSpacing.lg),
                 if (showStats)
-                  Row(
-                    children: [
-                      _StatItem(label: context.l('Echoes'), value: echoCount),
-                      _StatDivider(),
-                      _StatItem(
-                        label: context.l('Followers'),
-                        value: followerCount,
-                        onTap: onOpenFollowers,
-                      ),
-                      _StatDivider(),
-                      _StatItem(
-                        label: context.l('Following'),
-                        value: followingCount,
-                        onTap: onOpenFollowing,
-                      ),
-                    ],
+                  _ProfileStatsRow(
+                    echoCount: echoCount,
+                    followerCount: followerCount,
+                    followingCount: followingCount,
+                    onOpenFollowers: onOpenFollowers,
+                    onOpenFollowing: onOpenFollowing,
                   )
                 else
                   Container(
@@ -3714,18 +3907,22 @@ class _AvatarCard extends StatelessWidget {
     if (uri == null) return;
     await showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.white,
+      constraints: BoxConstraints(maxWidth: _profileSheetMaxWidth(context)),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
       builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
+        top: false,
+        child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: EdgeInsets.fromLTRB(
             AppSpacing.xl,
             AppSpacing.lg,
             AppSpacing.xl,
-            AppSpacing.xl,
+            AppSpacing.xl + MediaQuery.paddingOf(ctx).bottom,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -4258,34 +4455,134 @@ class _AvatarZoomPageState extends State<_AvatarZoomPage> {
   }
 }
 
-class _StatItem extends StatelessWidget {
-  const _StatItem({required this.label, required this.value, this.onTap});
-  final String label;
-  final int value;
-  final VoidCallback? onTap;
+class _ProfileStatsRow extends StatelessWidget {
+  const _ProfileStatsRow({
+    required this.echoCount,
+    required this.followerCount,
+    required this.followingCount,
+    required this.onOpenFollowers,
+    required this.onOpenFollowing,
+  });
+
+  final int echoCount;
+  final int followerCount;
+  final int followingCount;
+  final VoidCallback? onOpenFollowers;
+  final VoidCallback? onOpenFollowing;
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
+    final items = [
+      _StatItem(label: context.l('Echoes'), value: echoCount),
+      _StatItem(
+        label: context.l('Followers'),
+        value: followerCount,
+        onTap: onOpenFollowers,
+      ),
+      _StatItem(
+        label: context.l('Following'),
+        value: followingCount,
+        onTap: onOpenFollowing,
+      ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth;
+        if (maxWidth >= 300) {
+          return Row(
+            children: [
+              Expanded(child: items[0]),
+              const _StatDivider(),
+              Expanded(child: items[1]),
+              const _StatDivider(),
+              Expanded(child: items[2]),
+            ],
+          );
+        }
+
+        final columns = maxWidth >= 248 ? 3 : 2;
+        const gap = AppSpacing.xs;
+        final itemWidth = (maxWidth - gap * (columns - 1)) / columns;
+
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final item in items)
+              SizedBox(
+                width: math.min(maxWidth, math.max(72.0, itemWidth)),
+                child: item.copyWith(dense: true, framed: true),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _StatItem extends StatelessWidget {
+  const _StatItem({
+    required this.label,
+    required this.value,
+    this.onTap,
+    this.dense = false,
+    this.framed = false,
+  });
+
+  final String label;
+  final int value;
+  final VoidCallback? onTap;
+  final bool dense;
+  final bool framed;
+
+  _StatItem copyWith({bool? dense, bool? framed}) {
+    return _StatItem(
+      label: label,
+      value: value,
+      onTap: onTap,
+      dense: dense ?? this.dense,
+      framed: framed ?? this.framed,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          constraints: BoxConstraints(minHeight: dense ? 58 : 48),
+          padding: EdgeInsets.symmetric(
+            horizontal: dense ? AppSpacing.xs : AppSpacing.sm,
+            vertical: dense ? AppSpacing.sm : 4,
+          ),
+          decoration: BoxDecoration(
+            color: framed ? AppColors.surfaceSecondary : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            border: framed
+                ? Border.all(color: AppColors.borderSubtle)
+                : Border.all(color: Colors.transparent),
+          ),
           child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                _format(value),
-                style: GoogleFonts.josefinSans(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.charcoal,
-                ),
+              _AnimatedProfileCount(
+                value: value,
+                fontSize: dense ? 16 : 18,
+                color: AppColors.charcoal,
+                fontWeight: FontWeight.w700,
               ),
               Text(
                 label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: GoogleFonts.josefinSans(
-                  fontSize: 11,
+                  fontSize: dense ? 10.5 : 11,
                   color: AppColors.textTertiary,
                 ),
               ),
@@ -4295,18 +4592,62 @@ class _StatItem extends StatelessWidget {
       ),
     );
   }
-
-  String _format(int n) {
-    if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
-    if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}K';
-    return '$n';
-  }
 }
 
 class _StatDivider extends StatelessWidget {
+  const _StatDivider();
+
   @override
   Widget build(BuildContext context) {
     return Container(width: 1, height: 32, color: AppColors.borderSubtle);
+  }
+}
+
+class _AnimatedProfileCount extends StatelessWidget {
+  const _AnimatedProfileCount({
+    required this.value,
+    required this.fontSize,
+    required this.color,
+    required this.fontWeight,
+  });
+
+  final int value;
+  final double fontSize;
+  final Color color;
+  final FontWeight fontWeight;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(end: value.toDouble()),
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+      builder: (context, animatedValue, child) {
+        final displayValue = animatedValue.round().clamp(0, 1 << 31).toInt();
+        final distance = (value - animatedValue).abs();
+        final lift = math.min(3.0, distance * 0.32);
+
+        return Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..setEntry(3, 2, 0.0008)
+            ..rotateX(lift * 0.018),
+          child: Transform.translate(
+            offset: Offset(0, -lift),
+            child: Text(
+              Formatters.compactNumber(displayValue),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.josefinSans(
+                fontSize: fontSize,
+                fontWeight: fontWeight,
+                color: color,
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }
 
@@ -4447,12 +4788,15 @@ class _ProfileOwnerControlPanel extends StatelessWidget {
 void _showSolanaRecordLayerSheet(BuildContext context) {
   showModalBottomSheet<void>(
     context: context,
+    isScrollControlled: true,
     useSafeArea: true,
     backgroundColor: AppColors.white,
+    constraints: BoxConstraints(maxWidth: _profileSheetMaxWidth(context)),
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
     ),
-    builder: (sheetContext) => Padding(
+    builder: (sheetContext) => SingleChildScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: EdgeInsets.fromLTRB(
         AppSpacing.xl,
         AppSpacing.lg,
@@ -5491,9 +5835,13 @@ class _FollowUsersTab extends StatefulWidget {
 
 class _FollowUsersTabState extends State<_FollowUsersTab>
     with AutomaticKeepAliveClientMixin {
-  late Future<List<Map<String, dynamic>>> _future;
   final TextEditingController _searchCtrl = TextEditingController();
+  final List<Map<String, dynamic>> _users = [];
   final Set<String> _busyUserIds = {};
+  bool _isLoading = true;
+  bool _isRefreshing = false;
+  Object? _loadError;
+  int _loadGeneration = 0;
   String _query = '';
 
   @override
@@ -5502,9 +5850,32 @@ class _FollowUsersTabState extends State<_FollowUsersTab>
   @override
   void initState() {
     super.initState();
-    _future = widget.expectedCount == 0
-        ? Future<List<Map<String, dynamic>>>.value(const [])
-        : _loadUsers();
+    if (widget.expectedCount == 0) {
+      _isLoading = false;
+      unawaited(_refresh());
+    } else {
+      unawaited(_refresh(showFullLoader: true));
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _FollowUsersTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.ownerId == widget.ownerId && oldWidget.mode == widget.mode) {
+      return;
+    }
+
+    _loadGeneration++;
+    setState(() {
+      _users.clear();
+      _busyUserIds.clear();
+      _query = '';
+      _loadError = null;
+      _isRefreshing = false;
+      _isLoading = widget.expectedCount > 0;
+    });
+    _searchCtrl.clear();
+    unawaited(_refresh(showFullLoader: widget.expectedCount > 0));
   }
 
   @override
@@ -5513,16 +5884,72 @@ class _FollowUsersTabState extends State<_FollowUsersTab>
     super.dispose();
   }
 
-  Future<void> _refresh() async {
-    final next = _loadUsers();
-    setState(() => _future = next);
+  /// reloads the current page without discarding already visible rows.
+  ///
+  /// owner actions use a local row update first, then this quiet refresh
+  /// reconciles with the server so high-traffic accounts do not show stale
+  /// follow state while the screen avoids a full waiting-state rebuild.
+  Future<void> _refresh({bool showFullLoader = false}) async {
+    final generation = ++_loadGeneration;
+    final shouldShowFullLoader = showFullLoader && _users.isEmpty;
+    if (mounted) {
+      setState(() {
+        _loadError = null;
+        _isLoading = shouldShowFullLoader;
+        _isRefreshing = !shouldShowFullLoader;
+      });
+    }
+
     try {
-      await next;
-    } catch (_) {}
+      final users = await _loadUsers();
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _users
+          ..clear()
+          ..addAll(users);
+        _isLoading = false;
+        _isRefreshing = false;
+        _loadError = null;
+      });
+    } catch (e) {
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _loadError = e;
+        _isLoading = false;
+        _isRefreshing = false;
+      });
+    }
   }
 
   Future<List<Map<String, dynamic>>> _loadUsers() {
     return widget.loadUsers().timeout(const Duration(seconds: 12));
+  }
+
+  void _removeUserLocally(String userId) {
+    setState(() {
+      _users.removeWhere((user) => user['id'] == userId);
+    });
+  }
+
+  void _updateUserLocally(String userId, Map<String, dynamic> values) {
+    final index = _users.indexWhere((user) => user['id'] == userId);
+    if (index < 0) return;
+    setState(() {
+      _users[index] = {..._users[index], ...values};
+    });
+  }
+
+  List<Map<String, dynamic>> _visibleUsers() {
+    final query = _query.trim().toLowerCase();
+    if (query.isEmpty) return List<Map<String, dynamic>>.unmodifiable(_users);
+    return _users
+        .where((user) {
+          final username = (user['username'] as String? ?? '').toLowerCase();
+          final displayName = (user['display_name'] as String? ?? '')
+              .toLowerCase();
+          return username.contains(query) || displayName.contains(query);
+        })
+        .toList(growable: false);
   }
 
   Future<bool> _confirmAction({
@@ -5567,8 +5994,9 @@ class _FollowUsersTabState extends State<_FollowUsersTab>
         'remove_profile_follower',
         params: {'p_follower_id': userId},
       );
+      if (mounted) _removeUserLocally(userId);
       if (mounted) showInfoSnack(context, context.l('Follower removed'));
-      await _refresh();
+      unawaited(_refresh());
     } catch (e) {
       if (mounted) {
         showErrorSnack(context, context.l('Could not remove follower'));
@@ -5596,8 +6024,9 @@ class _FollowUsersTabState extends State<_FollowUsersTab>
           .delete()
           .eq('follower_id', widget.ownerId)
           .eq('following_id', userId);
+      if (mounted) _removeUserLocally(userId);
       if (mounted) showInfoSnack(context, context.l('Unfollowed'));
-      await _refresh();
+      unawaited(_refresh());
     } catch (e) {
       if (mounted) showErrorSnack(context, context.l('Could not unfollow'));
     } finally {
@@ -5621,6 +6050,7 @@ class _FollowUsersTabState extends State<_FollowUsersTab>
         unawaited(
           _notifyProfileSocialEvent('new_follower', {'target_id': userId}),
         );
+        if (mounted) _updateUserLocally(userId, {'viewer_is_following': true});
         if (mounted) showSuccessSnack(context, context.l('Followed back'));
       } else {
         final row = await client
@@ -5640,9 +6070,14 @@ class _FollowUsersTabState extends State<_FollowUsersTab>
             }),
           );
         }
+        if (mounted) {
+          _updateUserLocally(userId, {
+            'viewer_follow_request_status': 'pending',
+          });
+        }
         if (mounted) showSuccessSnack(context, context.l('Request sent'));
       }
-      await _refresh();
+      unawaited(_refresh());
     } catch (e) {
       if (mounted) showErrorSnack(context, context.l('Could not follow back'));
     } finally {
@@ -5662,10 +6097,11 @@ class _FollowUsersTabState extends State<_FollowUsersTab>
     final userId = user['id'] as String?;
     final busy = _busyUserIds.contains(userId);
     final isFollowing = user['viewer_is_following'] as bool? ?? false;
+    final requestStatus = user['viewer_follow_request_status'] as String?;
     final items = <PopupMenuEntry<_FollowOwnerAction>>[];
 
     if (widget.mode == 'followers') {
-      if (!isFollowing) {
+      if (!isFollowing && requestStatus != 'pending') {
         items.add(
           PopupMenuItem<_FollowOwnerAction>(
             value: _FollowOwnerAction.followBack,
@@ -5761,53 +6197,58 @@ class _FollowUsersTabState extends State<_FollowUsersTab>
         ? context.l('Accepted followers will appear here.')
         : context.l('Accounts this profile follows will appear here.');
 
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _future,
-      builder: (context, snapshot) {
-        final users = snapshot.data ?? const <Map<String, dynamic>>[];
-        final query = _query.trim().toLowerCase();
-        final visibleUsers = query.isEmpty
-            ? users
-            : users.where((user) {
-                final username = (user['username'] as String? ?? '')
-                    .toLowerCase();
-                final displayName = (user['display_name'] as String? ?? '')
-                    .toLowerCase();
-                return username.contains(query) || displayName.contains(query);
-              }).toList();
+    Widget refreshableMessage({
+      required IconData icon,
+      required String title,
+      required String message,
+    }) {
+      return RefreshIndicator(
+        color: AppColors.fernGreen,
+        onRefresh: () => _refresh(),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(AppSpacing.xl),
+          children: [
+            SizedBox(height: MediaQuery.sizeOf(context).height * 0.22),
+            _ProfileEmptyTab(icon: icon, title: title, message: message),
+          ],
+        ),
+      );
+    }
 
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: AppColors.fernGreen,
-            ),
-          );
-        }
-        if (snapshot.hasError) {
-          return Center(
-            child: _ProfileEmptyTab(
-              icon: Icons.wifi_off_rounded,
-              title: context.l('Could not load list.'),
-              message: context.l(
-                'Check your connection and try again from this screen.',
-              ),
-            ),
-          );
-        }
-        if (users.isEmpty) {
-          return Center(
-            child: _ProfileEmptyTab(
-              icon: Icons.people_alt_outlined,
-              title: title,
-              message: message,
-            ),
-          );
-        }
-        return RefreshIndicator(
+    if (_isLoading && _users.isEmpty) {
+      return const Center(
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
           color: AppColors.fernGreen,
-          onRefresh: _refresh,
-          child: ListView.builder(
+        ),
+      );
+    }
+
+    if (_loadError != null && _users.isEmpty) {
+      return refreshableMessage(
+        icon: Icons.wifi_off_rounded,
+        title: context.l('Could not load list.'),
+        message: context.l('Check your connection and try again from here.'),
+      );
+    }
+
+    if (_users.isEmpty) {
+      return refreshableMessage(
+        icon: Icons.people_alt_outlined,
+        title: title,
+        message: message,
+      );
+    }
+
+    final visibleUsers = _visibleUsers();
+    return RefreshIndicator(
+      color: AppColors.fernGreen,
+      onRefresh: () => _refresh(),
+      child: Stack(
+        children: [
+          ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(
               AppSpacing.lg,
               AppSpacing.md,
@@ -5844,66 +6285,92 @@ class _FollowUsersTabState extends State<_FollowUsersTab>
               final isPro = user['is_pro'] as bool? ?? false;
               final image = avatarImageProvider(avatarUrl);
 
-              return Container(
-                decoration: const BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(color: AppColors.borderSubtle),
+              return TweenAnimationBuilder<double>(
+                key: ValueKey(user['id'] ?? username),
+                tween: Tween(begin: 0, end: 1),
+                duration: Duration(
+                  milliseconds: math.min(260, 140 + index * 12),
+                ),
+                curve: Curves.easeOutCubic,
+                builder: (context, value, child) => Opacity(
+                  opacity: value,
+                  child: Transform.translate(
+                    offset: Offset(0, (1 - value) * 8),
+                    child: child,
                   ),
                 ),
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: CircleAvatar(
-                    backgroundColor: AppColors.softSand,
-                    backgroundImage: image,
-                    child: image == null
-                        ? const Icon(
-                            Icons.person_outline,
-                            color: AppColors.textTertiary,
-                          )
-                        : null,
+                child: Container(
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: AppColors.borderSubtle),
+                    ),
                   ),
-                  title: Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          displayName,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                      backgroundColor: AppColors.softSand,
+                      backgroundImage: image,
+                      child: image == null
+                          ? const Icon(
+                              Icons.person_outline,
+                              color: AppColors.textTertiary,
+                            )
+                          : null,
+                    ),
+                    title: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTypography.textTheme.titleSmall,
+                          ),
+                        ),
+                        if (isPro) ...[
+                          const SizedBox(width: 5),
+                          const AccountVerifiedBadge(size: 14),
+                        ],
+                      ],
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '@$username',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: AppTypography.textTheme.titleSmall,
+                          style: GoogleFonts.josefinSans(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
                         ),
-                      ),
-                      if (isPro) ...[
-                        const SizedBox(width: 5),
-                        const AccountVerifiedBadge(size: 14),
                       ],
-                    ],
+                    ),
+                    trailing: _trailingFor(user),
+                    onTap: username.isEmpty
+                        ? null
+                        : () => context.push(
+                            '/profile/${Uri.encodeComponent(username)}',
+                          ),
                   ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '@$username',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.josefinSans(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  trailing: _trailingFor(user),
-                  onTap: username.isEmpty
-                      ? null
-                      : () => context.push(
-                          '/profile/${Uri.encodeComponent(username)}',
-                        ),
                 ),
               );
             },
           ),
-        );
-      },
+          if (_isRefreshing)
+            const Positioned(
+              left: 0,
+              top: 0,
+              right: 0,
+              child: LinearProgressIndicator(
+                minHeight: 2,
+                color: AppColors.fernGreen,
+                backgroundColor: Colors.transparent,
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

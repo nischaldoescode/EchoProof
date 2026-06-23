@@ -1,5 +1,5 @@
 // onboarding step progress indicator
-// animated dots filled for completed and current, grey for upcoming
+// animated markers filled for completed and current, grey for upcoming
 
 import 'package:flutter/material.dart';
 import '../../../../app/theme/colors.dart';
@@ -17,26 +17,32 @@ class OnboardingProgress extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: List.generate(totalSteps, (i) {
-        final stepNum = i + 1;
-        final isDone = stepNum < currentStep;
-        final isCurrent = stepNum == currentStep;
+    return Semantics(
+      label: 'onboarding progress $currentStep of $totalSteps',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: List.generate(totalSteps, (i) {
+          final stepNum = i + 1;
+          final isDone = stepNum < currentStep;
+          final isCurrent = stepNum == currentStep;
 
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-          margin: const EdgeInsets.only(right: AppSpacing.xs),
-          width: isCurrent ? 24 : 8,
-          height: 8,
-          decoration: BoxDecoration(
-            color: isDone || isCurrent
-                ? AppColors.charcoal
-                : AppColors.borderMedium,
-            borderRadius: BorderRadius.circular(4),
-          ),
-        );
-      }),
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            margin: EdgeInsets.only(
+              right: i == totalSteps - 1 ? 0 : AppSpacing.xs,
+            ),
+            width: isCurrent ? 24 : 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: isDone || isCurrent
+                  ? AppColors.charcoal
+                  : AppColors.borderMedium,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          );
+        }),
+      ),
     );
   }
 }

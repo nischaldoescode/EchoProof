@@ -26,7 +26,8 @@ import '../../../../core/utils/sanitizer.dart';
 import '../../../../core/utils/ai_slop_guard.dart';
 import '../../../../core/localization/app_copy.dart';
 import '../widgets/link_preview_card.dart';
-import '../../../../shared/widgets/avatar_image_provider.dart';
+import '../../../../shared/widgets/local_attachment_preview.dart';
+import '../../../../shared/widgets/mention_helpers.dart';
 import '../../../../shared/widgets/rich_text_display.dart';
 
 enum _DraftAction { save, discard }
@@ -93,16 +94,19 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
       final client = Supabase.instance.client;
       final rows = await client
           .from('users_public')
-          .select('id, username, avatar_url, trust_tier')
+          .select('id, username, display_name, avatar_url, trust_tier')
           .eq('is_suspended', false)
           .limit(60);
       if (!mounted) return;
       setState(() {
         _mentionableUsers = (rows as List).map((r) {
           final m = r as Map<String, dynamic>;
+          final username = m['username'] as String? ?? 'unknown';
+          final displayName = (m['display_name'] as String?)?.trim();
           return {
             'id': m['id'] as String,
-            'display': m['username'] as String,
+            'display': username,
+            'name': displayName?.isNotEmpty == true ? displayName : username,
             'avatar_url': m['avatar_url'] as String? ?? '',
             'trust_tier': m['trust_tier'] as String? ?? 'unverified',
           };
@@ -407,6 +411,12 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
     );
   }
 
+  Future<void> _dismissComposerOverlays() async {
+    hideMentionSuggestions(_contentKey);
+    FocusManager.instance.primaryFocus?.unfocus();
+    await WidgetsBinding.instance.endOfFrame;
+  }
+
   @override
   Widget build(BuildContext context) {
     final service = context.watch<CreateEchoService>();
@@ -479,6 +489,8 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
       canPop: !hasDraft,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
+        await _dismissComposerOverlays();
+        if (!context.mounted) return;
         final action = await _showDiscardSheet(context);
         if (!context.mounted) return;
         if (action == _DraftAction.discard) {
@@ -501,6 +513,8 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
           leading: IconButton(
             icon: const Icon(Icons.close, size: 22),
             onPressed: () async {
+              await _dismissComposerOverlays();
+              if (!context.mounted) return;
               if (!hasDraft) {
                 context.pop();
                 return;
@@ -951,9 +965,21 @@ class _ContentMentionField extends StatefulWidget {
 
 class _ContentMentionFieldState extends State<_ContentMentionField> {
   bool _focused = false;
+  String _mentionSearch = '';
+  bool _mentionSuggestionsVisible = false;
 
   void _extractUrl(String text) {
     widget.onUrlDetected(extractFirstUrl(text));
+  }
+
+  void _hideMentionSuggestions() {
+    hideMentionSuggestions(widget.mentionKey);
+    if (_mentionSuggestionsVisible || _mentionSearch.isNotEmpty) {
+      setState(() {
+        _mentionSuggestionsVisible = false;
+        _mentionSearch = '';
+      });
+    }
   }
 
   @override
@@ -970,20 +996,24 @@ class _ContentMentionFieldState extends State<_ContentMentionField> {
             : _focused
             ? AppColors.fernGreen
             : AppColors.borderSubtle;
+        final mentionUsers = visibleMentionUsers(
+          _mentionSearch,
+          widget.mentionableUsers,
+        );
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Focus(
               onFocusChange: (value) {
-                if (_focused != value) setState(() => _focused = value);
+                if (_focused == value) return;
+                setState(() => _focused = value);
+                if (!value) _hideMentionSuggestions();
               },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
                 curve: Curves.easeOutCubic,
                 decoration: BoxDecoration(
-                  color: _focused
-                      ? AppColors.white
-                      : AppColors.surfaceSecondary,
+                  color: AppColors.surfaceSecondary,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
                     color: borderColor,
@@ -1010,99 +1040,113 @@ class _ContentMentionFieldState extends State<_ContentMentionField> {
                         padding: const EdgeInsets.only(bottom: 4),
                         child: _ProRichToolbar(mentionKey: widget.mentionKey),
                       ),
-                    FlutterMentions(
-                      key: widget.mentionKey,
-                      maxLines: widget.isPro ? 20 : 8,
-                      minLines: 4,
-                      suggestionPosition: SuggestionPosition.Top,
-                      onChanged: (v) {
-                        if (v.length <= maxLen) {
-                          widget.onChanged(v);
-                          field.didChange(v);
-                          _extractUrl(v);
-                        }
-                      },
-                      style: const TextStyle(
-                        fontSize: 15,
-                        color: Color(0xFF1A1A1A),
-                        height: 1.5,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: context.l(
-                          'Explain your opinion or claim.\n\nUse @username and #topic-name to connect it.',
-                        ),
-                        hintStyle: GoogleFonts.josefinSans(
-                          fontSize: 14,
-                          color: AppColors.textTertiary,
-                          height: 1.5,
-                        ),
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        errorBorder: InputBorder.none,
-                        focusedErrorBorder: InputBorder.none,
-                        disabledBorder: InputBorder.none,
-                        isDense: true,
-                      ),
-                      suggestionListDecoration: BoxDecoration(
-                        color: AppColors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.borderSubtle),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.08),
-                            blurRadius: 12,
-                            offset: const Offset(0, -4),
-                          ),
-                        ],
-                      ),
-                      mentions: [
-                        Mention(
-                          trigger: '@',
-                          style: GoogleFonts.josefinSans(
-                            color: AppColors.fernGreen,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          data: widget.mentionableUsers,
-                          suggestionBuilder: (data) {
-                            final avatarUrl = data['avatar_url'] as String?;
-                            return Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
-                              ),
-                              child: Row(
-                                children: [
-                                  CircleAvatar(
-                                    radius: 16,
-                                    backgroundColor: AppColors.softSand,
-                                    backgroundImage: avatarImageProvider(
-                                      avatarUrl,
-                                    ),
-                                    child:
-                                        avatarImageProvider(avatarUrl) == null
-                                        ? const Icon(
-                                            Icons.person_outline,
-                                            size: 16,
-                                            color: AppColors.textTertiary,
-                                          )
-                                        : null,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    '@${data['display']}',
-                                    style: GoogleFonts.josefinSans(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.charcoal,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                    Builder(
+                      builder: (mentionContext) {
+                        final suggestionPosition =
+                            adaptiveMentionSuggestionPosition(
+                              mentionContext,
+                              listHeight: 220,
+                              preferTopWhenCrowded: true,
                             );
+                        final suggestionHeight =
+                            adaptiveMentionSuggestionHeight(
+                              mentionContext,
+                              position: suggestionPosition,
+                              maxHeight: 220,
+                            );
+
+                        return CompactMentionSuggestions(
+                          visible: _mentionSuggestionsVisible,
+                          position: suggestionPosition,
+                          suggestionHeight: suggestionHeight,
+                          suggestions: mentionUsers,
+                          mentionKey: widget.mentionKey,
+                          onSelected: (_) {
+                            setState(() {
+                              _mentionSuggestionsVisible = false;
+                              _mentionSearch = '';
+                            });
                           },
-                        ),
-                      ],
+                          child: FlutterMentions(
+                            key: widget.mentionKey,
+                            maxLines: widget.isPro ? 20 : 8,
+                            minLines: 4,
+                            hideSuggestionList: true,
+                            suggestionPosition: suggestionPosition,
+                            suggestionListHeight: suggestionHeight,
+                            onSuggestionVisibleChanged: (visible) {
+                              if (_mentionSuggestionsVisible == visible) {
+                                return;
+                              }
+                              setState(() {
+                                _mentionSuggestionsVisible = visible;
+                                if (!visible) _mentionSearch = '';
+                              });
+                            },
+                            onSearchChanged: (trigger, value) {
+                              if (trigger != '@' || _mentionSearch == value) {
+                                return;
+                              }
+                              setState(() => _mentionSearch = value);
+                            },
+                            onMentionAdd: (_) {
+                              final value =
+                                  widget
+                                      .mentionKey
+                                      .currentState
+                                      ?.controller
+                                      ?.text ??
+                                  '';
+                              widget.onChanged(value);
+                              field.didChange(value);
+                              _extractUrl(value);
+                            },
+                            onChanged: (v) {
+                              if (v.length <= maxLen) {
+                                widget.onChanged(v);
+                                field.didChange(v);
+                                _extractUrl(v);
+                              }
+                            },
+                            style: const TextStyle(
+                              fontSize: 15,
+                              color: Color(0xFF1A1A1A),
+                              height: 1.5,
+                            ),
+                            decoration: InputDecoration(
+                              hintText: context.l(
+                                'Explain your opinion or claim.\n\nUse @username and #topic-name to connect it.',
+                              ),
+                              hintStyle: GoogleFonts.josefinSans(
+                                fontSize: 14,
+                                color: AppColors.textTertiary,
+                                height: 1.5,
+                              ),
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              errorBorder: InputBorder.none,
+                              focusedErrorBorder: InputBorder.none,
+                              disabledBorder: InputBorder.none,
+                              isDense: true,
+                            ),
+                            suggestionListDecoration:
+                                mentionSuggestionDecoration(suggestionPosition),
+                            mentions: [
+                              Mention(
+                                trigger: '@',
+                                style: GoogleFonts.josefinSans(
+                                  color: AppColors.fernGreen,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                data: widget.mentionableUsers,
+                                suggestionBuilder: (data) =>
+                                    MentionSuggestionTile(data: data),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ),
@@ -2016,146 +2060,23 @@ class _MediaPickerRow extends StatelessWidget {
           const SizedBox(height: AppSpacing.xs),
         ],
 
-        // cards
+        // compact previews keep local filenames out of the composer
+        // tapping a preview opens the larger check dialog
         if (localPaths.isNotEmpty) ...[
-          ...List.generate(localPaths.length, (i) {
-            final path = localPaths[i];
-            final isVideo = MediaFileSafety.isVideoPath(path);
-            final name = MediaFileSafety.displayName(path);
-            final ext = MediaFileSafety.extensionOf(name).toUpperCase();
-
-            return TweenAnimationBuilder<double>(
-              key: ValueKey(path),
-              tween: Tween(begin: 0, end: 1),
-              duration: Duration(milliseconds: 220 + i * 40),
-              curve: Curves.easeOutCubic,
-              builder: (context, value, child) => Opacity(
-                opacity: value,
-                child: Transform.translate(
-                  offset: Offset(0, (1 - value) * 12),
-                  child: child,
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: [
+              for (var i = 0; i < localPaths.length; i++)
+                LocalAttachmentPreviewTile(
+                  key: ValueKey(localPaths[i]),
+                  path: localPaths[i],
+                  index: i,
+                  isVideo: MediaFileSafety.isVideoPath(localPaths[i]),
+                  onRemove: () => onRemove(i),
                 ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: AppColors.softSand,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.borderSubtle),
-                  ),
-                  child: Row(
-                    children: [
-                      // thumbnail or icon
-                      ClipRRect(
-                        borderRadius: const BorderRadius.only(
-                          topLeft: Radius.circular(11),
-                          bottomLeft: Radius.circular(11),
-                        ),
-                        child: isVideo
-                            ? Container(
-                                width: 64,
-                                height: 64,
-                                color: AppColors.charcoal,
-                                child: const Icon(
-                                  Icons.play_circle_filled_rounded,
-                                  color: Colors.white,
-                                  size: 28,
-                                ),
-                              )
-                            : Image.file(
-                                File(path),
-                                width: 64,
-                                height: 64,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, _, _) => Container(
-                                  width: 64,
-                                  height: 64,
-                                  color: AppColors.softSand,
-                                  child: const Icon(
-                                    Icons.broken_image_outlined,
-                                    color: AppColors.textTertiary,
-                                  ),
-                                ),
-                              ),
-                      ),
-
-                      const SizedBox(width: 12),
-
-                      // file info
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              name.length > 30
-                                  ? '${name.substring(0, 27)}...'
-                                  : name,
-                              style: GoogleFonts.josefinSans(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.charcoal,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 2),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isVideo
-                                    ? AppColors.charcoal.withValues(alpha: 0.1)
-                                    : AppColors.fernGreen.withValues(
-                                        alpha: 0.1,
-                                      ),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                ext,
-                                style: GoogleFonts.josefinSans(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  color: isVideo
-                                      ? AppColors.charcoal
-                                      : AppColors.fernGreenDark,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      // remove
-                      GestureDetector(
-                        onTap: () => onRemove(i),
-                        child: Container(
-                          width: 36,
-                          height: 64,
-                          decoration: BoxDecoration(
-                            color: AppColors.sunsetCoral.withValues(
-                              alpha: 0.08,
-                            ),
-                            borderRadius: const BorderRadius.only(
-                              topRight: Radius.circular(11),
-                              bottomRight: Radius.circular(11),
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.close_rounded,
-                            size: 18,
-                            color: AppColors.sunsetCoral,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }),
+            ],
+          ),
           const SizedBox(height: AppSpacing.xs),
         ],
       ],

@@ -65,16 +65,28 @@ void showAppSnack(
 }) {
   final colors = _snackColors(type);
   final mediaQuery = MediaQuery.maybeOf(context);
+  final size = mediaQuery?.size ?? Size.zero;
   final bottomInset = mediaQuery?.viewInsets.bottom ?? 0;
   final bottomPadding = mediaQuery?.viewPadding.bottom ?? 0;
+  final leftPadding = mediaQuery?.viewPadding.left ?? 0;
+  final rightPadding = mediaQuery?.viewPadding.right ?? 0;
   final resolvedMargin = bottomInset + bottomPadding + bottomMargin;
+  final isWideSurface = size.width >= 600;
+  final horizontalMargin = isWideSurface ? 18.0 : 14.0;
+  final alignment = isWideSurface
+      ? Alignment.bottomRight
+      : Alignment.bottomCenter;
+  final maxWidth = isWideSurface ? 420.0 : 520.0;
+  final animationType = isWideSurface
+      ? HyperSnackAnimationType.right
+      : HyperSnackAnimationType.bottom;
   final route = ModalRoute.of(context);
 
   AppLogger.info(
     'snack: show request type=${type.name} route=${route?.settings.name} '
     'message="$message" bottomInset=$bottomInset '
     'bottomPadding=$bottomPadding bottomMargin=$bottomMargin '
-    'resolvedBottomMargin=$resolvedMargin',
+    'resolvedBottomMargin=$resolvedMargin alignment=$alignment',
   );
 
   try {
@@ -91,23 +103,24 @@ void showAppSnack(
       border: Border.all(color: colors.border),
       borderRadius: AppSpacing.radiusMd,
       margin: EdgeInsets.fromLTRB(
-        14,
+        horizontalMargin + leftPadding,
         0,
-        14,
+        horizontalMargin + rightPadding,
         resolvedMargin,
       ),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      maxWidth: 520,
-      alignment: Alignment.bottomCenter,
+      maxWidth: maxWidth,
+      alignment: alignment,
       icon: Icon(_snackIcon(type), color: colors.icon, size: 20),
       showCloseButton: true,
-      animationType: HyperSnackAnimationType.scale,
+      animationType: animationType,
+      enterAnimationDuration: const Duration(milliseconds: 220),
+      exitAnimationDuration: const Duration(milliseconds: 160),
+      enterCurve: Curves.easeOutCubic,
+      exitCurve: Curves.easeInCubic,
       action: actionLabel == null || onAction == null
           ? null
-          : HyperSnackAction(
-              label: actionLabel,
-              onPressed: onAction,
-            ),
+          : HyperSnackAction(label: actionLabel, onPressed: onAction),
     );
     AppLogger.info('snack: HyperSnackbar.show dispatched type=${type.name}');
   } catch (error, stack) {
@@ -132,17 +145,16 @@ void showInfoSnack(
   BuildContext context,
   String message, {
   double bottomMargin = 14,
-}) =>
-    showAppSnack(
-      context,
-      message,
-      type: SnackType.info,
-      bottomMargin: bottomMargin,
-    );
+}) => showAppSnack(
+  context,
+  message,
+  type: SnackType.info,
+  bottomMargin: bottomMargin,
+);
 
 bool showOfflineSnackIfNeeded(
   BuildContext context, {
-  String message = 'No internet connection. Try again when you are online.',
+  String message = 'You are offline. Reconnect to continue.',
 }) {
   if (ConnectivityService.instance.isOnline) return false;
   showWarningSnack(context, message);
@@ -150,43 +162,43 @@ bool showOfflineSnackIfNeeded(
 }
 
 String _snackTitle(SnackType type) => switch (type) {
-      SnackType.success => 'Success',
-      SnackType.error => 'Error',
-      SnackType.warning => 'Warning',
-      SnackType.info => 'Info',
-    };
+  SnackType.success => 'Success',
+  SnackType.error => 'Error',
+  SnackType.warning => 'Warning',
+  SnackType.info => 'Info',
+};
 
 IconData _snackIcon(SnackType type) => switch (type) {
-      SnackType.success => Icons.check_circle_outline_rounded,
-      SnackType.error => Icons.error_outline_rounded,
-      SnackType.warning => Icons.warning_amber_rounded,
-      SnackType.info => Icons.info_outline_rounded,
-    };
+  SnackType.success => Icons.check_circle_outline_rounded,
+  SnackType.error => Icons.error_outline_rounded,
+  SnackType.warning => Icons.warning_amber_rounded,
+  SnackType.info => Icons.info_outline_rounded,
+};
 
 ({Color bg, Color fg, Color border, Color icon}) _snackColors(SnackType type) =>
     switch (type) {
       SnackType.success => (
-          bg: AppColors.fernGreenDark,
-          fg: AppColors.white,
-          border: AppColors.fernGreen,
-          icon: AppColors.white,
-        ),
+        bg: AppColors.fernGreenDark,
+        fg: AppColors.white,
+        border: AppColors.fernGreen,
+        icon: AppColors.white,
+      ),
       SnackType.error => (
-          bg: AppColors.sunsetCoralDark,
-          fg: AppColors.white,
-          border: AppColors.sunsetCoral,
-          icon: AppColors.white,
-        ),
+        bg: AppColors.sunsetCoralDark,
+        fg: AppColors.white,
+        border: AppColors.sunsetCoral,
+        icon: AppColors.white,
+      ),
       SnackType.warning => (
-          bg: const Color(0xFF7A5200),
-          fg: AppColors.white,
-          border: AppColors.statusControversial,
-          icon: AppColors.white,
-        ),
+        bg: const Color(0xFF7A5200),
+        fg: AppColors.white,
+        border: AppColors.statusControversial,
+        icon: AppColors.white,
+      ),
       SnackType.info => (
-          bg: AppColors.charcoal,
-          fg: AppColors.white,
-          border: AppColors.borderMedium,
-          icon: AppColors.white,
-        ),
+        bg: AppColors.charcoal,
+        fg: AppColors.white,
+        border: AppColors.borderMedium,
+        icon: AppColors.white,
+      ),
     };

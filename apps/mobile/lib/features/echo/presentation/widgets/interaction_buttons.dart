@@ -71,18 +71,19 @@ class InteractionButtons extends StatelessWidget {
               muted: contextClosed,
             ),
           ),
-          Expanded(
-            child: _InteractionButton(
-              key: ValueKey('${echo.id}:challenge'),
-              count: echo.challengeCount,
-              label: context.l('Challenge'),
-              compact: dense,
-              icon: Icons.arrow_downward_rounded,
-              onTap: () => _openContextSheet(context, 'challenge'),
-              flashColor: AppColors.sunsetCoralDark,
-              muted: contextClosed,
+          if (!dense)
+            Expanded(
+              child: _InteractionButton(
+                key: ValueKey('${echo.id}:challenge'),
+                count: echo.challengeCount,
+                label: context.l('Challenge'),
+                compact: dense,
+                icon: Icons.arrow_downward_rounded,
+                onTap: () => _openContextSheet(context, 'challenge'),
+                flashColor: AppColors.sunsetCoralDark,
+                muted: contextClosed,
+              ),
             ),
-          ),
           if (!dense)
             Expanded(
               child: _InteractionButton(

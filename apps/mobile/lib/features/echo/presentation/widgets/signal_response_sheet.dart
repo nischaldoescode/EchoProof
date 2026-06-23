@@ -2,9 +2,11 @@
 // @params none
 
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:echoproof/core/utils/snack.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_mentions/flutter_mentions.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
@@ -13,6 +15,9 @@ import '../../../../app/theme/typography.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../core/utils/media_file_safety.dart';
 import '../../../../core/utils/ai_slop_guard.dart';
+import '../../../../core/services/app_analytics_service.dart';
+import '../../../../shared/widgets/local_attachment_preview.dart';
+import '../../../../shared/widgets/mention_helpers.dart' as mention_ui;
 
 void showSignalResponseSheet({
   required BuildContext context,
@@ -24,11 +29,17 @@ void showSignalResponseSheet({
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
+    enableDrag: true,
     backgroundColor: AppColors.white,
+    constraints: BoxConstraints(maxWidth: _signalSheetMaxWidth(context)),
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(
         top: Radius.circular(AppSpacing.radiusLg),
       ),
+    ),
+    sheetAnimationStyle: const AnimationStyle(
+      duration: Duration(milliseconds: 250),
+      reverseDuration: Duration(milliseconds: 180),
     ),
     builder: (_) => _SignalResponseSheet(
       echoId: echoId,
@@ -36,6 +47,12 @@ void showSignalResponseSheet({
       onPosted: onPosted,
     ),
   );
+}
+
+/// caps the context composer to the active app window for split-screen layouts.
+double _signalSheetMaxWidth(BuildContext context) {
+  final width = MediaQuery.sizeOf(context).width;
+  return math.min(width, 560);
 }
 
 class _SignalResponseSheet extends StatefulWidget {
@@ -54,15 +71,19 @@ class _SignalResponseSheet extends StatefulWidget {
 }
 
 class _SignalResponseSheetState extends State<_SignalResponseSheet> {
-  final _controller = TextEditingController();
+  final _mentionKey = GlobalKey<FlutterMentionsState>();
   final List<_ContextMedia> _media = [];
   late String _stance;
+  String _content = '';
+  String _mentionSearch = '';
+  bool _mentionSuggestionsVisible = false;
   bool _submitting = false;
   bool _loadingExisting = true;
   bool _hasExisting = false;
   int _editCount = 0;
   List<String> _existingMediaUrls = const [];
   List<String> _existingMediaTypes = const [];
+  List<Map<String, dynamic>> _mentionableUsers = const [];
 
   static const _stances = [
     (
@@ -84,16 +105,28 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
     super.initState();
     _stance = widget.initialStance == 'challenge' ? 'challenge' : 'support';
     _loadExistingResponse();
+    _loadMentionableUsers();
   }
 
   @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  void dispose() => super.dispose();
+
+  String get _currentContent =>
+      _mentionKey.currentState?.controller?.text ?? _content;
+
+  void _hideMentionSuggestions() {
+    mention_ui.hideMentionSuggestions(_mentionKey);
+    if (_mentionSuggestionsVisible || _mentionSearch.isNotEmpty) {
+      setState(() {
+        _mentionSuggestionsVisible = false;
+        _mentionSearch = '';
+      });
+    }
   }
 
   Future<void> _submit() async {
-    final content = _controller.text.trim();
+    _hideMentionSuggestions();
+    final content = _currentContent.trim();
     if (content.length < 10 || _submitting || _loadingExisting) return;
     if (showOfflineSnackIfNeeded(context)) return;
     if (_hasExisting && _editCount >= 1) {
@@ -139,6 +172,14 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
           'content': content,
           'media_urls': uploadedUrls,
           'media_types': uploadedTypes,
+        },
+      );
+      await AppAnalyticsService.instance.logEvent(
+        'context_response_posted',
+        parameters: {
+          'stance': _stance,
+          'has_media': uploadedUrls.isNotEmpty,
+          'is_edit': _hasExisting,
         },
       );
 
@@ -198,16 +239,46 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
         _hasExisting = true;
         _editCount = (row['edit_count'] as num?)?.toInt() ?? 0;
         _stance = existingStance == 'challenge' ? 'challenge' : 'support';
-        _controller.text = row['content'] as String? ?? '';
+        _content = row['content'] as String? ?? '';
         _existingMediaUrls =
             (row['media_urls'] as List?)?.cast<String>() ?? const [];
         _existingMediaTypes =
             (row['media_types'] as List?)?.cast<String>() ?? const [];
       });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _mentionKey.currentState?.controller?.text = _content;
+      });
     } catch (e) {
       AppLogger.warn('signal response: existing context load failed');
     } finally {
       if (mounted) setState(() => _loadingExisting = false);
+    }
+  }
+
+  Future<void> _loadMentionableUsers() async {
+    try {
+      final rows = await Supabase.instance.client
+          .from('users_public')
+          .select('id, username, display_name, avatar_url, trust_tier')
+          .eq('is_suspended', false)
+          .limit(50);
+      if (!mounted) return;
+      setState(() {
+        _mentionableUsers = (rows as List).map((r) {
+          final map = r as Map<String, dynamic>;
+          final username = map['username'] as String? ?? 'unknown';
+          final displayName = (map['display_name'] as String?)?.trim();
+          return {
+            'id': map['id'] as String,
+            'display': username,
+            'name': displayName?.isNotEmpty == true ? displayName : username,
+            'avatar_url': map['avatar_url'] as String? ?? '',
+            'trust_tier': map['trust_tier'] as String? ?? 'unverified',
+          };
+        }).toList();
+      });
+    } catch (e) {
+      AppLogger.warn('signal response: mention users load failed $e');
     }
   }
 
@@ -271,6 +342,10 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
   Widget build(BuildContext context) {
     final mediaQuery = MediaQuery.of(context);
     final maxSheetHeight = mediaQuery.size.height * 0.9;
+    final mentionUsers = mention_ui.visibleMentionUsers(
+      _mentionSearch,
+      _mentionableUsers,
+    );
 
     return Padding(
       padding: EdgeInsets.only(bottom: mediaQuery.viewInsets.bottom),
@@ -336,40 +411,103 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
                   },
                 ),
                 const SizedBox(height: AppSpacing.lg),
-                TextField(
-                  controller: _controller,
-                  maxLines: 4,
-                  maxLength: 500,
-                  autofocus: true,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    hintText: _stance == 'support'
-                        ? 'What makes this echo credible?'
-                        : 'What context makes this echo unsupported?',
-                    alignLabelWithHint: true,
-                    filled: true,
-                    fillColor: AppColors.surfaceSecondary,
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(
-                        color: AppColors.borderSubtle,
+                Builder(
+                  builder: (mentionContext) {
+                    final suggestionPosition = mention_ui
+                        .adaptiveMentionSuggestionPosition(
+                          mentionContext,
+                          listHeight: 190,
+                          preferTopWhenCrowded: true,
+                        );
+                    final suggestionHeight = mention_ui
+                        .adaptiveMentionSuggestionHeight(
+                          mentionContext,
+                          position: suggestionPosition,
+                          maxHeight: 190,
+                        );
+
+                    return mention_ui.CompactMentionSuggestions(
+                      visible: _mentionSuggestionsVisible,
+                      position: suggestionPosition,
+                      suggestionHeight: suggestionHeight,
+                      suggestions: mentionUsers,
+                      mentionKey: _mentionKey,
+                      onSelected: (_) {
+                        setState(() {
+                          _mentionSuggestionsVisible = false;
+                          _mentionSearch = '';
+                          _content = _currentContent;
+                        });
+                      },
+                      child: FlutterMentions(
+                        key: _mentionKey,
+                        maxLines: 4,
+                        maxLength: 500,
+                        autofocus: true,
+                        hideSuggestionList: true,
+                        suggestionPosition: suggestionPosition,
+                        suggestionListHeight: suggestionHeight,
+                        onSuggestionVisibleChanged: (visible) {
+                          if (_mentionSuggestionsVisible == visible) return;
+                          setState(() {
+                            _mentionSuggestionsVisible = visible;
+                            if (!visible) _mentionSearch = '';
+                          });
+                        },
+                        onSearchChanged: (trigger, value) {
+                          if (trigger != '@' || _mentionSearch == value) {
+                            return;
+                          }
+                          setState(() => _mentionSearch = value);
+                        },
+                        onMentionAdd: (_) =>
+                            setState(() => _content = _currentContent),
+                        onChanged: (value) => setState(() => _content = value),
+                        decoration: InputDecoration(
+                          hintText: _stance == 'support'
+                              ? 'What makes this echo credible?'
+                              : 'What context makes this echo unsupported?',
+                          alignLabelWithHint: true,
+                          filled: true,
+                          fillColor: AppColors.surfaceSecondary,
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: const BorderSide(
+                              color: AppColors.borderSubtle,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: const BorderSide(
+                              color: AppColors.fernGreen,
+                              width: 1.4,
+                            ),
+                          ),
+                          errorBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(14),
+                            borderSide: const BorderSide(
+                              color: AppColors.sunsetCoral,
+                            ),
+                          ),
+                        ),
+                        suggestionListDecoration: mention_ui
+                            .mentionSuggestionDecoration(suggestionPosition),
+                        style: AppTypography.textTheme.bodyMedium,
+                        mentions: [
+                          Mention(
+                            trigger: '@',
+                            style: AppTypography.textTheme.bodyMedium?.copyWith(
+                              color: AppColors.fernGreen,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            data: _mentionableUsers,
+                            suggestionBuilder: (data) =>
+                                mention_ui.MentionSuggestionTile(data: data),
+                          ),
+                        ],
                       ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(
-                        color: AppColors.fernGreen,
-                        width: 1.4,
-                      ),
-                    ),
-                    errorBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(
-                        color: AppColors.sunsetCoral,
-                      ),
-                    ),
-                  ),
-                  style: AppTypography.textTheme.bodyMedium,
+                    );
+                  },
                 ),
                 Wrap(
                   spacing: AppSpacing.xs,
@@ -403,33 +541,21 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
                 AnimatedSize(
                   duration: const Duration(milliseconds: 180),
                   curve: Curves.easeOutCubic,
-                  child: Column(
-                    children: List.generate(_media.length, (index) {
-                      final item = _media[index];
-                      final name = MediaFileSafety.displayName(item.path);
-                      final isVideo = item.kind == MediaFileKind.video;
-                      return ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(
-                          isVideo ? Icons.movie_outlined : Icons.image_outlined,
-                          color: AppColors.textSecondary,
-                        ),
-                        title: Text(
-                          name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTypography.textTheme.bodySmall,
-                        ),
-                        trailing: IconButton(
-                          tooltip: 'Remove',
-                          onPressed: _submitting
-                              ? null
+                  child: Wrap(
+                    spacing: AppSpacing.sm,
+                    runSpacing: AppSpacing.sm,
+                    children: [
+                      for (var index = 0; index < _media.length; index++)
+                        LocalAttachmentPreviewTile(
+                          key: ValueKey(_media[index].path),
+                          path: _media[index].path,
+                          index: index,
+                          isVideo: _media[index].kind == MediaFileKind.video,
+                          onRemove: _submitting
+                              ? () {}
                               : () => setState(() => _media.removeAt(index)),
-                          icon: const Icon(Icons.close_rounded, size: 18),
                         ),
-                      );
-                    }),
+                    ],
                   ),
                 ),
                 const SizedBox(height: AppSpacing.lg),
@@ -438,7 +564,7 @@ class _SignalResponseSheetState extends State<_SignalResponseSheet> {
                   child: ElevatedButton(
                     onPressed:
                         _submitting ||
-                            _controller.text.trim().length < 10 ||
+                            _currentContent.trim().length < 10 ||
                             _loadingExisting ||
                             (_hasExisting && _editCount >= 1)
                         ? null

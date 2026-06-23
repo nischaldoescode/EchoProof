@@ -283,7 +283,7 @@ class SwipeNavigationWrapper extends StatefulWidget {
 }
 
 class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   static const _routes = [
     '/feed',
     '/discover',
@@ -292,30 +292,103 @@ class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
     '/profile',
   ];
 
-  // drag progress uses positive for previous tab and negative for next tab
+  static String? _pendingEntryRoute;
+  static int _pendingEntryDirection = 0;
+  static const Curve _rootMotionCurve = Easing.emphasizedDecelerate;
+
+  // drag progress uses positive for previous tab and negative for next tab.
+  // this wrapper only moves root destinations, so it must stay cheap enough
+  // for dense feed/profile pages and for split-screen resize events.
   double _drag = 0.0;
   bool _dragging = false;
   double _dragStartX = 0.0;
 
-  // exit animation finishes the slide before routing
-  late final AnimationController _exitCtrl;
-  late Animation<double> _exitProgress;
-  int _exitDirection = 0;
+  // controllers are lazy so hot reload cannot leave a newly added field in an
+  // uninitialized late state. root swipes use only a small gesture preview:
+  // full-screen outgoing slides make dense pages look like the old route is
+  // jittering while the next tab is still being prepared.
+  AnimationController? _exitCtrl;
+  AnimationController? _settleCtrl;
+  AnimationController? _entryCtrl;
+  Animation<double> _settleProgress = const AlwaysStoppedAnimation(0.0);
+  int _entryDirection = 0;
   bool _exiting = false;
+  bool _settling = false;
 
   @override
   void initState() {
     super.initState();
-    _exitCtrl = AnimationController(
+    _ensureMotionControllers();
+    _primeEntryAnimation();
+  }
+
+  AnimationController get _exitController {
+    return _exitCtrl ??= AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 240),
     );
-    _exitProgress = const AlwaysStoppedAnimation(0.0);
+  }
+
+  AnimationController get _settleController {
+    return _settleCtrl ??= AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 170),
+    );
+  }
+
+  AnimationController get _entryController {
+    return _entryCtrl ??= AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+      value: 1,
+    );
+  }
+
+  void _ensureMotionControllers() {
+    _exitController;
+    _settleController;
+    _entryController;
+  }
+
+  void _primeEntryAnimation() {
+    if (_pendingEntryRoute != widget.currentLocation) {
+      _pendingEntryRoute = null;
+      _pendingEntryDirection = 0;
+      _entryDirection = 0;
+      _entryController.value = 1;
+      return;
+    }
+
+    _entryDirection = _pendingEntryDirection;
+    _pendingEntryRoute = null;
+    _pendingEntryDirection = 0;
+    _entryController.value = 0;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _entryController.forward(from: 0);
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant SwipeNavigationWrapper oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.currentLocation == widget.currentLocation) return;
+
+    _ensureMotionControllers();
+    _settleController.stop();
+    _entryController.stop();
+    _dragging = false;
+    _settling = false;
+    _drag = 0.0;
+    _primeEntryAnimation();
   }
 
   @override
   void dispose() {
-    _exitCtrl.dispose();
+    _exitCtrl?.dispose();
+    _settleCtrl?.dispose();
+    _entryCtrl?.dispose();
     super.dispose();
   }
 
@@ -329,18 +402,25 @@ class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
 
   void _onDragStart(DragStartDetails d) {
     if (_exiting) return;
+    _settleController.stop();
+    _entryController.stop();
+    _entryController.value = 1;
+    _entryDirection = 0;
     _dragStartX = d.globalPosition.dx;
     _dragging = true;
+    _settling = false;
     _drag = 0.0;
   }
 
   void _onDragUpdate(DragUpdateDetails d) {
     if (!_dragging || _exiting) return;
-    final w = MediaQuery.sizeOf(context).width;
+    final w = MediaQuery.sizeOf(context).width.clamp(1.0, double.infinity);
     var delta = (d.globalPosition.dx - _dragStartX) / w;
     if (delta > 0 && !_canGoBack) delta = 0;
     if (delta < 0 && !_canGoForward) delta = 0;
-    setState(() => _drag = delta.clamp(-1.0, 1.0).toDouble());
+    final next = delta.clamp(-0.55, 0.55).toDouble();
+    if ((next - _drag).abs() < 0.001) return;
+    setState(() => _drag = next);
   }
 
   void _onDragEnd(DragEndDetails d) {
@@ -354,7 +434,8 @@ class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
       final dir = _drag > 0 ? 1 : -1;
       final targetIdx = _idx - dir;
       if (targetIdx >= 0 && targetIdx < _routes.length) {
-        _triggerExit(dir, _routes[targetIdx]);
+        final entryDirection = targetIdx > _idx ? 1 : -1;
+        _triggerExit(_routes[targetIdx], entryDirection);
         return;
       }
     }
@@ -362,24 +443,43 @@ class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
     _snapBack();
   }
 
-  void _snapBack() {
-    setState(() => _drag = 0.0);
+  void _onDragCancel() {
+    if (!_dragging || _exiting) return;
+    _dragging = false;
+    _snapBack();
   }
 
-  Future<void> _triggerExit(int dir, String route) async {
-    _exiting = true;
-    _exitDirection = dir;
-    _exitProgress = Tween<double>(
-      begin: _drag.abs(),
-      end: 1.0,
-    ).animate(CurvedAnimation(parent: _exitCtrl, curve: Curves.easeInCubic));
+  void _snapBack() {
+    if (_drag.abs() < 0.001) {
+      setState(() => _drag = 0.0);
+      return;
+    }
 
-    await _exitCtrl.forward(from: 0);
+    _settling = true;
+    _settleProgress = Tween<double>(begin: _drag, end: 0.0).animate(
+      CurvedAnimation(parent: _settleController, curve: _rootMotionCurve),
+    );
+
+    _settleController.forward(from: 0).whenComplete(() {
+      if (!mounted) return;
+      setState(() {
+        _drag = 0.0;
+        _settling = false;
+      });
+    });
+  }
+
+  void _triggerExit(String route, int entryDirection) {
+    _exiting = true;
+    _drag = 0.0;
+    _settling = false;
+    _pendingEntryRoute = route;
+    _pendingEntryDirection = entryDirection;
+    _settleController.stop();
+    _exitController.stop();
     if (!mounted) return;
     context.go(route);
-    await Future.microtask(() {});
     if (mounted) {
-      _exitCtrl.reset();
       setState(() {
         _drag = 0.0;
         _exiting = false;
@@ -389,38 +489,57 @@ class _SwipeNavigationWrapperState extends State<SwipeNavigationWrapper>
 
   @override
   Widget build(BuildContext context) {
+    _ensureMotionControllers();
     return AnimatedBuilder(
-      animation: _exitCtrl,
+      animation: Listenable.merge([
+        _exitController,
+        _settleController,
+        _entryController,
+      ]),
       builder: (context, _) {
-        final p = _exiting ? _exitDirection * _exitProgress.value : _drag;
-        final width = MediaQuery.sizeOf(context).width;
+        final p = _exiting
+            ? 0.0
+            : _settling
+            ? _settleProgress.value
+            : _drag;
         final progress = p.abs().clamp(0.0, 1.0).toDouble();
+        final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+        final direction = p == 0 ? 0.0 : p.sign;
+        final easedPreview = _rootMotionCurve.transform(progress);
+        final rawOffset = direction * easedPreview * 18;
+        final snappedOffset =
+            (rawOffset * devicePixelRatio).roundToDouble() / devicePixelRatio;
+        final reduceMotion = MediaQuery.disableAnimationsOf(context);
+        final entryRaw = reduceMotion
+            ? 1.0
+            : _entryController.value.clamp(0.0, 1.0).toDouble();
+        final entryProgress = _rootMotionCurve.transform(entryRaw);
+        final entryOffset = _entryDirection * (1 - entryProgress) * 22;
+        final snappedEntryOffset =
+            (entryOffset * devicePixelRatio).roundToDouble() / devicePixelRatio;
+        final entryOpacity = (0.78 + entryProgress * 0.22)
+            .clamp(0.0, 1.0)
+            .toDouble();
+        final entryScale = 0.985 + entryProgress * 0.015;
 
         return GestureDetector(
           onHorizontalDragStart: _onDragStart,
           onHorizontalDragUpdate: _onDragUpdate,
           onHorizontalDragEnd: _onDragEnd,
+          onHorizontalDragCancel: _onDragCancel,
           child: ColoredBox(
             color: const Color(0xFFF5FAF7),
-            child: Transform.translate(
-              offset: Offset(p * width, 0),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  boxShadow: progress == 0
-                      ? const []
-                      : [
-                          BoxShadow(
-                            color: Colors.black.withValues(
-                              alpha: 0.07 * progress,
-                            ),
-                            blurRadius: 22 * progress,
-                            offset: Offset(0, 8 * progress),
-                          ),
-                        ],
-                ),
-                child: Opacity(
-                  opacity: (1.0 - progress * 0.04).clamp(0.0, 1.0).toDouble(),
-                  child: widget.child,
+            child: RepaintBoundary(
+              child: Opacity(
+                opacity: (entryOpacity * (1.0 - progress * 0.025))
+                    .clamp(0.0, 1.0)
+                    .toDouble(),
+                child: Transform.translate(
+                  offset: Offset(snappedEntryOffset + snappedOffset, 0),
+                  child: Transform.scale(
+                    scale: entryScale,
+                    child: widget.child,
+                  ),
                 ),
               ),
             ),

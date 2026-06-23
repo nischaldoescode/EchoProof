@@ -10,6 +10,7 @@ import '../../domain/entities/echo_entity.dart';
 import 'interaction_buttons.dart';
 import '../../../../shared/widgets/verified_badges.dart';
 import '../../../../shared/widgets/rich_text_display.dart';
+import '../../../../shared/widgets/social_action_button.dart';
 import '../../../../core/utils/media_file_safety.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -248,6 +249,7 @@ class _EchoCardState extends State<EchoCard> {
                       overflow: TextOverflow.ellipsis,
                       hideUrls: hideUrlText,
                       onHashtagTap: _openHashtag,
+                      onMentionTap: (username) => _openProfile(username),
                     ),
                     const SizedBox(height: AppSpacing.xs),
                   ],
@@ -261,6 +263,7 @@ class _EchoCardState extends State<EchoCard> {
                     ),
                     hideUrls: hideUrlText,
                     onHashtagTap: _openHashtag,
+                    onMentionTap: (username) => _openProfile(username),
                   ),
                   if (previewUrl != null) ...[
                     EchoLinkPreview(
@@ -394,6 +397,7 @@ class _EchoCardState extends State<EchoCard> {
                             },
                             onAuthorTap: (username, userId) =>
                                 _openProfile(username, userId: userId),
+                            onMentionTap: (username) => _openProfile(username),
                           ),
                         ],
                         if (widget.showReplyPreview &&
@@ -403,6 +407,7 @@ class _EchoCardState extends State<EchoCard> {
                             reply: echo.previewReplies.first,
                             totalReplyCount: echo.replyCount,
                             onHashtagTap: _openHashtag,
+                            onMentionTap: (username) => _openProfile(username),
                             onTap: () => context.push(
                               '/echo/${echo.id}/replies'
                               '?author=${Uri.encodeComponent(echo.username)}'
@@ -620,11 +625,13 @@ class _ContextPreviewCard extends StatelessWidget {
     required this.contextPreview,
     required this.onTap,
     required this.onAuthorTap,
+    required this.onMentionTap,
   });
 
   final EchoContextPreview contextPreview;
   final VoidCallback onTap;
   final void Function(String username, String? userId) onAuthorTap;
+  final ValueChanged<String> onMentionTap;
 
   @override
   Widget build(BuildContext context) {
@@ -722,6 +729,7 @@ class _ContextPreviewCard extends StatelessWidget {
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               hideUrls: false,
+                              onMentionTap: onMentionTap,
                             ),
                             const SizedBox(height: 4),
                             Text(
@@ -755,6 +763,7 @@ class EchoReplyPreviewCard extends StatefulWidget {
     required this.reply,
     required this.totalReplyCount,
     required this.onHashtagTap,
+    required this.onMentionTap,
     required this.onTap,
     required this.onAuthorTap,
     this.detached = false,
@@ -763,6 +772,7 @@ class EchoReplyPreviewCard extends StatefulWidget {
   final EchoReplyPreview reply;
   final int totalReplyCount;
   final ValueChanged<String> onHashtagTap;
+  final ValueChanged<String> onMentionTap;
   final VoidCallback onTap;
   final void Function(String username, String? userId) onAuthorTap;
   final bool detached;
@@ -775,7 +785,6 @@ class _EchoReplyPreviewCardState extends State<EchoReplyPreviewCard> {
   bool _previewUnavailable = false;
   late bool _liked;
   late int _likeCount;
-  int _likeBurst = 0;
 
   @override
   void initState() {
@@ -787,7 +796,11 @@ class _EchoReplyPreviewCardState extends State<EchoReplyPreviewCard> {
   @override
   void didUpdateWidget(covariant EchoReplyPreviewCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.reply.id != widget.reply.id) {
+    final changedReply = oldWidget.reply.id != widget.reply.id;
+    final changedLikeState =
+        oldWidget.reply.isLiked != widget.reply.isLiked ||
+        oldWidget.reply.likeCount != widget.reply.likeCount;
+    if (changedReply || changedLikeState) {
       _previewUnavailable = false;
       _liked = widget.reply.isLiked;
       _likeCount = widget.reply.likeCount;
@@ -805,7 +818,6 @@ class _EchoReplyPreviewCardState extends State<EchoReplyPreviewCard> {
       _likeCount = (_likeCount + (nextLiked ? 1 : -1))
           .clamp(0, 1 << 31)
           .toInt();
-      if (nextLiked) _likeBurst++;
     });
 
     try {
@@ -995,6 +1007,7 @@ class _EchoReplyPreviewCardState extends State<EchoReplyPreviewCard> {
                                 overflow: TextOverflow.ellipsis,
                                 hideUrls: hideUrlText,
                                 onHashtagTap: widget.onHashtagTap,
+                                onMentionTap: widget.onMentionTap,
                               ),
                             ],
                           ),
@@ -1026,7 +1039,6 @@ class _EchoReplyPreviewCardState extends State<EchoReplyPreviewCard> {
                       detached: detached,
                       likeCount: _likeCount,
                       isLiked: _liked,
-                      likeBurst: _likeBurst,
                       onLike: _toggleLike,
                     ),
                   ],
@@ -1052,20 +1064,16 @@ class _ReplyPreviewActions extends StatelessWidget {
     required this.detached,
     required this.likeCount,
     required this.isLiked,
-    required this.likeBurst,
     required this.onLike,
   });
 
   final bool detached;
   final int likeCount;
   final bool isLiked;
-  final int likeBurst;
   final VoidCallback onLike;
 
   @override
   Widget build(BuildContext context) {
-    final color = isLiked ? AppColors.fernGreenDark : AppColors.textTertiary;
-
     return Row(
       children: [
         Icon(
@@ -1074,53 +1082,17 @@ class _ReplyPreviewActions extends StatelessWidget {
           color: AppColors.textTertiary,
         ),
         SizedBox(width: detached ? 70 : AppSpacing.md),
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
+        SocialActionButton(
+          icon: Icons.favorite_border_rounded,
+          activeIcon: Icons.favorite_rounded,
+          label: likeCount > 0 ? Formatters.compactNumber(likeCount) : '',
+          active: isLiked,
+          compact: true,
+          minWidth: likeCount > 0 ? 42 : 30,
+          activeColor: AppColors.sunsetCoral,
+          inactiveColor: AppColors.textTertiary,
+          showBurst: true,
           onTap: onLike,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AnimatedScale(
-                    scale: isLiked ? 1.14 : 1.0,
-                    duration: const Duration(milliseconds: 170),
-                    curve: Curves.easeOutBack,
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 180),
-                      child: Icon(
-                        isLiked
-                            ? Icons.favorite_rounded
-                            : Icons.favorite_border_rounded,
-                        key: ValueKey(isLiked),
-                        size: 13,
-                        color: isLiked
-                            ? AppColors.fernGreen
-                            : AppColors.textTertiary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    likeCount > 0 ? '$likeCount' : '',
-                    style: GoogleFonts.josefinSans(
-                      fontSize: 11,
-                      color: color,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-              if (likeBurst > 0 && isLiked)
-                Positioned(
-                  key: ValueKey(likeBurst),
-                  left: 1,
-                  top: -8,
-                  child: _ReplyLikeBurst(color: AppColors.fernGreen),
-                ),
-            ],
-          ),
         ),
       ],
     );
@@ -1167,75 +1139,6 @@ class _ReplyPreviewHeader extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _ReplyLikeBurst extends StatelessWidget {
-  const _ReplyLikeBurst({required this.color});
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 420),
-      curve: Curves.easeOutCubic,
-      builder: (context, value, child) {
-        return Opacity(
-          opacity: (1 - value).clamp(0.0, 1.0).toDouble(),
-          child: SizedBox(
-            width: 24,
-            height: 20,
-            child: Stack(
-              children: [
-                _BurstDot(
-                  color: color,
-                  offset: Offset(-2 - 4 * value, -2 - 10 * value),
-                  scale: 1 - value * 0.35,
-                ),
-                _BurstDot(
-                  color: color.withValues(alpha: 0.75),
-                  offset: Offset(7, -6 - 11 * value),
-                  scale: 0.82 - value * 0.25,
-                ),
-                _BurstDot(
-                  color: color.withValues(alpha: 0.55),
-                  offset: Offset(15 + 4 * value, -1 - 8 * value),
-                  scale: 0.68 - value * 0.18,
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _BurstDot extends StatelessWidget {
-  const _BurstDot({
-    required this.color,
-    required this.offset,
-    required this.scale,
-  });
-
-  final Color color;
-  final Offset offset;
-  final double scale;
-
-  @override
-  Widget build(BuildContext context) {
-    return Transform.translate(
-      offset: offset,
-      child: Transform.scale(
-        scale: scale.clamp(0.1, 1.0).toDouble(),
-        child: Container(
-          width: 5,
-          height: 5,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-      ),
     );
   }
 }
@@ -1362,12 +1265,14 @@ class _ExpandableEchoText extends StatefulWidget {
     required this.style,
     required this.hideUrls,
     required this.onHashtagTap,
+    required this.onMentionTap,
   });
 
   final String text;
   final TextStyle? style;
   final bool hideUrls;
   final ValueChanged<String> onHashtagTap;
+  final ValueChanged<String> onMentionTap;
 
   @override
   State<_ExpandableEchoText> createState() => _ExpandableEchoTextState();
@@ -1401,6 +1306,7 @@ class _ExpandableEchoTextState extends State<_ExpandableEchoText> {
             overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
             hideUrls: widget.hideUrls,
             onHashtagTap: widget.onHashtagTap,
+            onMentionTap: widget.onMentionTap,
           ),
           if (_looksLong) ...[
             const SizedBox(height: 4),

@@ -12,6 +12,7 @@ import '../../../../core/utils/media_file_safety.dart';
 import '../../../../core/utils/sanitizer.dart';
 import '../../../../core/services/onnx_spam_checker.dart';
 import '../../../../core/utils/ai_slop_guard.dart';
+import '../../../../core/services/app_analytics_service.dart';
 
 const _kDraftKey = 'echo_draft';
 
@@ -230,13 +231,14 @@ class CreateEchoService extends ChangeNotifier {
         await addMedia(path);
       }
 
+      final selectedCategory = _category!.dbValue;
       final inserted = await client
           .from('echoes')
           .insert({
             'user_id': userId,
             'title': Sanitizer.text(_title),
             'content': Sanitizer.text(_content),
-            'category': _category!.dbValue,
+            'category': selectedCategory,
             'category_detail': _category == EchoCategory.other
                 ? Sanitizer.text(_categoryDetail).trim()
                 : null,
@@ -246,6 +248,7 @@ class CreateEchoService extends ChangeNotifier {
           })
           .select('id')
           .single();
+      final hadMedia = _mediaUrls.isNotEmpty;
 
       unawaited(_anchorEchoOnChain(client, inserted['id'] as String));
 
@@ -260,6 +263,10 @@ class CreateEchoService extends ChangeNotifier {
       _category = null;
       _categoryDetail = '';
       _success = true;
+      await AppAnalyticsService.instance.logEvent(
+        'echo_created',
+        parameters: {'category': selectedCategory, 'has_media': hadMedia},
+      );
 
       AppLogger.info('echo: created successfully');
     } on _CooldownException catch (e) {

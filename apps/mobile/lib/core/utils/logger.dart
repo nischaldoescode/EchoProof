@@ -1,12 +1,13 @@
 // app logger
 // wraps dart developer log with level prefixes
-// in release builds only errors are logged
+// in release builds logging is disabled so diagnostics do not leak to store builds.
 
 import 'dart:developer' as dev;
 import 'package:flutter/foundation.dart';
 
 abstract final class AppLogger {
   static void audit(String message) {
+    if (!kDebugMode) return;
     debugPrint('echoproof audit: $message');
     dev.log('[AUDIT] $message', name: 'echoproof');
   }
@@ -24,7 +25,8 @@ abstract final class AppLogger {
   }
 
   static void error(String message, [Object? error, StackTrace? stack]) {
-    if (kDebugMode) debugPrint('echoproof error: $message');
+    if (!kDebugMode) return;
+    debugPrint('echoproof error: $message');
     dev.log(
       '[ERROR] $message',
       name: 'echoproof',

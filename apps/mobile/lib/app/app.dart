@@ -173,10 +173,11 @@ class _ExitConfirmWrapperState extends State<ExitConfirmWrapper> {
   }
 
   double _rootSnackBottomMargin(BuildContext context) {
-    // root screens include bottom nav, optional ad units, and the gesture bar
-    // keep the exit prompt visibly above that chrome
-    final shortestSide = MediaQuery.sizeOf(context).shortestSide;
-    return shortestSide >= 600 ? 118 : 142;
+    // root screens need to clear the navigation bar without moving the exit
+    // prompt above the compose action on short or split-screen windows.
+    final size = MediaQuery.sizeOf(context);
+    final chromeMargin = size.shortestSide >= 600 ? 56.0 : 68.0;
+    return (size.height * 0.10).clamp(48.0, chromeMargin).toDouble();
   }
 
   @override

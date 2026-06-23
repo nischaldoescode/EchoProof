@@ -130,7 +130,7 @@ class SecureRoomPresence {
   String get label {
     final name =
         (displayName?.trim().isNotEmpty == true ? displayName : username) ??
-            'Someone';
+        'Someone';
     return switch (state) {
       SecureRoomPresenceState.active => '$name is here',
       SecureRoomPresenceState.background => '$name is away',
@@ -177,10 +177,12 @@ class SecureRoomService extends ChangeNotifier {
   static const _signingPublicKey = 'secure_room_ed25519_public_key';
   static const _urlRegex =
       r'((https?:\/\/|www\.)[^\s<>"{}|\\^`\[\]]+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\/[^\s]*)';
-  static final RegExp _unsafeControlRegex =
-      RegExp(r'[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]');
-  static final RegExp _bidirectionalOverrideRegex =
-      RegExp(r'[\u202A-\u202E\u2066-\u2069]');
+  static final RegExp _unsafeControlRegex = RegExp(
+    r'[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]',
+  );
+  static final RegExp _bidirectionalOverrideRegex = RegExp(
+    r'[\u202A-\u202E\u2066-\u2069]',
+  );
 
   final _client = Supabase.instance.client;
   final _deviceService = DeviceService(_storage);
@@ -227,8 +229,12 @@ class SecureRoomService extends ChangeNotifier {
       if (rooms.isNotEmpty) {
         await Future.wait(
           rooms.map(
-            (room) => _client.rpc('refresh_secure_room_state',
-                params: {'p_room_id': room.id}).catchError((_) {}),
+            (room) => _client
+                .rpc(
+                  'refresh_secure_room_state',
+                  params: {'p_room_id': room.id},
+                )
+                .catchError((_) {}),
           ),
         );
         rooms = await _fetchActiveRooms(userId);
@@ -246,9 +252,11 @@ class SecureRoomService extends ChangeNotifier {
   Future<List<SecureRoomSummary>> _fetchActiveRooms(String userId) async {
     final rows = await _client
         .from('secure_room_members')
-        .select('secure_rooms!inner(id, creator_id, invite_code, status, '
-            'message_ttl_seconds, max_members, wait_for_members, '
-            'started_at, waiting_expires_at, created_at)')
+        .select(
+          'secure_rooms!inner(id, creator_id, invite_code, status, '
+          'message_ttl_seconds, max_members, wait_for_members, '
+          'started_at, waiting_expires_at, created_at)',
+        )
         .eq('user_id', userId)
         .isFilter('left_at', null)
         .eq('secure_rooms.status', 'active')
@@ -349,6 +357,15 @@ class SecureRoomService extends ChangeNotifier {
       throw Exception('This invite key is invalid or incomplete.');
     }
 
+    // opening your own invite should feel like opening the room, not joining it again
+    for (final room in _rooms) {
+      if (room.inviteCode == code && room.isActive) {
+        await _saveRoomKey(room.id, roomKey.trim());
+        await _registerSigningKey(room.id);
+        return room;
+      }
+    }
+
     final response = await _client.functions.invoke(
       'join-secure-room',
       body: {'invite_code': code},
@@ -415,13 +432,16 @@ class SecureRoomService extends ChangeNotifier {
       );
     }
 
-    await _client.rpc('refresh_secure_room_state',
-        params: {'p_room_id': roomId}).catchError((_) {});
+    await _client
+        .rpc('refresh_secure_room_state', params: {'p_room_id': roomId})
+        .catchError((_) {});
     final row = await _client
         .from('secure_rooms')
-        .select('id, creator_id, invite_code, status, message_ttl_seconds, '
-            'max_members, wait_for_members, started_at, waiting_expires_at, '
-            'created_at')
+        .select(
+          'id, creator_id, invite_code, status, message_ttl_seconds, '
+          'max_members, wait_for_members, started_at, waiting_expires_at, '
+          'created_at',
+        )
         .eq('id', roomId)
         .maybeSingle();
     if (row == null) {
@@ -490,9 +510,7 @@ class SecureRoomService extends ChangeNotifier {
     if (missingSigningKey) {
       publicKeys = await _loadPublicKeys(roomId, forceRefresh: true);
     }
-    final receiptCounts = await _loadReceiptCounts(
-      messageRows,
-    );
+    final receiptCounts = await _loadReceiptCounts(messageRows);
     final messages = <SecureRoomMessage>[];
     for (final row in messageRows) {
       messages.add(
@@ -525,12 +543,7 @@ class SecureRoomService extends ChangeNotifier {
       publicKeys = await _loadPublicKeys(roomId, forceRefresh: true);
     }
 
-    return _decryptMessage(
-      row,
-      roomKey,
-      publicKeys,
-      const _ReceiptCounts(),
-    );
+    return _decryptMessage(row, roomKey, publicKeys, const _ReceiptCounts());
   }
 
   RealtimeChannel subscribeToMessages({
@@ -538,7 +551,8 @@ class SecureRoomService extends ChangeNotifier {
     required void Function(
       Map<String, dynamic> row,
       PostgresChangeEvent eventType,
-    ) onMessageChanged,
+    )
+    onMessageChanged,
     void Function()? onRoomChanged,
     void Function(Map<String, dynamic> row)? onReceiptChanged,
     void Function()? onPresenceChanged,
@@ -679,7 +693,9 @@ class SecureRoomService extends ChangeNotifier {
       _ => 'media',
     };
     final path = '$roomId/$userId/${const Uuid().v4()}.$ext.bin';
-    await _client.storage.from('room-media').uploadBinary(
+    await _client.storage
+        .from('room-media')
+        .uploadBinary(
           path,
           encryptedBytes,
           fileOptions: const FileOptions(
@@ -743,7 +759,9 @@ class SecureRoomService extends ChangeNotifier {
     if (userId == null) throw Exception('Sign in again.');
 
     final path = '$roomId/$userId/${const Uuid().v4()}.aud.bin';
-    await _client.storage.from('room-media').uploadBinary(
+    await _client.storage
+        .from('room-media')
+        .uploadBinary(
           path,
           encryptedBytes,
           fileOptions: const FileOptions(
@@ -786,8 +804,9 @@ class SecureRoomService extends ChangeNotifier {
       return Uint8List.fromList(cached);
     }
     final roomKey = await requireRoomKey(message.roomId);
-    final encryptedBytes =
-        await _client.storage.from('room-media').download(message.mediaPath!);
+    final encryptedBytes = await _client.storage
+        .from('room-media')
+        .download(message.mediaPath!);
     final bytes = await SecureRoomCrypto.decryptBytes(
       EncryptedPayload(
         ciphertext: base64Encode(encryptedBytes),
@@ -829,7 +848,8 @@ class SecureRoomService extends ChangeNotifier {
       final rows = await _client
           .from('secure_room_members')
           .select(
-              'user_id, joined_at, users_public(username, display_name, avatar_url)')
+            'user_id, joined_at, users_public(username, display_name, avatar_url)',
+          )
           .eq('room_id', roomId)
           .isFilter('left_at', null)
           .order('joined_at', ascending: true);
@@ -837,7 +857,8 @@ class SecureRoomService extends ChangeNotifier {
         final profile = row['users_public'] as Map<String, dynamic>?;
         return SecureRoomMember(
           userId: row['user_id'] as String? ?? '',
-          joinedAt: DateTime.tryParse(row['joined_at'] as String? ?? '') ??
+          joinedAt:
+              DateTime.tryParse(row['joined_at'] as String? ?? '') ??
               DateTime.now(),
           username: profile?['username'] as String?,
           displayName: profile?['display_name'] as String?,
@@ -922,9 +943,9 @@ class SecureRoomService extends ChangeNotifier {
             .select('user_id, users_public(username, display_name)')
             .eq('room_id', roomId)
             .gt('expires_at', DateTime.now().toUtc().toIso8601String());
-        final list = List<Map<String, dynamic>>.from(rows as List)
-            .where((row) => row['user_id'] != userId)
-            .toList();
+        final list = List<Map<String, dynamic>>.from(
+          rows as List,
+        ).where((row) => row['user_id'] != userId).toList();
         yield list;
       } catch (_) {
         yield const [];
@@ -933,10 +954,7 @@ class SecureRoomService extends ChangeNotifier {
     }
   }
 
-  Future<void> setPresence(
-    String roomId,
-    SecureRoomPresenceState state,
-  ) async {
+  Future<void> setPresence(String roomId, SecureRoomPresenceState state) async {
     final userId = _client.auth.currentUser?.id;
     if (userId == null) return;
     final now = DateTime.now().toUtc();
@@ -946,8 +964,11 @@ class SecureRoomService extends ChangeNotifier {
       'state': state.name,
       'updated_at': now.toIso8601String(),
       'expires_at': now
-          .add(Duration(
-              seconds: state == SecureRoomPresenceState.active ? 20 : 90))
+          .add(
+            Duration(
+              seconds: state == SecureRoomPresenceState.active ? 20 : 90,
+            ),
+          )
           .toIso8601String(),
     }, onConflict: 'room_id,user_id');
   }
@@ -965,17 +986,19 @@ class SecureRoomService extends ChangeNotifier {
       final rows = await _client
           .from('secure_room_presence')
           .select(
-              'user_id, state, updated_at, users_public(username, display_name)')
+            'user_id, state, updated_at, users_public(username, display_name)',
+          )
           .eq('room_id', roomId)
           .gt('expires_at', DateTime.now().toUtc().toIso8601String());
-      return List<Map<String, dynamic>>.from(rows as List)
-          .where((row) => row['user_id'] != userId)
-          .map((row) {
+      return List<Map<String, dynamic>>.from(
+        rows as List,
+      ).where((row) => row['user_id'] != userId).map((row) {
         final profile = row['users_public'] as Map<String, dynamic>?;
         return SecureRoomPresence(
           userId: row['user_id'] as String? ?? '',
           state: _presenceState(row['state'] as String?),
-          updatedAt: DateTime.tryParse(row['updated_at'] as String? ?? '') ??
+          updatedAt:
+              DateTime.tryParse(row['updated_at'] as String? ?? '') ??
               DateTime.now(),
           username: profile?['username'] as String?,
           displayName: profile?['display_name'] as String?,
@@ -996,27 +1019,29 @@ class SecureRoomService extends ChangeNotifier {
     final now = DateTime.now().toUtc().toIso8601String();
     final rows = messages
         .where((m) => m.senderId != userId && !m.isExpired)
-        .map((m) => {
-              'room_id': roomId,
-              'message_id': m.id,
-              'user_id': userId,
-              'delivered_at': now,
-              'read_at': now,
-              'updated_at': now,
-            })
+        .map(
+          (m) => {
+            'room_id': roomId,
+            'message_id': m.id,
+            'user_id': userId,
+            'delivered_at': now,
+            'read_at': now,
+            'updated_at': now,
+          },
+        )
         .toList();
     if (rows.isEmpty) return;
-    await _client.from('secure_room_message_receipts').upsert(
-          rows,
-          onConflict: 'message_id,user_id',
-        );
+    await _client
+        .from('secure_room_message_receipts')
+        .upsert(rows, onConflict: 'message_id,user_id');
   }
 
   Future<String> requireRoomKey(String roomId) async {
     final key = await _storage.read(key: _keyName(roomId));
     if (key == null || key.isEmpty) {
       throw Exception(
-          'Secret key missing. This device cannot decrypt the room.');
+        'Secret key missing. This device cannot decrypt the room.',
+      );
     }
     return key;
   }
@@ -1244,7 +1269,7 @@ class SecureRoomService extends ChangeNotifier {
       final senderByMessage = {
         for (final row in messageRows)
           if (row['id'] is String)
-            row['id'] as String: row['sender_id'] as String?
+            row['id'] as String: row['sender_id'] as String?,
       };
       final rows = await _client
           .from('secure_room_message_receipts')
@@ -1294,7 +1319,7 @@ class SecureRoomService extends ChangeNotifier {
   }
 
   Future<({String privateKey, String publicKey})>
-      _ensureSigningKeyPair() async {
+  _ensureSigningKeyPair() async {
     final privateKey = await _storage.read(key: _signingPrivateKey);
     final publicKey = await _storage.read(key: _signingPublicKey);
     if (privateKey != null &&
@@ -1358,7 +1383,8 @@ class SecureRoomService extends ChangeNotifier {
     final createdAt =
         DateTime.tryParse(row['created_at'] as String? ?? '') ?? DateTime.now();
     final clientMessageId = row['client_message_id'] as String? ?? '';
-    final clientCreatedAt = row['client_created_at'] as String? ??
+    final clientCreatedAt =
+        row['client_created_at'] as String? ??
         createdAt.toUtc().toIso8601String();
     final ciphertext = row['ciphertext'] as String? ?? '';
     final nonce = row['nonce'] as String? ?? '';
@@ -1436,7 +1462,8 @@ class SecureRoomService extends ChangeNotifier {
       audioWaveformLevels: audioWaveformLevels,
       kind: kind,
       createdAt: createdAt,
-      expiresAt: DateTime.tryParse(row['expires_at'] as String? ?? '') ??
+      expiresAt:
+          DateTime.tryParse(row['expires_at'] as String? ?? '') ??
           DateTime.now(),
       clientMessageId: clientMessageId,
       integrityOk: integrityOk,
@@ -1457,7 +1484,9 @@ class SecureRoomService extends ChangeNotifier {
 
   static String redactLinks(String text) {
     return text.replaceAll(
-        RegExp(_urlRegex, caseSensitive: false), '[redacted]');
+      RegExp(_urlRegex, caseSensitive: false),
+      '[redacted]',
+    );
   }
 
   static String sanitizeRoomText(String text) {
@@ -1466,8 +1495,11 @@ class SecureRoomService extends ChangeNotifier {
         .replaceAll('\r', '\n')
         .replaceAll(_unsafeControlRegex, '')
         .replaceAll(_bidirectionalOverrideRegex, '');
-    final cappedLines =
-        normalizedNewlines.split('\n').take(maxRoomTextLines).join('\n').trim();
+    final cappedLines = normalizedNewlines
+        .split('\n')
+        .take(maxRoomTextLines)
+        .join('\n')
+        .trim();
     if (cappedLines.isEmpty) return '';
     final runes = cappedLines.runes.toList(growable: false);
     if (runes.length <= maxRoomTextCharacters) return cappedLines;
@@ -1478,8 +1510,9 @@ class SecureRoomService extends ChangeNotifier {
     final message = (data['message'] ?? data['error']).toString();
     final requestId = data['request_id'] as String?;
     if (requestId == null || requestId.isEmpty) return message;
-    final shortId =
-        requestId.length <= 8 ? requestId : requestId.substring(0, 8);
+    final shortId = requestId.length <= 8
+        ? requestId
+        : requestId.substring(0, 8);
     return '$message Ref $shortId.';
   }
 
@@ -1509,14 +1542,16 @@ class SecureRoomService extends ChangeNotifier {
       inviteCode: row['invite_code'] as String? ?? '',
       status: row['status'] as String? ?? 'active',
       messageTtlSeconds: (row['message_ttl_seconds'] as num?)?.toInt() ?? 120,
-      maxMembers:
-          ((row['max_members'] as num?)?.toInt().clamp(2, 3) ?? 2).toInt(),
+      maxMembers: ((row['max_members'] as num?)?.toInt().clamp(2, 3) ?? 2)
+          .toInt(),
       waitForMembers: row['wait_for_members'] as bool? ?? false,
       startedAt: DateTime.tryParse(row['started_at'] as String? ?? ''),
-      waitingExpiresAt:
-          DateTime.tryParse(row['waiting_expires_at'] as String? ?? ''),
+      waitingExpiresAt: DateTime.tryParse(
+        row['waiting_expires_at'] as String? ?? '',
+      ),
       activeMemberCount: resolvedActiveMemberCount,
-      createdAt: DateTime.tryParse(row['created_at'] as String? ?? '') ??
+      createdAt:
+          DateTime.tryParse(row['created_at'] as String? ?? '') ??
           DateTime.now(),
     );
   }
@@ -1552,27 +1587,22 @@ class SecureRoomService extends ChangeNotifier {
     return times
         .map(DateTime.tryParse)
         .whereType<DateTime>()
-        .where((t) =>
-            t.year == now.year && t.month == now.month && t.day == now.day)
+        .where(
+          (t) => t.year == now.year && t.month == now.month && t.day == now.day,
+        )
         .length;
   }
 }
 
 class _ReceiptCounts {
-  const _ReceiptCounts({
-    this.deliveredCount = 0,
-    this.readCount = 0,
-  });
+  const _ReceiptCounts({this.deliveredCount = 0, this.readCount = 0});
 
   final int deliveredCount;
   final int readCount;
 }
 
 class _PublicKeyCacheEntry {
-  const _PublicKeyCacheEntry({
-    required this.keys,
-    required this.fetchedAt,
-  });
+  const _PublicKeyCacheEntry({required this.keys, required this.fetchedAt});
 
   final Map<String, String> keys;
   final DateTime fetchedAt;

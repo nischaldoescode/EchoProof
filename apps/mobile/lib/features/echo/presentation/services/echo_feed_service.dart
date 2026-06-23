@@ -3,7 +3,10 @@
 // replaces: echo_feed_provider.dart (riverpod version)
 // screens listen via context.watch<echofeedservice>()
 
+import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -11,10 +14,51 @@ import '../../domain/entities/echo_entity.dart';
 import '../../domain/entities/echo_status.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../core/utils/formatters.dart';
+import '../../../../core/services/app_analytics_service.dart';
 
 const _kPageSize = 20;
 
 enum FeedLoadState { idle, loading, loadingMore, error }
+
+class _FeedPage {
+  const _FeedPage({
+    required this.echoes,
+    required this.hasMore,
+    this.nextCursor,
+    this.sessionSeed,
+  });
+
+  final List<EchoEntity> echoes;
+  final bool hasMore;
+  final String? nextCursor;
+  final String? sessionSeed;
+
+  _FeedPage copyWith({
+    List<EchoEntity>? echoes,
+    bool? hasMore,
+    String? nextCursor,
+    String? sessionSeed,
+  }) {
+    return _FeedPage(
+      echoes: echoes ?? this.echoes,
+      hasMore: hasMore ?? this.hasMore,
+      nextCursor: nextCursor ?? this.nextCursor,
+      sessionSeed: sessionSeed ?? this.sessionSeed,
+    );
+  }
+}
+
+class _FeedVisibilityGuards {
+  const _FeedVisibilityGuards({
+    required this.userId,
+    required this.hiddenEchoIds,
+    required this.hiddenAuthorIds,
+  });
+
+  final String? userId;
+  final Set<String> hiddenEchoIds;
+  final Set<String> hiddenAuthorIds;
+}
 
 class EchoFeedService extends ChangeNotifier {
   List<EchoEntity> _echoes = [];
@@ -29,10 +73,17 @@ class EchoFeedService extends ChangeNotifier {
   bool _hasMore = true;
   bool get hasMore => _hasMore;
 
+  int _pendingNewEchoCount = 0;
+  int get pendingNewEchoCount => _pendingNewEchoCount;
+
   String? _error;
   String? get error => _error;
 
-  int _offset = 0;
+  String? _nextCursor;
+  String? _sessionSeed;
+  int _fallbackOffset = 0;
+  RealtimeChannel? _feedChannel;
+  DateTime? _realtimeStartedAt;
 
   bool get isLoading => _loadState == FeedLoadState.loading;
   bool get isLoadingMore => _loadState == FeedLoadState.loadingMore;
@@ -44,44 +95,69 @@ class EchoFeedService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<List<EchoEntity>> _fetchFallback() async {
+  Future<_FeedPage> _fetchFallback() async {
     AppLogger.info('feed: running fallback direct DB query');
+    final echoes = await _fetchRecencyPage(
+      offset: _fallbackOffset,
+      limit: _kPageSize,
+    );
+    return _FeedPage(echoes: echoes, hasMore: echoes.length == _kPageSize);
+  }
+
+  Future<_FeedPage> _fetchPageWithTopUp({
+    String? cursor,
+    String? sessionSeed,
+    bool forceRefresh = false,
+    Set<String> excludeIds = const {},
+  }) async {
+    final rankedPage = await _fetchPage(
+      cursor: cursor,
+      sessionSeed: sessionSeed,
+      forceRefresh: forceRefresh,
+    );
+    return _topUpShortPage(rankedPage, excludeIds: excludeIds);
+  }
+
+  /// fills a short ranked page with safe recency items before the ui sees it.
+  ///
+  /// the edge ranker can return fewer rows than requested when personalization,
+  /// feedback, privacy, or public verdict filters remove candidates. without
+  /// this top-up the feed may look like it only has two posts even when more
+  /// public posts exist. duplicates are removed before decoration.
+  Future<_FeedPage> _topUpShortPage(
+    _FeedPage rankedPage, {
+    Set<String> excludeIds = const {},
+  }) async {
+    if (rankedPage.echoes.length >= _kPageSize) return rankedPage;
+
+    final existingIds = {
+      ...excludeIds,
+      for (final echo in rankedPage.echoes) echo.id,
+    };
+    final missingCount = _kPageSize - rankedPage.echoes.length;
+    final topUp = await _fetchRecencyPage(
+      offset: 0,
+      limit: missingCount,
+      excludeIds: existingIds,
+    );
+
+    if (topUp.isEmpty) return rankedPage;
+    AppLogger.info(
+      'feed: topped up ranked page with ${topUp.length} recency echoes',
+    );
+    return rankedPage.copyWith(echoes: [...rankedPage.echoes, ...topUp]);
+  }
+
+  Future<List<EchoEntity>> _fetchRecencyPage({
+    required int offset,
+    required int limit,
+    Set<String> excludeIds = const {},
+  }) async {
     final client = Supabase.instance.client;
 
     try {
-      final userId = client.auth.currentUser?.id;
-      final hiddenEchoIds = <String>{};
-      final hiddenAuthorIds = <String>{};
-
-      if (userId != null) {
-        final results = await Future.wait([
-          client
-              .from('user_feed_feedback')
-              .select('echo_id, author_id, feedback_type')
-              .eq('user_id', userId)
-              .filter(
-                'feedback_type',
-                'in',
-                '("not_interested","report","block_author")',
-              ),
-          client
-              .from('user_blocks')
-              .select('blocked_id')
-              .eq('blocker_id', userId),
-        ]);
-        for (final row in List<Map<String, dynamic>>.from(results[0] as List)) {
-          final echoId = row['echo_id'] as String?;
-          if (echoId != null) hiddenEchoIds.add(echoId);
-          if (row['feedback_type'] == 'block_author') {
-            final authorId = row['author_id'] as String?;
-            if (authorId != null) hiddenAuthorIds.add(authorId);
-          }
-        }
-        for (final row in List<Map<String, dynamic>>.from(results[1] as List)) {
-          final blockedId = row['blocked_id'] as String?;
-          if (blockedId != null) hiddenAuthorIds.add(blockedId);
-        }
-      }
+      final guards = await _loadFeedVisibilityGuards(client);
+      final fetchLimit = math.min(60, math.max(_kPageSize, limit * 3));
 
       final rows = await client
           .from('echoes')
@@ -101,7 +177,7 @@ class EchoFeedService extends ChangeNotifier {
           .not('status', 'in', '("hidden","rejected")')
           .eq('users_public.is_public', true)
           .order('created_at', ascending: false)
-          .limit(_kPageSize);
+          .range(offset, offset + fetchLimit - 1);
 
       AppLogger.info('feed: fallback returned ${(rows as List).length} echoes');
 
@@ -111,9 +187,11 @@ class EchoFeedService extends ChangeNotifier {
             final echoId = r['id'] as String? ?? '';
             final authorId = r['user_id'] as String? ?? '';
             final verdict = r['public_verdict'] as String? ?? 'open';
-            final isOwnEcho = userId != null && authorId == userId;
-            return !hiddenEchoIds.contains(echoId) &&
-                !hiddenAuthorIds.contains(authorId) &&
+            final isOwnEcho =
+                guards.userId != null && authorId == guards.userId;
+            return !excludeIds.contains(echoId) &&
+                !guards.hiddenEchoIds.contains(echoId) &&
+                !guards.hiddenAuthorIds.contains(authorId) &&
                 (isOwnEcho ||
                     (verdict != 'not_supported' &&
                         verdict != 'insufficient_context'));
@@ -123,6 +201,7 @@ class EchoFeedService extends ChangeNotifier {
             final user = r['users_public'] as Map<String, dynamic>;
             return _mapToEntity(r, user);
           })
+          .take(limit)
           .toList();
     } catch (e) {
       AppLogger.error('feed: fallback query failed: $e');
@@ -130,10 +209,59 @@ class EchoFeedService extends ChangeNotifier {
     }
   }
 
+  Future<_FeedVisibilityGuards> _loadFeedVisibilityGuards(
+    SupabaseClient client,
+  ) async {
+    final userId = client.auth.currentUser?.id;
+    final hiddenEchoIds = <String>{};
+    final hiddenAuthorIds = <String>{};
+
+    if (userId == null) {
+      return _FeedVisibilityGuards(
+        userId: null,
+        hiddenEchoIds: hiddenEchoIds,
+        hiddenAuthorIds: hiddenAuthorIds,
+      );
+    }
+
+    final results = await Future.wait([
+      client
+          .from('user_feed_feedback')
+          .select('echo_id, author_id, feedback_type')
+          .eq('user_id', userId)
+          .filter(
+            'feedback_type',
+            'in',
+            '("not_interested","report","block_author")',
+          ),
+      client.from('user_blocks').select('blocked_id').eq('blocker_id', userId),
+    ]);
+    for (final row in List<Map<String, dynamic>>.from(results[0] as List)) {
+      final echoId = row['echo_id'] as String?;
+      if (echoId != null) hiddenEchoIds.add(echoId);
+      if (row['feedback_type'] == 'block_author') {
+        final authorId = row['author_id'] as String?;
+        if (authorId != null) hiddenAuthorIds.add(authorId);
+      }
+    }
+    for (final row in List<Map<String, dynamic>>.from(results[1] as List)) {
+      final blockedId = row['blocked_id'] as String?;
+      if (blockedId != null) hiddenAuthorIds.add(blockedId);
+    }
+
+    return _FeedVisibilityGuards(
+      userId: userId,
+      hiddenEchoIds: hiddenEchoIds,
+      hiddenAuthorIds: hiddenAuthorIds,
+    );
+  }
+
   // loads the first page call this when the feed screen mounts
   Future<void> loadFeed() async {
     if (_loadState == FeedLoadState.loading) return;
-    _offset = 0;
+    _nextCursor = null;
+    _sessionSeed = null;
+    _fallbackOffset = 0;
     _loadState = FeedLoadState.loading;
     _error = null;
     notifyListeners();
@@ -142,23 +270,37 @@ class EchoFeedService extends ChangeNotifier {
 
     try {
       await _refreshFollowingIds();
-      final page = await _fetchPage(offset: 0);
-      final results = await _decorateFeed(page, includeFollowedLikes: true);
+      final page = await _fetchPageWithTopUp();
+      final results = await _decorateFeed(
+        page.echoes,
+        includeFollowedLikes: true,
+      );
       _echoes = results;
-      _hasMore = page.length == _kPageSize;
+      _nextCursor = page.nextCursor;
+      _sessionSeed = page.sessionSeed;
+      _hasMore = page.hasMore && _nextCursor != null;
+      _pendingNewEchoCount = 0;
+      _realtimeStartedAt = DateTime.now().toUtc();
       _loadState = FeedLoadState.idle;
+      unawaited(
+        AppAnalyticsService.instance.logEvent(
+          'feed_loaded',
+          parameters: {'result_count': results.length},
+        ),
+      );
       AppLogger.info(
         'feed: loaded ${results.length} echoes from edge function',
       );
     } catch (e) {
       AppLogger.warn('feed: edge function failed ($e), trying fallback');
       try {
+        final fallbackPage = await _fetchFallback();
         final fallback = await _decorateFeed(
-          await _fetchFallback(),
+          fallbackPage.echoes,
           includeFollowedLikes: true,
         );
         _echoes = fallback;
-        _hasMore = false;
+        _hasMore = fallbackPage.hasMore;
         _loadState = FeedLoadState.idle;
         AppLogger.info('feed: fallback loaded ${fallback.length} echoes');
       } catch (e2) {
@@ -175,6 +317,12 @@ class EchoFeedService extends ChangeNotifier {
   // loads next page and appends call when user scrolls near bottom
   Future<void> loadMore() async {
     if (_loadState == FeedLoadState.loadingMore || !_hasMore) return;
+    final cursor = _nextCursor;
+    if (cursor == null) {
+      _hasMore = false;
+      notifyListeners();
+      return;
+    }
     _loadState = FeedLoadState.loadingMore;
     notifyListeners();
 
@@ -182,13 +330,25 @@ class EchoFeedService extends ChangeNotifier {
       if (_followingIds.isEmpty) {
         await _refreshFollowingIds();
       }
-      _offset += _kPageSize;
-      final more = await _decorateFeed(await _fetchPage(offset: _offset));
-      _echoes = [..._echoes, ...more];
-      _hasMore = more.length == _kPageSize;
+      final existingIds = _echoes.map((echo) => echo.id).toSet();
+      final page = await _fetchPageWithTopUp(
+        cursor: cursor,
+        sessionSeed: _sessionSeed,
+        excludeIds: existingIds,
+      );
+      final more = await _decorateFeed(page.echoes);
+      _echoes = _mergeUniqueEchoes(_echoes, more);
+      _nextCursor = page.nextCursor;
+      _sessionSeed = page.sessionSeed ?? _sessionSeed;
+      _hasMore = page.hasMore && _nextCursor != null;
+      unawaited(
+        AppAnalyticsService.instance.logEvent(
+          'feed_page_loaded',
+          parameters: {'result_count': more.length},
+        ),
+      );
     } catch (e) {
-      AppLogger.error('feed: load more failed', e);
-      _offset -= _kPageSize; // revert offset on failure
+      AppLogger.error('feed: cursor load more failed', e);
     }
 
     _loadState = FeedLoadState.idle;
@@ -197,23 +357,101 @@ class EchoFeedService extends ChangeNotifier {
 
   // pull to refresh reloads from page 1 with cache bust
   Future<void> refresh() async {
-    _offset = 0;
+    _nextCursor = null;
+    _sessionSeed = null;
+    _fallbackOffset = 0;
     _loadState = FeedLoadState.loading;
     _error = null;
     notifyListeners();
 
     try {
       await _refreshFollowingIds();
-      final page = await _fetchPage(offset: 0, forceRefresh: true);
-      final results = await _decorateFeed(page, includeFollowedLikes: true);
+      final page = await _fetchPageWithTopUp(forceRefresh: true);
+      final results = await _decorateFeed(
+        page.echoes,
+        includeFollowedLikes: true,
+      );
       _echoes = results;
-      _hasMore = page.length == _kPageSize;
+      _nextCursor = page.nextCursor;
+      _sessionSeed = page.sessionSeed;
+      _hasMore = page.hasMore && _nextCursor != null;
+      _pendingNewEchoCount = 0;
+      _realtimeStartedAt = DateTime.now().toUtc();
       _loadState = FeedLoadState.idle;
+      unawaited(AppAnalyticsService.instance.logEvent('feed_refreshed'));
     } catch (e) {
       _loadState = FeedLoadState.error;
       _error = 'could not refresh feed';
     }
     notifyListeners();
+  }
+
+  List<EchoEntity> _mergeUniqueEchoes(
+    List<EchoEntity> current,
+    List<EchoEntity> incoming,
+  ) {
+    final seen = current.map((echo) => echo.id).toSet();
+    final output = [...current];
+    for (final echo in incoming) {
+      if (seen.add(echo.id)) output.add(echo);
+    }
+    return output;
+  }
+
+  /// listens only for a deferred refresh signal; it never inserts cards while
+  /// a reader is scrolling, so the visible feed keeps its position.
+  void startRealtime() {
+    if (_feedChannel != null) return;
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    _realtimeStartedAt = DateTime.now().toUtc();
+    _feedChannel = Supabase.instance.client
+        .channel('home_feed_updates_$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'echoes',
+          callback: (payload) {
+            final row = payload.newRecord;
+            final createdAt = DateTime.tryParse(
+              row['created_at'] as String? ?? '',
+            );
+            final startedAt = _realtimeStartedAt;
+            if (createdAt == null ||
+                startedAt == null ||
+                !createdAt.isAfter(startedAt)) {
+              return;
+            }
+            final status = row['status'] as String?;
+            if (status == 'hidden' || status == 'rejected') return;
+            _pendingNewEchoCount = (_pendingNewEchoCount + 1)
+                .clamp(0, 99)
+                .toInt();
+            notifyListeners();
+          },
+        )
+        .subscribe();
+  }
+
+  Future<void> refreshPendingNewEchoes() async {
+    if (_pendingNewEchoCount == 0) return;
+    await refresh();
+    if (_loadState != FeedLoadState.error) {
+      _pendingNewEchoCount = 0;
+      _realtimeStartedAt = DateTime.now().toUtc();
+      notifyListeners();
+    }
+  }
+
+  Future<void> stopRealtime() async {
+    final channel = _feedChannel;
+    _feedChannel = null;
+    _realtimeStartedAt = null;
+    _pendingNewEchoCount = 0;
+    if (channel != null) {
+      await Supabase.instance.client.removeChannel(channel);
+    }
   }
 
   // optimistic update updates local state immediately before server confirms
@@ -277,22 +515,31 @@ class EchoFeedService extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<List<EchoEntity>> _fetchPage({
-    required int offset,
+  Future<_FeedPage> _fetchPage({
+    String? cursor,
+    String? sessionSeed,
     bool forceRefresh = false,
   }) async {
     final client = Supabase.instance.client;
     final session = client.auth.currentSession;
-    if (session == null) return [];
+    if (session == null) {
+      return const _FeedPage(echoes: [], hasMore: false);
+    }
 
     final supabaseUrl = const String.fromEnvironment('SUPABASE_URL');
     final anonKey = const String.fromEnvironment('SUPABASE_ANON_KEY');
     final refreshParam = forceRefresh ? '&refresh=1' : '';
+    final cursorParam = cursor == null
+        ? ''
+        : '&cursor=${Uri.encodeQueryComponent(cursor)}';
+    final seedParam = sessionSeed == null
+        ? ''
+        : '&seed=${Uri.encodeQueryComponent(sessionSeed)}';
 
     final response = await http.get(
       Uri.parse(
         '$supabaseUrl/functions/v1/personalized-feed'
-        '?offset=$offset&limit=$_kPageSize$refreshParam',
+        '?limit=$_kPageSize$cursorParam$seedParam$refreshParam',
       ),
       headers: {
         if (anonKey.isNotEmpty) 'apikey': anonKey,
@@ -307,12 +554,17 @@ class EchoFeedService extends ChangeNotifier {
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     final list = data['echoes'] as List? ?? [];
-
-    return list.map((row) {
+    final echoes = list.map((row) {
       final map = row as Map<String, dynamic>;
       final user = map['users_public'] as Map<String, dynamic>;
       return _mapToEntity(map, user);
     }).toList();
+    return _FeedPage(
+      echoes: echoes,
+      hasMore: data['has_more'] as bool? ?? data['hasMore'] as bool? ?? false,
+      nextCursor: data['next_cursor'] as String?,
+      sessionSeed: data['session_seed'] as String?,
+    );
   }
 
   Future<List<EchoEntity>> _decorateFeed(

@@ -124,9 +124,9 @@ supabase/config.toml
 supabase/seed/seed.sql
 firebase.json
 .solana-keypair.json
+# keep all local supabase project files out of git.
 supabase/
-Echoproof/supabase
-supabse/functions
+Echoproof/supabase/
 **/supabase/
 docs/
 modeltrain/
