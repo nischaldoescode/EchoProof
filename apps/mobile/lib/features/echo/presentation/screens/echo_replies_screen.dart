@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_mentions/flutter_mentions.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
@@ -15,6 +16,7 @@ import '../../../../app/theme/typography.dart';
 import '../../../../core/localization/app_copy.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/logger.dart';
+import '../../../../core/utils/sanitizer.dart';
 import '../../../../core/utils/ai_slop_guard.dart';
 import '../../../../core/services/app_analytics_service.dart';
 import '../../../../core/services/offline_mutation_outbox.dart';
@@ -25,8 +27,12 @@ import '../../../../shared/widgets/mention_helpers.dart' as mention_ui;
 import '../../../../shared/widgets/rich_text_display.dart';
 import '../../../../shared/widgets/social_action_button.dart';
 import '../../../../shared/widgets/verified_badges.dart';
+import '../../../subscription/presentation/services/subscription_service.dart';
 import 'package:go_router/go_router.dart';
 import '../widgets/link_preview_card.dart';
+
+const _kFreeReplyMaxLength = 280;
+const _kProReplyMaxLength = 5000;
 
 class EchoRepliesScreen extends StatefulWidget {
   const EchoRepliesScreen({
@@ -125,6 +131,7 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
           .from('echo_replies')
           .select('''
             id, content, parent_reply_id, quoted_echo_id, evidence_url,
+            evidence_preview,
             created_at, mentioned_users,
             like_count, child_reply_count,
             users_public!inner(id, username, display_name, avatar_url, trust_tier, is_pro)
@@ -165,8 +172,20 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
   }
 
   Future<void> _submitReply() async {
-    final content = _replyKey.currentState?.controller?.text.trim() ?? '';
+    final rawContent = _replyKey.currentState?.controller?.text ?? '';
+    final content = Sanitizer.text(rawContent);
     if (content.isEmpty || _isSubmitting) return;
+
+    final maxLength = context.read<SubscriptionService>().isPro
+        ? _kProReplyMaxLength
+        : _kFreeReplyMaxLength;
+    if (content.runes.length > maxLength) {
+      showWarningSnack(
+        context,
+        'Replies are limited to $maxLength characters.',
+      );
+      return;
+    }
 
     final aiSlop = AiSlopGuard.assess(body: content, allowShort: true);
     if (aiSlop.isBlocked) {
@@ -183,7 +202,10 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
 
     try {
       final hadEvidence = _evidenceUrl != null;
-      final quotedOriginal = _quoteOriginal;
+      // retain the original echo relation only when the edited reply still
+      // contains visible markdown quote content. this prevents a stale link
+      // after the user removes every quoted word from the composer.
+      final quotedOriginal = _quoteOriginal && _hasQuoteLine(content);
       final submission = await OfflineMutationOutbox.instance.submitReply(
         echoId: widget.echoId,
         content: content,
@@ -192,6 +214,9 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
         evidenceUrl: _evidenceUrl,
       );
 
+      if (!mounted) return;
+      await _dismissReplyComposerOverlays();
+      if (!mounted) return;
       _replyKey.currentState?.controller?.clear();
       setState(() {
         _replyingToId = null;
@@ -235,10 +260,9 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
       });
     } catch (e) {
       AppLogger.error('replies: submit failed', e);
+      if (!mounted) return;
       setState(() => _isSubmitting = false);
-      if (mounted) {
-        showErrorSnack(context, _friendlyReplyError(e));
-      }
+      showErrorSnack(context, _friendlyReplyError(e));
     }
   }
 
@@ -286,13 +310,25 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
     );
   }
 
-  void _setReplyingTo(String replyId, String username) {
+  Future<void> _setReplyingTo(String replyId, String username) async {
     setState(() {
       _replyingToId = replyId;
       _replyingToUsername = username;
     });
-    // pre-fill with @mention
-    _replyKey.currentState?.controller?.text = '@$username ';
+
+    // wait for the reply banner layout before touching the active editor. this
+    // avoids asking editabletext to reveal a caret during a detached frame.
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    final controller = _replyKey.currentState?.controller;
+    if (controller == null || Sanitizer.text(controller.text).isNotEmpty) {
+      return;
+    }
+    final mention = '@$username ';
+    controller.value = TextEditingValue(
+      text: mention,
+      selection: TextSelection.collapsed(offset: mention.length),
+    );
   }
 
   Future<void> _toggleReplyLike(String replyId) async {
@@ -511,95 +547,129 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
       _replyingToId = null;
       _replyingToUsername = null;
     });
-    _replyKey.currentState?.controller?.clear();
   }
 
+  /// inserts the echo as editable markdown at the current reply selection.
+  ///
+  /// the insertion preserves text before and after the selection, removes
+  /// display-only size tags, and leaves a practical amount of space for the
+  /// user's own response when a long source would otherwise consume the cap.
+  /// removing the active reference intentionally keeps the edited text.
   void _toggleQuoteOriginal() {
-    setState(() => _quoteOriginal = !_quoteOriginal);
+    if (_quoteOriginal) {
+      // removing the source reference never removes text the user may have
+      // already edited. the quote can remain as ordinary markdown quote text.
+      setState(() => _quoteOriginal = false);
+      return;
+    }
+
+    final controller = _replyKey.currentState?.controller;
+    final quote = _quoteMarkdownForEditor(widget.echoContent);
+    if (controller == null || quote.isEmpty) {
+      showWarningSnack(
+        context,
+        'There is no original text available to quote.',
+      );
+      return;
+    }
+
+    // close the detached mention portal before changing the controller value.
+    // this keeps its anchor from observing a stale selection during insertion.
+    mention_ui.hideMentionSuggestions(_replyKey);
+    final maxLength = context.read<SubscriptionService>().isPro
+        ? _kProReplyMaxLength
+        : _kFreeReplyMaxLength;
+    final current = controller.value;
+    final selection = current.selection.isValid
+        ? current.selection
+        : TextSelection.collapsed(offset: current.text.length);
+    final start = selection.start.clamp(0, current.text.length).toInt();
+    final end = selection.end.clamp(start, current.text.length).toInt();
+    final before = current.text.substring(0, start);
+    final after = current.text.substring(end);
+    final leadingGap = before.isEmpty || before.endsWith('\n') ? '' : '\n\n';
+    final trailingGap = after.isEmpty
+        ? '\n\n'
+        : after.startsWith('\n')
+        ? ''
+        : '\n\n';
+    final baseLength = (before + leadingGap + trailingGap + after).runes.length;
+    var quoteAllowance = maxLength - baseLength;
+
+    if (quoteAllowance < 4) {
+      showWarningSnack(context, 'Remove some text before adding a quote.');
+      return;
+    }
+
+    // when a long post is quoted into an empty composer, reserve enough room
+    // for the user to add their own words without immediately hitting the cap.
+    if (before.trim().isEmpty &&
+        after.trim().isEmpty &&
+        quote.runes.length > quoteAllowance) {
+      final replyReserve = maxLength > 480 ? 400 : 64;
+      quoteAllowance = (quoteAllowance - replyReserve).clamp(4, quoteAllowance);
+    }
+
+    final clippedQuote = _truncateRunes(quote, quoteAllowance);
+    final quoteWasShortened = clippedQuote.runes.length < quote.runes.length;
+    final insertion = '$leadingGap$clippedQuote$trailingGap';
+    final text = '$before$insertion$after';
+    final cursorOffset = (before + insertion).length;
+
+    // update text and selection together so editabletext has one coherent
+    // state transition and the next typed character lands after the quote.
+    controller.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: cursorOffset),
+    );
+    setState(() => _quoteOriginal = true);
+
+    if (quoteWasShortened) {
+      showInfoSnack(
+        context,
+        'Quote shortened to leave room for your reply. You can edit it freely.',
+      );
+    }
+  }
+
+  Future<void> _dismissReplyComposerOverlays() async {
+    mention_ui.hideMentionSuggestions(_replyKey);
+    FocusManager.instance.primaryFocus?.unfocus();
+    await WidgetsBinding.instance.endOfFrame;
   }
 
   Future<void> _editEvidenceUrl() async {
-    final controller = TextEditingController(text: _evidenceUrl ?? '');
+    await _dismissReplyComposerOverlays();
+    if (!mounted) return;
     final result = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: AppColors.white,
+      useSafeArea: false,
+      requestFocus: false,
+      sheetAnimationStyle: const AnimationStyle(
+        duration: Duration(milliseconds: 240),
+        reverseDuration: Duration(milliseconds: 190),
+      ),
+      backgroundColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (sheetContext) {
-        return AnimatedPadding(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.lg,
-              AppSpacing.lg,
-              AppSpacing.lg,
-              AppSpacing.xl,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Add source', style: AppTypography.textTheme.titleMedium),
-                const SizedBox(height: AppSpacing.xs),
-                Text(
-                  'Use a secure link that supports your reply.',
-                  style: AppTypography.textTheme.bodySmall?.copyWith(
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.lg),
-                TextField(
-                  controller: controller,
-                  keyboardType: TextInputType.url,
-                  autofocus: true,
-                  textInputAction: TextInputAction.done,
-                  decoration: const InputDecoration(
-                    hintText: 'https://source.example',
-                    prefixIcon: Icon(Icons.link_rounded),
-                  ),
-                  onSubmitted: (value) => Navigator.pop(sheetContext, value),
-                ),
-                const SizedBox(height: AppSpacing.lg),
-                Row(
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(sheetContext, ''),
-                      child: const Text('Remove'),
-                    ),
-                    const Spacer(),
-                    FilledButton(
-                      onPressed: () =>
-                          Navigator.pop(sheetContext, controller.text),
-                      child: const Text('Add source'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+      builder: (sheetContext) =>
+          _EvidenceSourceSheet(initialUrl: _evidenceUrl ?? ''),
     );
-    controller.dispose();
     if (result == null || !mounted) return;
 
-    final value = result.trim();
-    if (value.isNotEmpty && Uri.tryParse(value)?.scheme != 'https') {
+    final value = _secureSourceUrl(result);
+    if (result.trim().isNotEmpty && value == null) {
       showWarningSnack(context, 'Use a secure https link for a source.');
       return;
     }
-    setState(() => _evidenceUrl = value.isEmpty ? null : value);
+    setState(() => _evidenceUrl = value);
   }
 
   @override
   Widget build(BuildContext context) {
+    final isPro = context.watch<SubscriptionService>().isPro;
     // group replies into threads: top-level and their children
     final topLevel = _replies
         .where((r) => r['parent_reply_id'] == null)
@@ -673,8 +743,8 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
                         return _ReplyThread(
                           reply: reply,
                           children: children,
-                          onReply: (id, username) =>
-                              _setReplyingTo(id, username),
+                          originalEchoContent: widget.echoContent,
+                          onReply: _setReplyingTo,
                           onLike: _toggleReplyLike,
                           onDelete: _deleteReply,
                           onAuthorTap: (username, userId) =>
@@ -691,6 +761,7 @@ class _EchoRepliesScreenState extends State<EchoRepliesScreen> {
             replyKey: _replyKey,
             replyingToUsername: _replyingToUsername,
             mentionableUsers: _mentionableUsers,
+            isPro: isPro,
             isSubmitting: _isSubmitting,
             quoteOriginal: _quoteOriginal,
             evidenceUrl: _evidenceUrl,
@@ -802,6 +873,7 @@ class _ReplyThread extends StatelessWidget {
   const _ReplyThread({
     required this.reply,
     required this.children,
+    required this.originalEchoContent,
     required this.onReply,
     required this.onLike,
     required this.onDelete,
@@ -813,6 +885,7 @@ class _ReplyThread extends StatelessWidget {
 
   final Map<String, dynamic> reply;
   final List<Map<String, dynamic>> children;
+  final String originalEchoContent;
   final void Function(String replyId, String username) onReply;
   final void Function(String replyId) onLike;
   final void Function(String replyId) onDelete;
@@ -894,7 +967,11 @@ class _ReplyThread extends StatelessWidget {
                       _ReplyTextWithPreview(
                         content: reply['content'] as String? ?? '',
                         quotedOriginal: reply['quoted_echo_id'] != null,
+                        originalEchoContent: originalEchoContent,
                         evidenceUrl: reply['evidence_url'] as String?,
+                        evidencePreview: _previewMetadataMap(
+                          reply['evidence_preview'],
+                        ),
                         onMentionTap: (username) => onAuthorTap(username, null),
                       ),
                       const SizedBox(height: AppSpacing.xs),
@@ -920,6 +997,7 @@ class _ReplyThread extends StatelessWidget {
         ...children.map(
           (child) => _NestedReply(
             reply: child,
+            originalEchoContent: originalEchoContent,
             onReply: onReply,
             onLike: onLike,
             onDelete: onDelete,
@@ -937,6 +1015,7 @@ class _ReplyThread extends StatelessWidget {
 class _NestedReply extends StatelessWidget {
   const _NestedReply({
     required this.reply,
+    required this.originalEchoContent,
     required this.onReply,
     required this.onLike,
     required this.onDelete,
@@ -946,6 +1025,7 @@ class _NestedReply extends StatelessWidget {
   });
 
   final Map<String, dynamic> reply;
+  final String originalEchoContent;
   final void Function(String replyId, String username) onReply;
   final void Function(String replyId) onLike;
   final void Function(String replyId) onDelete;
@@ -1025,7 +1105,11 @@ class _NestedReply extends StatelessWidget {
                 _ReplyTextWithPreview(
                   content: reply['content'] as String? ?? '',
                   quotedOriginal: reply['quoted_echo_id'] != null,
+                  originalEchoContent: originalEchoContent,
                   evidenceUrl: reply['evidence_url'] as String?,
+                  evidencePreview: _previewMetadataMap(
+                    reply['evidence_preview'],
+                  ),
                   onMentionTap: (username) => onAuthorTap(username, null),
                 ),
                 const SizedBox(height: AppSpacing.xs),
@@ -1099,13 +1183,17 @@ class _ReplyTextWithPreview extends StatefulWidget {
   const _ReplyTextWithPreview({
     required this.content,
     required this.quotedOriginal,
+    required this.originalEchoContent,
     required this.evidenceUrl,
+    required this.evidencePreview,
     required this.onMentionTap,
   });
 
   final String content;
   final bool quotedOriginal;
+  final String originalEchoContent;
   final String? evidenceUrl;
+  final Map<String, dynamic>? evidencePreview;
   final ValueChanged<String> onMentionTap;
 
   @override
@@ -1125,18 +1213,39 @@ class _ReplyTextWithPreviewState extends State<_ReplyTextWithPreview> {
 
   @override
   Widget build(BuildContext context) {
-    final previewUrl = extractFirstUrl(widget.content);
+    final blocks = _replyTextBlocks(widget.content);
+    final hasQuoteBlock = blocks.any((block) => block.isQuote);
+    final previewUrl = extractFirstUrl(_stripQuoteLines(widget.content));
     final hideUrlText = previewUrl != null && !_previewUnavailable;
+    final evidenceUrl = widget.evidenceUrl?.trim();
+    final evidenceMatchesContent = evidenceUrl == previewUrl;
+    final showEvidencePreview =
+        evidenceUrl != null &&
+        evidenceUrl.isNotEmpty &&
+        evidenceUrl != previewUrl;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        RichTextDisplay(
-          text: widget.content,
-          style: AppTypography.textTheme.bodyMedium,
-          hideUrls: hideUrlText,
-          onMentionTap: widget.onMentionTap,
-        ),
+        for (final block in blocks)
+          Padding(
+            padding: EdgeInsets.only(
+              bottom: block == blocks.last ? 0 : AppSpacing.xs,
+            ),
+            child: block.isQuote
+                ? _GithubQuotePreview(text: block.text)
+                : RichTextDisplay(
+                    text: block.text,
+                    style: AppTypography.textTheme.bodyMedium,
+                    hideUrls: hideUrlText,
+                    onMentionTap: widget.onMentionTap,
+                  ),
+          ),
+        if (widget.quotedOriginal && !hasQuoteBlock)
+          Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.xs),
+            child: _GithubQuotePreview(text: widget.originalEchoContent),
+          ),
         if (widget.quotedOriginal || widget.evidenceUrl != null)
           Padding(
             padding: const EdgeInsets.only(top: AppSpacing.xs),
@@ -1149,13 +1258,13 @@ class _ReplyTextWithPreviewState extends State<_ReplyTextWithPreview> {
                     icon: Icons.format_quote_rounded,
                     label: 'Quoted original echo',
                   ),
-                if (widget.evidenceUrl != null)
+                if (evidenceUrl != null && evidenceUrl.isNotEmpty)
                   _ReplyReferenceChip(
                     icon: Icons.link_rounded,
-                    label: _sourceLabel(widget.evidenceUrl!),
+                    label: _sourceLabel(evidenceUrl),
                     onTap: () => showOpenLinkSheet(
                       context,
-                      url: widget.evidenceUrl!,
+                      url: evidenceUrl,
                       title: 'Source',
                     ),
                   ),
@@ -1166,9 +1275,18 @@ class _ReplyTextWithPreviewState extends State<_ReplyTextWithPreview> {
           EchoLinkPreview(
             url: previewUrl,
             variant: EchoLinkPreviewVariant.compact,
+            metadata: evidenceMatchesContent ? widget.evidencePreview : null,
+            fetchWhenMetadataMissing: !evidenceMatchesContent,
             onUnavailable: () {
               if (mounted) setState(() => _previewUnavailable = true);
             },
+          ),
+        if (showEvidencePreview)
+          EchoLinkPreview(
+            url: evidenceUrl,
+            variant: EchoLinkPreviewVariant.compact,
+            metadata: widget.evidencePreview,
+            fetchWhenMetadataMissing: false,
           ),
       ],
     );
@@ -1178,6 +1296,168 @@ class _ReplyTextWithPreviewState extends State<_ReplyTextWithPreview> {
 String _sourceLabel(String url) {
   final host = Uri.tryParse(url)?.host.trim();
   return host == null || host.isEmpty ? 'Source' : host;
+}
+
+Map<String, dynamic>? _previewMetadataMap(Object? value) {
+  if (value is Map<String, dynamic>) return value;
+  if (value is Map) return Map<String, dynamic>.from(value);
+  return null;
+}
+
+String _trimQuoteSource(String content, {int maxLength = 420}) {
+  final normalized = content.replaceAll('\r\n', '\n').trim();
+  if (normalized.length <= maxLength) return normalized;
+  return '${normalized.substring(0, maxLength).trimRight()}...';
+}
+
+/// converts echo content into editable github-style quote lines.
+///
+/// size markers are presentation metadata, not quoted words, so they are
+/// removed before insertion. other literal content is preserved for the user
+/// to edit, including line breaks that distinguish separate quoted passages.
+String _quoteMarkdownForEditor(String content) {
+  final plain = Sanitizer.text(
+    content
+        .replaceAll('[large]', '')
+        .replaceAll('[/large]', '')
+        .replaceAll('[small]', '')
+        .replaceAll('[/small]', ''),
+  );
+  if (plain.isEmpty) return '';
+  return plain
+      .split('\n')
+      .map((line) => line.trim().isEmpty ? '>' : '> $line')
+      .join('\n');
+}
+
+/// truncates an insertion by runes so surrogate-pair characters stay intact.
+///
+/// the ellipsis is part of the editable draft and makes the shortened state
+/// clear without relying on hidden state that could differ after a restart.
+String _truncateRunes(String value, int maxRunes) {
+  if (value.runes.length <= maxRunes) return value;
+  if (maxRunes <= 3) return String.fromCharCodes(value.runes.take(maxRunes));
+  return '${String.fromCharCodes(value.runes.take(maxRunes - 3)).trimRight()}...';
+}
+
+/// reports whether the final reply still has at least one visible quote line.
+///
+/// a standalone `>` is ignored because it would render as an empty quote and
+/// should not keep an original-echo relation after all quoted words are gone.
+bool _hasQuoteLine(String content) {
+  return content.replaceAll('\r\n', '\n').split('\n').any((line) {
+    final trimmed = line.trimLeft();
+    return trimmed.startsWith('>') && trimmed.substring(1).trim().isNotEmpty;
+  });
+}
+
+String _stripQuoteLines(String content) {
+  return content
+      .replaceAll('\r\n', '\n')
+      .split('\n')
+      .where((line) => !line.trimLeft().startsWith('>'))
+      .join('\n')
+      .trim();
+}
+
+List<_ReplyTextBlock> _replyTextBlocks(String content) {
+  final lines = content.replaceAll('\r\n', '\n').split('\n');
+  final blocks = <_ReplyTextBlock>[];
+  final buffer = StringBuffer();
+  bool inQuote = false;
+
+  void flush() {
+    final text = buffer.toString().trim();
+    if (text.isNotEmpty) {
+      blocks.add(_ReplyTextBlock(text: text, isQuote: inQuote));
+    }
+    buffer.clear();
+  }
+
+  for (final line in lines) {
+    final trimmedLeft = line.trimLeft();
+    final isQuote = trimmedLeft.startsWith('>');
+    if (buffer.isNotEmpty && isQuote != inQuote) {
+      flush();
+    }
+    inQuote = isQuote;
+    if (isQuote) {
+      final quoteLine = trimmedLeft.substring(1).trimLeft();
+      buffer.writeln(quoteLine);
+    } else {
+      buffer.writeln(line);
+    }
+  }
+  flush();
+
+  if (blocks.isEmpty && content.trim().isNotEmpty) {
+    return [_ReplyTextBlock(text: content.trim(), isQuote: false)];
+  }
+  return blocks;
+}
+
+String? _secureSourceUrl(String value) {
+  final sanitized = Sanitizer.url(value);
+  if (sanitized == null) return null;
+  final uri = Uri.tryParse(sanitized);
+  if (uri == null || uri.scheme != 'https' || uri.host.trim().isEmpty) {
+    return null;
+  }
+  return sanitized;
+}
+
+class _ReplyTextBlock {
+  const _ReplyTextBlock({required this.text, required this.isQuote});
+
+  final String text;
+  final bool isQuote;
+}
+
+class _GithubQuotePreview extends StatelessWidget {
+  const _GithubQuotePreview({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final preview = _trimQuoteSource(text);
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 620),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceSecondary,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 3,
+            constraints: const BoxConstraints(minHeight: 46),
+            color: AppColors.fernGreen,
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.sm,
+              ),
+              child: Text(
+                preview,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.textTheme.bodySmall?.copyWith(
+                  color: AppColors.textSecondary,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _ReplyReferenceChip extends StatelessWidget {
@@ -1222,6 +1502,230 @@ class _ReplyReferenceChip extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _EvidenceSourceSheet extends StatefulWidget {
+  const _EvidenceSourceSheet({required this.initialUrl});
+
+  final String initialUrl;
+
+  @override
+  State<_EvidenceSourceSheet> createState() => _EvidenceSourceSheetState();
+}
+
+class _EvidenceSourceSheetState extends State<_EvidenceSourceSheet> {
+  late final TextEditingController _controller;
+  late final FocusNode _urlFocusNode;
+  Timer? _previewDebounce;
+  Timer? _initialFocusDelay;
+  String? _previewUrl;
+  String _lastInput = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialUrl);
+    _urlFocusNode = FocusNode();
+    _controller.addListener(_queuePreviewUpdate);
+    _lastInput = _controller.text;
+    _previewUrl = _secureSourceUrl(_controller.text);
+    _initialFocusDelay = Timer(const Duration(milliseconds: 220), () {
+      if (mounted) _urlFocusNode.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _previewDebounce?.cancel();
+    _initialFocusDelay?.cancel();
+    _controller
+      ..removeListener(_queuePreviewUpdate)
+      ..dispose();
+    _urlFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _queuePreviewUpdate() {
+    _previewDebounce?.cancel();
+    _previewDebounce = Timer(const Duration(milliseconds: 260), () {
+      if (!mounted) return;
+      final input = _controller.text;
+      final next = _secureSourceUrl(_controller.text);
+      if (next == _previewUrl && input == _lastInput) return;
+      setState(() {
+        _lastInput = input;
+        _previewUrl = next;
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+          final availableHeight = constraints.maxHeight.isFinite
+              ? (constraints.maxHeight - keyboardInset)
+                    .clamp(0.0, constraints.maxHeight)
+                    .toDouble()
+              : MediaQuery.sizeOf(context).height - keyboardInset;
+          final maxHeight =
+              (keyboardInset > 0
+                      ? availableHeight * 0.96
+                      : availableHeight * 0.84)
+                  .clamp(0.0, availableHeight)
+                  .toDouble();
+
+          return AnimatedPadding(
+            duration: const Duration(milliseconds: 230),
+            curve: Curves.fastOutSlowIn,
+            padding: EdgeInsets.only(bottom: keyboardInset),
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: maxHeight),
+                child: Material(
+                  color: AppColors.white,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(20),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: SingleChildScrollView(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.lg,
+                      AppSpacing.lg,
+                      AppSpacing.lg,
+                      AppSpacing.xl,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 38,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: AppColors.borderMedium,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        Text(
+                          'Add source',
+                          style: AppTypography.textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: AppSpacing.xs),
+                        Text(
+                          'Use a secure link that supports your reply.',
+                          style: AppTypography.textTheme.bodySmall?.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        TextField(
+                          controller: _controller,
+                          focusNode: _urlFocusNode,
+                          keyboardType: TextInputType.url,
+                          autofocus: false,
+                          textInputAction: TextInputAction.done,
+                          decoration: const InputDecoration(
+                            hintText: 'https://source.example',
+                            prefixIcon: Icon(Icons.link_rounded),
+                          ),
+                          onSubmitted: (value) => Navigator.pop(context, value),
+                        ),
+                        if (_controller.text.trim().isNotEmpty &&
+                            _previewUrl == null) ...[
+                          const SizedBox(height: AppSpacing.xs),
+                          Text(
+                            'sources must be secure https links.',
+                            style: AppTypography.textTheme.labelSmall?.copyWith(
+                              color: AppColors.sunsetCoral,
+                            ),
+                          ),
+                        ],
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 200),
+                          child: _previewUrl == null
+                              ? const SizedBox.shrink()
+                              : Column(
+                                  key: ValueKey(_previewUrl),
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    EchoLinkPreview(
+                                      url: _previewUrl!,
+                                      variant: EchoLinkPreviewVariant.compact,
+                                    ),
+                                    const SizedBox(height: AppSpacing.sm),
+                                    Wrap(
+                                      spacing: AppSpacing.xs,
+                                      runSpacing: AppSpacing.xs,
+                                      children: [
+                                        OutlinedButton.icon(
+                                          onPressed: () => launchAppUrl(
+                                            context,
+                                            _previewUrl!,
+                                            mode: LaunchMode.inAppBrowserView,
+                                          ),
+                                          icon: const Icon(
+                                            Icons.open_in_browser_rounded,
+                                            size: 17,
+                                          ),
+                                          label: const Text('Open in app'),
+                                        ),
+                                        OutlinedButton.icon(
+                                          onPressed: () => launchAppUrl(
+                                            context,
+                                            _previewUrl!,
+                                            mode:
+                                                LaunchMode.externalApplication,
+                                          ),
+                                          icon: const Icon(
+                                            Icons.north_east_rounded,
+                                            size: 17,
+                                          ),
+                                          label: const Text('Browser'),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        OverflowBar(
+                          alignment: MainAxisAlignment.spaceBetween,
+                          overflowAlignment: OverflowBarAlignment.end,
+                          spacing: AppSpacing.sm,
+                          overflowSpacing: AppSpacing.xs,
+                          children: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, ''),
+                              child: const Text('Remove'),
+                            ),
+                            FilledButton(
+                              onPressed: () =>
+                                  Navigator.pop(context, _controller.text),
+                              child: const Text('Add source'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -1363,6 +1867,7 @@ class _ReplyInput extends StatefulWidget {
     required this.replyKey,
     required this.replyingToUsername,
     required this.mentionableUsers,
+    required this.isPro,
     required this.isSubmitting,
     required this.quoteOriginal,
     required this.evidenceUrl,
@@ -1375,6 +1880,7 @@ class _ReplyInput extends StatefulWidget {
   final GlobalKey<FlutterMentionsState> replyKey;
   final String? replyingToUsername;
   final List<Map<String, dynamic>> mentionableUsers;
+  final bool isPro;
   final bool isSubmitting;
   final bool quoteOriginal;
   final String? evidenceUrl;
@@ -1413,6 +1919,9 @@ class _ReplyInputState extends State<_ReplyInput> {
     final isSubmitting = widget.isSubmitting;
     final quoteOriginal = widget.quoteOriginal;
     final evidenceUrl = widget.evidenceUrl;
+    final maxReplyLength = widget.isPro
+        ? _kProReplyMaxLength
+        : _kFreeReplyMaxLength;
     final onSubmit = widget.onSubmit;
     final onCancelReply = widget.onCancelReply;
 
@@ -1462,7 +1971,7 @@ class _ReplyInputState extends State<_ReplyInput> {
             AnimatedSize(
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeOutCubic,
-              child: quoteOriginal || evidenceUrl != null
+              child: evidenceUrl != null
                   ? Padding(
                       padding: const EdgeInsets.fromLTRB(
                         AppSpacing.lg,
@@ -1470,18 +1979,14 @@ class _ReplyInputState extends State<_ReplyInput> {
                         AppSpacing.lg,
                         0,
                       ),
-                      child: Row(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (quoteOriginal)
-                            const _ComposerMetaChip(
-                              icon: Icons.format_quote_rounded,
-                              label: 'Quoting original echo',
-                            ),
-                          if (quoteOriginal && evidenceUrl != null)
-                            const SizedBox(width: AppSpacing.xs),
-                          if (evidenceUrl != null)
-                            Expanded(
-                              child: _ComposerMetaChip(
+                          Wrap(
+                            spacing: AppSpacing.xs,
+                            runSpacing: AppSpacing.xs,
+                            children: [
+                              _ComposerMetaChip(
                                 icon: Icons.link_rounded,
                                 label:
                                     Uri.tryParse(
@@ -1491,7 +1996,8 @@ class _ReplyInputState extends State<_ReplyInput> {
                                     ? Uri.parse(evidenceUrl).host
                                     : 'Source added',
                               ),
-                            ),
+                            ],
+                          ),
                         ],
                       ),
                     )
@@ -1502,244 +2008,252 @@ class _ReplyInputState extends State<_ReplyInput> {
                 horizontal: AppSpacing.md,
                 vertical: AppSpacing.sm,
               ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    margin: const EdgeInsets.only(bottom: 3),
-                    decoration: BoxDecoration(
-                      color: AppColors.fernGreenLight,
-                      borderRadius: BorderRadius.circular(17),
-                    ),
-                    child: const Icon(
-                      Icons.mode_comment_outlined,
-                      size: 17,
-                      color: AppColors.fernGreenDark,
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(
-                    child: Focus(
-                      onFocusChange: (focused) {
-                        if (_focused == focused) return;
-                        setState(() => _focused = focused);
-                        if (!focused) _hideMentionSuggestions();
-                      },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        curve: Curves.easeOutCubic,
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceSecondary,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: _focused
-                                ? AppColors.fernGreen
-                                : AppColors.borderSubtle,
-                            width: _focused ? 1.2 : 1,
-                          ),
-                          boxShadow: [
-                            if (_focused)
-                              BoxShadow(
-                                color: AppColors.fernGreen.withValues(
-                                  alpha: 0.10,
-                                ),
-                                blurRadius: 16,
-                                offset: const Offset(0, 8),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  // narrow and split-screen layouts reserve the first row for
+                  // writing, with quote, source, and submit controls below it.
+                  final compactComposer = constraints.maxWidth < 460;
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          if (!compactComposer) ...[
+                            Container(
+                              width: 34,
+                              height: 34,
+                              margin: const EdgeInsets.only(bottom: 3),
+                              decoration: BoxDecoration(
+                                color: AppColors.fernGreenLight,
+                                borderRadius: BorderRadius.circular(17),
                               ),
+                              child: const Icon(
+                                Icons.mode_comment_outlined,
+                                size: 17,
+                                color: AppColors.fernGreenDark,
+                              ),
+                            ),
+                            const SizedBox(width: AppSpacing.sm),
                           ],
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.md,
-                          vertical: AppSpacing.xs,
-                        ),
-                        child: Builder(
-                          builder: (mentionContext) {
-                            final suggestionPosition = mention_ui
-                                .adaptiveMentionSuggestionPosition(
-                                  mentionContext,
-                                  listHeight: 220,
-                                  preferTopWhenCrowded: true,
-                                  forceTop: true,
-                                );
-                            final suggestionHeight = mention_ui
-                                .adaptiveMentionSuggestionHeight(
-                                  mentionContext,
-                                  position: suggestionPosition,
-                                  maxHeight: 220,
-                                );
-
-                            return mention_ui.CompactMentionSuggestions(
-                              visible: _mentionSuggestionsVisible,
-                              position: suggestionPosition,
-                              suggestionHeight: suggestionHeight,
-                              suggestions: mentionableUsers,
-                              mentionKey: replyKey,
-                              onSelected: (_) {
-                                setState(() {
-                                  _mentionSuggestionsVisible = false;
-                                  _mentionSearch = '';
-                                });
+                          Expanded(
+                            child: Focus(
+                              onFocusChange: (focused) {
+                                if (_focused == focused) return;
+                                setState(() => _focused = focused);
+                                if (!focused) _hideMentionSuggestions();
                               },
-                              child: FlutterMentions(
-                                key: replyKey,
-                                hideSuggestionList: true,
-                                suggestionPosition: suggestionPosition,
-                                suggestionListHeight: suggestionHeight,
-                                onSuggestionVisibleChanged: (visible) {
-                                  if (_mentionSuggestionsVisible == visible) {
-                                    return;
-                                  }
-                                  setState(() {
-                                    _mentionSuggestionsVisible = visible;
-                                    if (!visible) _mentionSearch = '';
-                                  });
-                                },
-                                onSearchChanged: (trigger, value) {
-                                  if (trigger != '@' ||
-                                      _mentionSearch == value) {
-                                    return;
-                                  }
-                                  setState(() => _mentionSearch = value);
-                                },
-                                maxLines: 5,
-                                minLines: 1,
-                                style: AppTypography.textTheme.bodyMedium,
-                                decoration: InputDecoration(
-                                  hintText: replyingToUsername != null
-                                      ? context.l('Reply to @{username}...', {
-                                          'username': replyingToUsername,
-                                        })
-                                      : context.l('Add a reply...'),
-                                  hintStyle: GoogleFonts.josefinSans(
-                                    fontSize: 14,
-                                    color: AppColors.textTertiary,
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 180),
+                                curve: Curves.easeOutCubic,
+                                decoration: BoxDecoration(
+                                  color: AppColors.surfaceSecondary,
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: _focused
+                                        ? AppColors.fernGreen
+                                        : AppColors.borderSubtle,
+                                    width: _focused ? 1.2 : 1,
                                   ),
-                                  border: InputBorder.none,
-                                  enabledBorder: InputBorder.none,
-                                  focusedBorder: InputBorder.none,
-                                  errorBorder: InputBorder.none,
-                                  focusedErrorBorder: InputBorder.none,
-                                  disabledBorder: InputBorder.none,
-                                  isDense: true,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    vertical: 8,
-                                  ),
-                                ),
-                                suggestionListDecoration: mention_ui
-                                    .mentionSuggestionDecoration(
-                                      suggestionPosition,
-                                    ),
-                                mentions: [
-                                  Mention(
-                                    trigger: '@',
-                                    style: GoogleFonts.josefinSans(
-                                      color: AppColors.fernGreen,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                    data: widget.mentionableUsers,
-                                    suggestionBuilder: (data) =>
-                                        mention_ui.MentionSuggestionTile(
-                                          data: data,
+                                  boxShadow: [
+                                    if (_focused)
+                                      BoxShadow(
+                                        color: AppColors.fernGreen.withValues(
+                                          alpha: 0.10,
                                         ),
-                                  ),
-                                  Mention(
-                                    trigger: '~',
-                                    style: GoogleFonts.josefinSans(
-                                      color: AppColors.fernGreen,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                    data: const [],
-                                    matchAll: true,
-                                    disableMarkup: true,
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  Tooltip(
-                    message: quoteOriginal
-                        ? 'Remove original quote'
-                        : 'Quote original echo',
-                    child: IconButton(
-                      onPressed: isSubmitting ? null : widget.onQuoteTap,
-                      icon: Icon(
-                        quoteOriginal
-                            ? Icons.format_quote_rounded
-                            : Icons.format_quote_outlined,
-                      ),
-                      color: quoteOriginal
-                          ? AppColors.fernGreenDark
-                          : AppColors.textSecondary,
-                    ),
-                  ),
-                  Tooltip(
-                    message: evidenceUrl == null ? 'Add source' : 'Edit source',
-                    child: IconButton(
-                      onPressed: isSubmitting
-                          ? null
-                          : () => widget.onEvidenceTap(),
-                      icon: Icon(
-                        evidenceUrl == null
-                            ? Icons.link_rounded
-                            : Icons.link_off_rounded,
-                      ),
-                      color: evidenceUrl == null
-                          ? AppColors.textSecondary
-                          : AppColors.fernGreenDark,
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: isSubmitting ? null : onSubmit,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      height: 40,
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      decoration: BoxDecoration(
-                        color: isSubmitting
-                            ? AppColors.borderSubtle
-                            : AppColors.charcoal,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Center(
-                        child: isSubmitting
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: AppColors.white,
+                                        blurRadius: 16,
+                                        offset: const Offset(0, 8),
+                                      ),
+                                  ],
                                 ),
-                              )
-                            : Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    context.l('Reply'),
-                                    style: GoogleFonts.josefinSans(
-                                      color: AppColors.white,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w700,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: AppSpacing.md,
+                                  vertical: AppSpacing.xs,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Builder(
+                                      builder: (mentionContext) {
+                                        final suggestionPosition = mention_ui
+                                            .adaptiveMentionSuggestionPosition(
+                                              mentionContext,
+                                              listHeight: 220,
+                                              preferTopWhenCrowded: true,
+                                              forceTop: true,
+                                            );
+                                        final suggestionHeight = mention_ui
+                                            .adaptiveMentionSuggestionHeight(
+                                              mentionContext,
+                                              position: suggestionPosition,
+                                              maxHeight: 220,
+                                            );
+
+                                        return mention_ui.CompactMentionSuggestions(
+                                          visible: _mentionSuggestionsVisible,
+                                          position: suggestionPosition,
+                                          suggestionHeight: suggestionHeight,
+                                          suggestions: mentionableUsers,
+                                          mentionKey: replyKey,
+                                          onSelected: (_) {
+                                            setState(() {
+                                              _mentionSuggestionsVisible =
+                                                  false;
+                                              _mentionSearch = '';
+                                            });
+                                          },
+                                          child: FlutterMentions(
+                                            key: replyKey,
+                                            hideSuggestionList: true,
+                                            suggestionPosition:
+                                                suggestionPosition,
+                                            suggestionListHeight:
+                                                suggestionHeight,
+                                            onSuggestionVisibleChanged: (visible) {
+                                              if (_mentionSuggestionsVisible ==
+                                                  visible) {
+                                                return;
+                                              }
+                                              setState(() {
+                                                _mentionSuggestionsVisible =
+                                                    visible;
+                                                if (!visible) {
+                                                  _mentionSearch = '';
+                                                }
+                                              });
+                                            },
+                                            onSearchChanged: (trigger, value) {
+                                              if (trigger != '@' ||
+                                                  _mentionSearch == value) {
+                                                return;
+                                              }
+                                              setState(
+                                                () => _mentionSearch = value,
+                                              );
+                                            },
+                                            maxLines: widget.isPro ? 6 : 3,
+                                            minLines: 1,
+                                            maxLength: maxReplyLength,
+                                            maxLengthEnforcement:
+                                                MaxLengthEnforcement.enforced,
+                                            buildCounter:
+                                                (
+                                                  _, {
+                                                  required currentLength,
+                                                  required isFocused,
+                                                  maxLength,
+                                                }) => const SizedBox.shrink(),
+                                            // reply body text remains normal weight;
+                                            // only resolved mentions receive emphasis.
+                                            style: AppTypography
+                                                .textTheme
+                                                .bodyMedium
+                                                ?.copyWith(
+                                                  fontWeight: FontWeight.w400,
+                                                  height: 1.35,
+                                                ),
+                                            decoration: InputDecoration(
+                                              hintText:
+                                                  replyingToUsername != null
+                                                  ? context.l(
+                                                      'Reply to @{username}...',
+                                                      {
+                                                        'username':
+                                                            replyingToUsername,
+                                                      },
+                                                    )
+                                                  : context.l('Add a reply...'),
+                                              hintStyle:
+                                                  GoogleFonts.josefinSans(
+                                                    fontSize: 14,
+                                                    color:
+                                                        AppColors.textTertiary,
+                                                  ),
+                                              border: InputBorder.none,
+                                              enabledBorder: InputBorder.none,
+                                              focusedBorder: InputBorder.none,
+                                              errorBorder: InputBorder.none,
+                                              focusedErrorBorder:
+                                                  InputBorder.none,
+                                              disabledBorder: InputBorder.none,
+                                              isDense: true,
+                                              contentPadding:
+                                                  const EdgeInsets.symmetric(
+                                                    vertical: 8,
+                                                  ),
+                                            ),
+                                            suggestionListDecoration: mention_ui
+                                                .mentionSuggestionDecoration(
+                                                  suggestionPosition,
+                                                ),
+                                            mentions: [
+                                              Mention(
+                                                trigger: '@',
+                                                style: GoogleFonts.josefinSans(
+                                                  color: AppColors.fernGreen,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                                data: widget.mentionableUsers,
+                                                suggestionBuilder: (data) =>
+                                                    mention_ui.MentionSuggestionTile(
+                                                      data: data,
+                                                    ),
+                                              ),
+                                              Mention(
+                                                trigger: '~',
+                                                style: GoogleFonts.josefinSans(
+                                                  color: AppColors.fernGreen,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                                data: const [],
+                                                matchAll: true,
+                                                disableMarkup: true,
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
                                     ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  const Icon(
-                                    Icons.arrow_upward_rounded,
-                                    color: AppColors.white,
-                                    size: 17,
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
+                            ),
+                          ),
+                          if (!compactComposer) ...[
+                            const SizedBox(width: AppSpacing.sm),
+                            _ReplyComposerControls(
+                              compact: false,
+                              isSubmitting: isSubmitting,
+                              quoteOriginal: quoteOriginal,
+                              evidenceUrl: evidenceUrl,
+                              onQuoteTap: widget.onQuoteTap,
+                              onEvidenceTap: widget.onEvidenceTap,
+                              onSubmit: onSubmit,
+                            ),
+                          ],
+                        ],
                       ),
-                    ),
-                  ),
-                ],
+                      if (compactComposer)
+                        Padding(
+                          padding: const EdgeInsets.only(top: AppSpacing.xs),
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: _ReplyComposerControls(
+                              compact: true,
+                              isSubmitting: isSubmitting,
+                              quoteOriginal: quoteOriginal,
+                              evidenceUrl: evidenceUrl,
+                              onQuoteTap: widget.onQuoteTap,
+                              onEvidenceTap: widget.onEvidenceTap,
+                              onSubmit: onSubmit,
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
               ),
             ),
           ],
@@ -1783,6 +2297,120 @@ class _ComposerMetaChip extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ReplyComposerControls extends StatelessWidget {
+  const _ReplyComposerControls({
+    required this.compact,
+    required this.isSubmitting,
+    required this.quoteOriginal,
+    required this.evidenceUrl,
+    required this.onQuoteTap,
+    required this.onEvidenceTap,
+    required this.onSubmit,
+  });
+
+  final bool compact;
+  final bool isSubmitting;
+  final bool quoteOriginal;
+  final String? evidenceUrl;
+  final VoidCallback onQuoteTap;
+  final Future<void> Function() onEvidenceTap;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    final iconExtent = compact ? 40.0 : 48.0;
+    final iconConstraints = BoxConstraints.tightFor(
+      width: iconExtent,
+      height: iconExtent,
+    );
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Tooltip(
+          message: quoteOriginal
+              ? 'Remove original reference'
+              : 'Quote original echo',
+          child: IconButton(
+            constraints: iconConstraints,
+            visualDensity: compact
+                ? VisualDensity.compact
+                : VisualDensity.standard,
+            onPressed: isSubmitting ? null : onQuoteTap,
+            icon: Icon(
+              quoteOriginal
+                  ? Icons.format_quote_rounded
+                  : Icons.format_quote_outlined,
+            ),
+            color: quoteOriginal
+                ? AppColors.fernGreenDark
+                : AppColors.textSecondary,
+          ),
+        ),
+        Tooltip(
+          message: evidenceUrl == null ? 'Add source' : 'Edit source',
+          child: IconButton(
+            constraints: iconConstraints,
+            visualDensity: compact
+                ? VisualDensity.compact
+                : VisualDensity.standard,
+            onPressed: isSubmitting ? null : () => onEvidenceTap(),
+            icon: Icon(
+              evidenceUrl == null ? Icons.link_rounded : Icons.link_off_rounded,
+            ),
+            color: evidenceUrl == null
+                ? AppColors.textSecondary
+                : AppColors.fernGreenDark,
+          ),
+        ),
+        SizedBox(width: compact ? AppSpacing.sm : 0),
+        GestureDetector(
+          onTap: isSubmitting ? null : onSubmit,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            height: 40,
+            padding: EdgeInsets.symmetric(horizontal: compact ? 13 : 14),
+            decoration: BoxDecoration(
+              color: isSubmitting ? AppColors.borderSubtle : AppColors.charcoal,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Center(
+              child: isSubmitting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.white,
+                      ),
+                    )
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          context.l('Reply'),
+                          style: GoogleFonts.josefinSans(
+                            color: AppColors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(
+                          Icons.arrow_upward_rounded,
+                          color: AppColors.white,
+                          size: 17,
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

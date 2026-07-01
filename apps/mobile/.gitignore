@@ -43,6 +43,23 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# local security, licensing, and monitoring configuration.
+# these files are intentionally kept on the build machine because they may
+# contain store checks, private monitoring setup, or shrinker choices that do
+# not need to travel with source control.
+lib/core/services/error_monitoring_service.dart
+lib/core/services/play_constants.dart
+lib/core/services/play_licensing.dart
+lib/core/security/play_constants.dart
+lib/core/security/play_licensing.dart
+lib/features/echo/presentation/services/signal_drift_physics.dart
+test/unit/signal_drift_physics_test.dart
+android/app/proguard-rules.pro
+android/app/src/main/AndroidManifest.xml
+sentry.properties
+.sentryclirc
+
 ad_service.dart
 *.txt
 app_constants.dart

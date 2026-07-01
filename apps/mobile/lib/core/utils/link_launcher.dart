@@ -33,6 +33,44 @@ Future<bool> launchAppUrl(
   }
 }
 
+Future<bool> launchExternalUrlWithFallback(
+  BuildContext context,
+  String url, {
+  String errorMessage = 'Could not open the link.',
+}) async {
+  final uri = Uri.tryParse(url);
+  if (uri == null) {
+    if (context.mounted) showErrorSnack(context, 'That link is not valid.');
+    return false;
+  }
+
+  try {
+    // android devices can have missing, disabled, or policy-blocked external
+    // browser handlers. try the user's browser first, then fall back to the
+    // in-app browser so a valid public record tap still has somewhere to go.
+    final external = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (external) return true;
+
+    final inApp = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+    if (inApp) return true;
+
+    if (context.mounted) showErrorSnack(context, errorMessage);
+    return false;
+  } catch (e) {
+    AppLogger.warn('link launcher: external fallback failed $url: $e');
+    try {
+      final inApp = await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+      if (inApp) return true;
+    } catch (fallbackError) {
+      AppLogger.warn(
+        'link launcher: in-app fallback failed $url: $fallbackError',
+      );
+    }
+    if (context.mounted) showErrorSnack(context, errorMessage);
+    return false;
+  }
+}
+
 void showOpenLinkSheet(
   BuildContext context, {
   required String url,
@@ -44,75 +82,107 @@ void showOpenLinkSheet(
 
   showModalBottomSheet<void>(
     context: context,
+    isScrollControlled: true,
     useSafeArea: true,
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.transparent,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
     builder: (ctx) {
-      return Padding(
-        padding: EdgeInsets.fromLTRB(
-          AppSpacing.xl,
-          AppSpacing.lg,
-          AppSpacing.xl,
-          AppSpacing.xl + MediaQuery.paddingOf(ctx).bottom,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.borderMedium,
-                  borderRadius: BorderRadius.circular(2),
+      return SafeArea(
+        top: false,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final maxHeight = constraints.maxHeight.isFinite
+                ? constraints.maxHeight * 0.88
+                : MediaQuery.sizeOf(context).height * 0.82;
+
+            return Align(
+              alignment: Alignment.bottomCenter,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: maxHeight),
+                child: Material(
+                  color: Colors.white,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(24),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(
+                      AppSpacing.xl,
+                      AppSpacing.lg,
+                      AppSpacing.xl,
+                      AppSpacing.xl,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 40,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: AppColors.borderMedium,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.xl),
+                        Text(
+                          displayTitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.josefinSans(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.charcoal,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.xs),
+                        Text(
+                          host,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.josefinSans(
+                            fontSize: 13,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        _OpenLinkAction(
+                          icon: Icons.open_in_browser_rounded,
+                          title: 'Open in app',
+                          subtitle: 'Stay inside Echoproof',
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            launchAppUrl(
+                              context,
+                              url,
+                              mode: LaunchMode.inAppBrowserView,
+                            );
+                          },
+                        ),
+                        _OpenLinkAction(
+                          icon: Icons.north_east_rounded,
+                          title: 'Open in browser',
+                          subtitle: 'Use your default browser',
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            launchAppUrl(
+                              context,
+                              url,
+                              mode: LaunchMode.externalApplication,
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: AppSpacing.xl),
-            Text(
-              displayTitle,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.josefinSans(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: AppColors.charcoal,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              host,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.josefinSans(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            _OpenLinkAction(
-              icon: Icons.open_in_browser_rounded,
-              title: 'Open in app',
-              subtitle: 'Stay inside Echoproof',
-              onTap: () {
-                Navigator.pop(ctx);
-                launchAppUrl(context, url, mode: LaunchMode.inAppBrowserView);
-              },
-            ),
-            _OpenLinkAction(
-              icon: Icons.north_east_rounded,
-              title: 'Open in browser',
-              subtitle: 'Use your default browser',
-              onTap: () {
-                Navigator.pop(ctx);
-                launchAppUrl(context, url,
-                    mode: LaunchMode.externalApplication);
-              },
-            ),
-          ],
+            );
+          },
         ),
       );
     },

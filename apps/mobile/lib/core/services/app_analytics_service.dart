@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:go_router/go_router.dart';
 
+import 'error_monitoring_service.dart';
+
 /// records product events without sending user-generated text or identifiers.
 class AppAnalyticsService {
   AppAnalyticsService._();
@@ -19,6 +21,7 @@ class AppAnalyticsService {
     _initialized = true;
     await _analytics.setAnalyticsCollectionEnabled(true);
     await _analytics.logAppOpen();
+    ErrorMonitoringService.captureAnalyticsEvent('app_open');
   }
 
   void attachRouter(GoRouter router) {
@@ -44,13 +47,28 @@ class AppAnalyticsService {
         );
       }
     });
+    ErrorMonitoringService.setUser(userId: userId, isPro: isPro);
+    final sentryAttributes = <String, Object?>{};
+    if (isPro != null) sentryAttributes['is_pro'] = isPro;
+    ErrorMonitoringService.captureAnalyticsEvent(
+      userId == null ? 'auth_signed_out' : 'auth_signed_in',
+      attributes: sentryAttributes,
+    );
   }
 
   Future<void> logLogin({required String method}) {
+    ErrorMonitoringService.captureAnalyticsEvent(
+      'login',
+      attributes: {'method': method},
+    );
     return _run(() => _analytics.logLogin(loginMethod: method));
   }
 
   Future<void> logSignUp({required String method}) {
+    ErrorMonitoringService.captureAnalyticsEvent(
+      'sign_up',
+      attributes: {'method': method},
+    );
     return _run(() => _analytics.logSignUp(signUpMethod: method));
   }
 
@@ -58,6 +76,7 @@ class AppAnalyticsService {
     final screen = _screenName(uri);
     if (screen == _lastScreen) return;
     _lastScreen = screen;
+    ErrorMonitoringService.captureScreenView(screen);
     await _run(
       () => _analytics.logScreenView(screenName: screen, screenClass: screen),
     );
@@ -67,6 +86,7 @@ class AppAnalyticsService {
     String name, {
     Map<String, Object?> parameters = const {},
   }) {
+    ErrorMonitoringService.captureAnalyticsEvent(name, attributes: parameters);
     return _run(
       () => _analytics.logEvent(
         name: name,

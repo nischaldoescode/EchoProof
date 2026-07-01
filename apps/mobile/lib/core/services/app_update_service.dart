@@ -9,6 +9,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/theme/colors.dart';
+import '../security/device_security.dart';
 import '../utils/app_haptics.dart';
 import '../utils/logger.dart';
 
@@ -24,6 +25,7 @@ enum AppUpdateFlow { none, completeDownloaded, immediate, requiredSheet }
 /// skip or fail quietly instead of blocking the user with an unusable prompt.
 class AppUpdateService {
   static const _packageName = 'com.echoproof.app';
+  static const _installerLookupTimeout = Duration(seconds: 2);
   static const _checkTimeout = Duration(seconds: 7);
   static const _checkCooldown = Duration(seconds: 25);
   static const _nativeFlowCooldown = Duration(seconds: 16);
@@ -40,6 +42,7 @@ class AppUpdateService {
     bool force = false,
   }) async {
     if (!_supportsPlayUpdates) return;
+    if (await _shouldSkipPlayUpdateForInstallSource(reason)) return;
     if (_checking || _sheetOpen) {
       AppLogger.info('app update: skipped because guard is already visible');
       return;
@@ -99,6 +102,29 @@ class AppUpdateService {
 
   bool get _supportsPlayUpdates {
     return !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  }
+
+  Future<bool> _shouldSkipPlayUpdateForInstallSource(
+    AppUpdateCheckReason reason,
+  ) async {
+    final installer = await DeviceSecurity.androidInstallerPackageName()
+        .timeout(_installerLookupTimeout, onTimeout: () => '');
+    if (DeviceSecurity.isTrustedPlayInstallerPackage(installer)) {
+      return false;
+    }
+
+    // google play in-app update is only reliable when google play owns the
+    // install. adb installs, shared apk installs, restored installs, and some
+    // custom rom package managers can return an empty or untrusted installer,
+    // and asking play core for an update there can sit until the launch timeout.
+    // a timed-out installer lookup is treated as missing because failing closed
+    // into a skipped update check is less harmful than blocking startup.
+    final installerLabel = installer.isEmpty ? 'missing' : 'untrusted';
+    AppLogger.info(
+      'app update: skipped non-play install reason=${reason.name} '
+      'installer=$installerLabel',
+    );
+    return true;
   }
 
   static bool _needsUpdate(AppUpdateInfo info) {

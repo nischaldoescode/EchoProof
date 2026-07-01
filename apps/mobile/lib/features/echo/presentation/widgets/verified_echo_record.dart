@@ -6,11 +6,11 @@
 import 'package:echoproof/core/utils/snack.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../../../core/services/solana_service.dart';
+import '../../../../core/utils/link_launcher.dart';
 
 class VerifiedEchoRecord extends StatelessWidget {
   const VerifiedEchoRecord({
@@ -24,7 +24,7 @@ class VerifiedEchoRecord extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final explorerUrl = SolanaService.explorerUrl(transactionSignature);
+    final explorerUri = SolanaService.explorerUri(transactionSignature);
     final shortSig = SolanaService.shortSignature(transactionSignature);
 
     return Container(
@@ -32,9 +32,7 @@ class VerifiedEchoRecord extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.fernGreenLight,
         borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(
-          color: AppColors.fernGreen.withValues(alpha: 0.3),
-        ),
+        border: Border.all(color: AppColors.fernGreen.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -90,19 +88,21 @@ class VerifiedEchoRecord extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: AppSpacing.sm),
-              GestureDetector(
-                onTap: () async {
-                  final uri = Uri.parse(explorerUrl);
-                  if (await canLaunchUrl(uri)) {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
-                  }
-                },
-                child: const Icon(
-                  Icons.open_in_new_outlined,
-                  size: 14,
-                  color: AppColors.fernGreen,
+              if (explorerUri != null)
+                GestureDetector(
+                  onTap: () async {
+                    await launchExternalUrlWithFallback(
+                      context,
+                      explorerUri.toString(),
+                      errorMessage: 'Could not open the public record.',
+                    );
+                  },
+                  child: const Icon(
+                    Icons.open_in_new_outlined,
+                    size: 14,
+                    color: AppColors.fernGreen,
+                  ),
                 ),
-              ),
             ],
           ),
         ],

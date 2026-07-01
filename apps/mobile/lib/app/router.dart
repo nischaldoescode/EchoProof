@@ -36,6 +36,8 @@ import '../features/search/presentation/screens/search_screen.dart';
 import '../features/echo/presentation/screens/echo_replies_screen.dart';
 import '../core/utils/logger.dart';
 import '../core/utils/snack.dart';
+import '../core/security/secure_screen.dart';
+import '../core/services/error_monitoring_service.dart';
 import '../features/subscription/presentation/screens/purchase_history_screen.dart';
 import 'package:hyper_snackbar/hyper_snackbar.dart';
 
@@ -162,6 +164,11 @@ CustomTransitionPage<void> _signalDriftPage(GoRouterState state) {
       );
     },
   );
+}
+
+List<NavigatorObserver> _sentryRouterObservers() {
+  final observer = ErrorMonitoringService.navigatorObserver();
+  return observer == null ? const [] : [observer];
 }
 
 class _SignalDriftRevealPainter extends CustomPainter {
@@ -303,7 +310,7 @@ GoRouter createRouter({
     navigatorKey: HyperSnackbar.navigatorKey,
     initialLocation: '/splash',
     refreshListenable: _RouterRefreshStream([authService, onboardingService]),
-    observers: [RouteScopedSnackObserver()],
+    observers: [RouteScopedSnackObserver(), ..._sentryRouterObservers()],
     redirect: (context, state) async {
       final isLoggedIn = authService.isLoggedIn;
       final location = state.matchedLocation;
@@ -324,6 +331,10 @@ GoRouter createRouter({
       // check username status once before redirecting
       if (!authService.hasUsernameChecked) {
         await authService.checkUsername();
+        if (!authService.hasUsernameChecked) {
+          AppLogger.warn('router: profile check waiting for network');
+          return null;
+        }
       }
 
       final hasUsername = authService.hasUsername;
@@ -518,16 +529,21 @@ GoRouter createRouter({
       GoRoute(
         path: '/rooms',
         pageBuilder: (_, s) => _slidePage(
-          RoomsScreen(
-            initialInviteCode: s.uri.queryParameters['code'],
-            initialRoomKey: _secureRoomKeyFromUri(s.uri),
+          SecureScreen(
+            child: RoomsScreen(
+              initialInviteCode: s.uri.queryParameters['code'],
+              initialRoomKey: _secureRoomKeyFromUri(s.uri),
+            ),
           ),
         ),
       ),
       GoRoute(
         path: '/rooms/:id',
-        pageBuilder: (_, s) =>
-            _slidePage(SecureRoomChatScreen(roomId: s.pathParameters['id']!)),
+        pageBuilder: (_, s) => _slidePage(
+          SecureScreen(
+            child: SecureRoomChatScreen(roomId: s.pathParameters['id']!),
+          ),
+        ),
       ),
       GoRoute(
         path: '/settings',

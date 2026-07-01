@@ -31,6 +31,7 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.security.MessageDigest
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 import kotlin.math.max
 
 class MainActivity : FlutterFragmentActivity() {
@@ -41,9 +42,6 @@ class MainActivity : FlutterFragmentActivity() {
     private val launcherShortcutIds = listOf(createShortcutId, profileShortcutId)
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // keep screenshots and non-secure display capture blocked before flutter draws
-        // dart keeps the same flag alive so modal routes cannot accidentally clear it
-        enforceSecureWindow()
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.auto(
                 Color.TRANSPARENT,
@@ -103,8 +101,13 @@ class MainActivity : FlutterFragmentActivity() {
         securityChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "securitySignals" -> result.success(securitySignals())
+                "installerPackageName" -> result.success(installerPackageName() ?: "")
                 "enforceSecureWindow" -> {
                     enforceSecureWindow()
+                    result.success(null)
+                }
+                "clearSecureWindow" -> {
+                    clearSecureWindow()
                     result.success(null)
                 }
                 else -> result.notImplemented()
@@ -196,9 +199,9 @@ class MainActivity : FlutterFragmentActivity() {
     private fun iconFromProfileBytes(bytes: ByteArray?): Icon? {
         if (bytes == null || bytes.isEmpty()) return null
         return try {
-            val source = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
             val density = resources.displayMetrics.density
             val size = (72 * density).toInt().coerceAtLeast(96)
+            val source = decodeShortcutBitmap(bytes, size) ?: return null
             val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(output)
             val center = size / 2f
@@ -240,6 +243,48 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
+    private fun decodeShortcutBitmap(bytes: ByteArray, targetSize: Int): Bitmap? {
+        // profile shortcuts only render as small launcher icons, so decoding
+        // the original avatar at full camera/gallery resolution wastes memory.
+        val bounds = BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        val sampleSize = shortcutBitmapSampleSize(
+            bounds.outWidth,
+            bounds.outHeight,
+            targetSize,
+            targetSize
+        )
+        val decodeOptions = BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)
+    }
+
+    private fun shortcutBitmapSampleSize(
+        width: Int,
+        height: Int,
+        targetWidth: Int,
+        targetHeight: Int
+    ): Int {
+        if (width <= 0 || height <= 0 || targetWidth <= 0 || targetHeight <= 0) {
+            return 1
+        }
+
+        var sampleSize = 1
+        val halfWidth = width / 2
+        val halfHeight = height / 2
+        while (
+            halfWidth / sampleSize >= targetWidth &&
+            halfHeight / sampleSize >= targetHeight
+        ) {
+            sampleSize *= 2
+        }
+        return sampleSize.coerceAtLeast(1)
+    }
+
     private fun clearLauncherShortcuts() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N_MR1) return
         val manager = getSystemService(ShortcutManager::class.java) ?: return
@@ -267,6 +312,10 @@ class MainActivity : FlutterFragmentActivity() {
         )
     }
 
+    private fun clearSecureWindow() {
+        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+    }
+
     private fun securitySignals(): Map<String, Any> {
         val hookIndicators = hookIndicators()
         val rootIndicators = rootIndicators()
@@ -279,6 +328,10 @@ class MainActivity : FlutterFragmentActivity() {
             "debuggerConnected" to (Debug.isDebuggerConnected() || Debug.waitingForDebugger()),
             "rootIndicators" to rootIndicators,
             "hookIndicators" to hookIndicators,
+            "mountIndicators" to mountIndicators(),
+            "dangerousBuildTags" to dangerousBuildTags(),
+            "suProbe" to suProbe(),
+            "tracerPid" to tracerPid(),
             "signingCertificateSha256" to signingCertificateSha256(),
             "sourceDir" to (applicationInfo.sourceDir ?: ""),
             "publicSourceDir" to (applicationInfo.publicSourceDir ?: "")
@@ -286,6 +339,9 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     private fun installerPackageName(): String? {
+        // keep installer lookup separate from the heavier security snapshot so
+        // dart can cheaply skip play-only features on adb, shared apk, and
+        // restored installs before calling google play services.
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 packageManager.getInstallSourceInfo(packageName).installingPackageName
@@ -355,7 +411,17 @@ class MainActivity : FlutterFragmentActivity() {
             "/data/local/tmp/su",
             "/system/app/SuperSU.apk",
             "/system/xbin/busybox",
-            "/cache/magisk.log"
+            "/cache/magisk.log",
+            "/data/adb/modules",
+            "/data/adb/zygisk",
+            "/data/adb/ksu",
+            "/data/adb/ap",
+            "/data/adb/shamiko",
+            "/system/bin/magisk",
+            "/system/xbin/daemonsu",
+            "/su/bin/su",
+            "/system/bin/.ext/.su",
+            "/system/etc/init.d/99SuperSUDaemon"
         )
         return paths.filter { path ->
             try {
@@ -372,11 +438,19 @@ class MainActivity : FlutterFragmentActivity() {
             "frida",
             "gum-js-loop",
             "gadget",
+            "magisk",
             "xposed",
             "edxposed",
             "lsposed",
             "zygisk",
+            "zygisknext",
             "riru",
+            "shamiko",
+            "kernelsu",
+            "apatch",
+            "playintegrityfix",
+            "integrityfix",
+            "revanced",
             "substrate",
             "substrate-dvm",
             "objection",
@@ -397,5 +471,62 @@ class MainActivity : FlutterFragmentActivity() {
             // hardened kernels can deny maps access, so absence of this signal is not trusted
         }
         return indicators.toList()
+    }
+
+    private fun dangerousBuildTags(): List<String> {
+        val tags = listOfNotNull(Build.TAGS, Build.FINGERPRINT, Build.DISPLAY)
+            .joinToString(" ")
+            .lowercase(Locale.US)
+        val indicators = linkedSetOf<String>()
+        val keywords = listOf("test-keys", "dev-keys", "magisk", "kernelsu", "apatch")
+        for (keyword in keywords) {
+            if (tags.contains(keyword)) indicators += keyword
+        }
+        return indicators.toList()
+    }
+
+    private fun mountIndicators(): List<String> {
+        val indicators = linkedSetOf<String>()
+        try {
+            File("/proc/self/mountinfo").useLines { lines ->
+                lines.take(1200).forEach { line ->
+                    val lower = line.lowercase(Locale.US)
+                    if (lower.contains("/data/adb")) indicators += "data_adb_mount"
+                    if (lower.contains("magisk")) indicators += "magisk_mount"
+                    if (lower.contains("kernelsu")) indicators += "kernelsu_mount"
+                    if (lower.contains("apatch")) indicators += "apatch_mount"
+                    if (lower.contains("overlay") && lower.contains("/system")) {
+                        indicators += "system_overlay"
+                    }
+                }
+            }
+        } catch (_: Throwable) {
+            // some devices deny proc access. absence of this signal is not trusted.
+        }
+        return indicators.toList()
+    }
+
+    private fun suProbe(): Boolean {
+        var process: Process? = null
+        return try {
+            process = Runtime.getRuntime().exec(arrayOf("sh", "-c", "command -v su"))
+            val finished = process.waitFor(350, TimeUnit.MILLISECONDS)
+            finished && process.exitValue() == 0
+        } catch (_: Throwable) {
+            false
+        } finally {
+            process?.destroy()
+        }
+    }
+
+    private fun tracerPid(): Int {
+        return try {
+            File("/proc/self/status").useLines { lines ->
+                val line = lines.firstOrNull { it.startsWith("TracerPid:") } ?: return 0
+                line.substringAfter(":").trim().toIntOrNull() ?: 0
+            }
+        } catch (_: Throwable) {
+            0
+        }
     }
 }

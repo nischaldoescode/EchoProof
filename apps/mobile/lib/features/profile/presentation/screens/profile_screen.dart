@@ -19,8 +19,6 @@ import '../../../../shared/widgets/shimmer_loader.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../core/localization/app_copy.dart';
-import 'package:flutter/foundation.dart';
-import '../../../../core/security/secure_screen.dart';
 import '../../../../shared/widgets/app_bottom_nav.dart';
 import '../../../../shared/widgets/avatar_image_provider.dart';
 import '../../../../shared/widgets/rich_text_display.dart';
@@ -2514,11 +2512,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             onPointerUp: _handleProfileTributePointerUp,
             child: Stack(
               children: [
-                _isOwnProfile
-                    ? _buildBody()
-                    : kReleaseMode
-                    ? SecureScreen(child: _buildBody())
-                    : _buildBody(),
+                _buildBody(),
                 Positioned(
                   top: 0,
                   left: 0,

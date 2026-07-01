@@ -84,17 +84,18 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
       duration: const Duration(milliseconds: 1800),
     )..repeat(reverse: true);
 
-    _fade = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _entranceCtrl, curve: Curves.easeOut),
-    );
-    _slide = Tween<Offset>(
-      begin: const Offset(0, 0.06),
-      end: Offset.zero,
-    ).animate(
-        CurvedAnimation(parent: _entranceCtrl, curve: Curves.easeOutCubic));
-    _pulse = Tween<double>(begin: 1.0, end: 1.05).animate(
-      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut),
-    );
+    _fade = Tween<double>(
+      begin: 0,
+      end: 1,
+    ).animate(CurvedAnimation(parent: _entranceCtrl, curve: Curves.easeOut));
+    _slide = Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero)
+        .animate(
+          CurvedAnimation(parent: _entranceCtrl, curve: Curves.easeOutCubic),
+        );
+    _pulse = Tween<double>(
+      begin: 1.0,
+      end: 1.05,
+    ).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
 
     _subscribeToVerificationUpdates();
     _entranceCtrl.forward();
@@ -150,8 +151,9 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
         body: requestBody,
       );
 
-      final responseMessage =
-          VerificationErrorParser.messageFromResponseData(response.data);
+      final responseMessage = VerificationErrorParser.messageFromResponseData(
+        response.data,
+      );
       if (responseMessage != null) {
         if (VerificationErrorParser.responseDataBlocks(response.data)) {
           if (!mounted) return;
@@ -163,7 +165,8 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
         throw Exception(responseMessage);
       }
 
-      final data = VerificationErrorParser.mapFromResponseData(response.data) ??
+      final data =
+          VerificationErrorParser.mapFromResponseData(response.data) ??
           <String, dynamic>{};
       final sessionToken = data['session_token'] as String?;
 
@@ -310,7 +313,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
               tween: Tween(begin: 0, end: 1),
               duration: const Duration(milliseconds: 500),
               curve: Curves.easeOutBack,
-              builder: (_, v, __) => Transform.scale(
+              builder: (_, v, _) => Transform.scale(
                 scale: v,
                 child: Container(
                   width: 72,
@@ -348,8 +351,9 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
               child: ElevatedButton(
                 onPressed: () => Navigator.pop(context),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor:
-                      isSuccess ? AppColors.fernGreen : AppColors.charcoal,
+                  backgroundColor: isSuccess
+                      ? AppColors.fernGreen
+                      : AppColors.charcoal,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -381,7 +385,9 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
           title: Text(
             context.l('Verify identity'),
             style: GoogleFonts.josefinSans(
-                fontSize: 18, fontWeight: FontWeight.w600),
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
           ),
           backgroundColor: Colors.transparent,
           elevation: 0,
@@ -408,7 +414,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                   Center(
                     child: AnimatedBuilder(
                       animation: _pulseCtrl,
-                      builder: (_, __) => Transform.scale(
+                      builder: (_, _) => Transform.scale(
                         scale: _isLoading ? 1.0 : _pulse.value,
                         child: Container(
                           width: 88,
@@ -418,8 +424,9 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color:
-                                    AppColors.fernGreen.withValues(alpha: 0.2),
+                                color: AppColors.fernGreen.withValues(
+                                  alpha: 0.2,
+                                ),
                                 blurRadius: 20,
                                 spreadRadius: 4,
                               ),
@@ -493,34 +500,35 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                           'AI deepfake and fraud detection',
                           'NFC e-passport reading (where supported)',
                           '14,000+ documents across 220+ countries',
-                        ].map((item) => Padding(
-                              padding:
-                                  const EdgeInsets.only(top: AppSpacing.xs),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Padding(
-                                    padding: EdgeInsets.only(top: 2),
-                                    child: Icon(
-                                      Icons.check_circle_outline,
-                                      size: 14,
-                                      color: AppColors.fernGreen,
+                        ].map(
+                          (item) => Padding(
+                            padding: const EdgeInsets.only(top: AppSpacing.xs),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Padding(
+                                  padding: EdgeInsets.only(top: 2),
+                                  child: Icon(
+                                    Icons.check_circle_outline,
+                                    size: 14,
+                                    color: AppColors.fernGreen,
+                                  ),
+                                ),
+                                const SizedBox(width: AppSpacing.sm),
+                                Expanded(
+                                  child: Text(
+                                    context.l(item),
+                                    style: GoogleFonts.josefinSans(
+                                      fontSize: 13,
+                                      color: AppColors.textSecondary,
+                                      height: 1.5,
                                     ),
                                   ),
-                                  const SizedBox(width: AppSpacing.sm),
-                                  Expanded(
-                                    child: Text(
-                                      context.l(item),
-                                      style: GoogleFonts.josefinSans(
-                                        fontSize: 13,
-                                        color: AppColors.textSecondary,
-                                        height: 1.5,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -537,8 +545,11 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.lock_outline,
-                            size: 18, color: AppColors.textTertiary),
+                        const Icon(
+                          Icons.lock_outline,
+                          size: 18,
+                          color: AppColors.textTertiary,
+                        ),
                         const SizedBox(width: AppSpacing.sm),
                         Expanded(
                           child: Text(
@@ -686,16 +697,22 @@ class _BenefitRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(context.l(title),
-                    style: GoogleFonts.josefinSans(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.charcoal)),
-                Text(context.l(desc),
-                    style: GoogleFonts.josefinSans(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                        height: 1.5)),
+                Text(
+                  context.l(title),
+                  style: GoogleFonts.josefinSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.charcoal,
+                  ),
+                ),
+                Text(
+                  context.l(desc),
+                  style: GoogleFonts.josefinSans(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                    height: 1.5,
+                  ),
+                ),
               ],
             ),
           ),
@@ -783,18 +800,18 @@ class _VerificationTimeline extends StatelessWidget {
       (
         icon: Icons.badge_outlined,
         title: 'Scan ID',
-        body: 'Use a clear passport, national ID, or driving licence.'
+        body: 'Use a clear passport, national ID, or driving licence.',
       ),
       (
         icon: Icons.face_retouching_natural_rounded,
         title: 'Liveness',
-        body: 'A quick passive face check confirms you are a real person.'
+        body: 'A quick passive face check confirms you are a real person.',
       ),
       (
         icon: Icons.shield_outlined,
         title: 'Trust update',
         body:
-            'EchoProof receives only the verification result and updates trust.'
+            'EchoProof receives only the verification result and updates trust.',
       ),
     ];
 

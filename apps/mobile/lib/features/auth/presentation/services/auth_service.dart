@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -21,6 +22,26 @@ class AuthService extends ChangeNotifier {
   static const _lastSignedInUserIdKey = 'last_signed_in_user_id';
   static const _otpRequestPrefix = 'otp_requested_at:';
   static const _otpRequestCooldown = Duration(seconds: 90);
+  static const _trustedEmailDomains = {
+    'gmail.com',
+    'googlemail.com',
+    'outlook.com',
+    'hotmail.com',
+    'live.com',
+    'msn.com',
+    'yahoo.com',
+    'ymail.com',
+    'icloud.com',
+    'me.com',
+    'mac.com',
+    'proton.me',
+    'protonmail.com',
+    'pm.me',
+    'echoproof.online',
+  };
+  static final _emailFormat = RegExp(
+    r"^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$",
+  );
   static const _authRedirectUrl = String.fromEnvironment(
     'AUTH_REDIRECT_URL',
     defaultValue: 'echoproof://auth-callback',
@@ -198,6 +219,13 @@ class AuthService extends ChangeNotifier {
         if (!_hasUsername) _clearCompletedOnboardingFlags();
       }
     } catch (e) {
+      if (AppLogger.isTransientNetworkError(e, 'auth: profile check failed')) {
+        AppLogger.warn('auth: profile check skipped transient network');
+        _restoreProfileStateFromLocalCache();
+        notifyListeners();
+        return;
+      }
+
       _hasUsername = false;
       _hasUsernameChecked = true;
       AppLogger.error('auth: profile check failed $e');
@@ -478,13 +506,20 @@ class AuthService extends ChangeNotifier {
       return true;
     } on AuthException catch (e) {
       AppLogger.error(
-        'auth: AuthException during Google sign in: ${e.message}',
+        'auth: google sign in failed - ${_authFailureLabel(e.message)}',
       );
       _error = _friendly(e.message);
       _setLoading(false);
       return false;
-    } catch (e, stack) {
-      AppLogger.error('auth: Google sign in error: $e\n$stack');
+    } on PlatformException catch (e) {
+      AppLogger.error(
+        'auth: google platform sign in failed - ${_googlePlatformFailureLabel(e)}',
+      );
+      _error = _friendlyGooglePlatformError(e);
+      _setLoading(false);
+      return false;
+    } catch (_, stack) {
+      AppLogger.error('auth: google sign in failed - unexpected', null, stack);
       _error = 'Google sign in failed. Please try again.';
       _setLoading(false);
       return false;
@@ -537,6 +572,20 @@ class AuthService extends ChangeNotifier {
     } catch (e) {
       AppLogger.error('auth: save age/gender failed $e');
     }
+  }
+
+  String _friendlyGooglePlatformError(PlatformException e) {
+    final combined = '${e.code} ${e.message ?? ''} ${e.details ?? ''}'
+        .toLowerCase();
+    if (combined.contains('10') ||
+        combined.contains('developer_error') ||
+        combined.contains('sign_in_failed')) {
+      return 'Google could not verify this app build. Update from Google Play or use email sign-in.';
+    }
+    if (combined.contains('network')) {
+      return 'Google sign in needs a stable internet connection.';
+    }
+    return 'Google sign in failed. Please try again.';
   }
 
   Future<void> deleteIncompleteAccount() async {
@@ -664,6 +713,13 @@ class AuthService extends ChangeNotifier {
     required int maxActions,
     required bool includeIp,
   }) async {
+    if (_client.auth.currentSession == null) {
+      // unauthenticated auth screens rely on local cooldowns and supabase auth
+      // rate limits. keeping this rpc signed-in only prevents a public
+      // security-definer function from becoming an anonymous write surface.
+      return 0;
+    }
+
     try {
       final response = await _client.rpc(
         'consume_action_cooldown',
@@ -756,6 +812,15 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<_EmailValidationResult> _validateAllowedEmail(String email) async {
+    final local = _validateAllowedEmailLocally(email);
+    if (!local.allowed) return local;
+
+    if (_client.auth.currentSession == null) {
+      // pre-auth signup cannot call the protected rpc after grant hardening.
+      // the auth trigger still blocks emails inside a protected deletion hold.
+      return local;
+    }
+
     try {
       final response = await _client.rpc(
         'validate_auth_email',
@@ -777,10 +842,52 @@ class AuthService extends ChangeNotifier {
       });
     } catch (e) {
       AppLogger.warn('auth: email validation failed $e');
+      return local;
+    }
+  }
+
+  _EmailValidationResult _validateAllowedEmailLocally(String email) {
+    final normalized = email.trim().toLowerCase();
+    if (!_emailFormat.hasMatch(normalized)) {
       return const _EmailValidationResult.blocked(
-        'Email validation is unavailable. Please try again soon.',
+        'Enter a valid email address.',
       );
     }
+
+    final domain = normalized.split('@').last;
+    if (!_trustedEmailDomains.contains(domain)) {
+      return const _EmailValidationResult.blocked(
+        'Use a trusted email provider like Gmail, Outlook, Hotmail, Yahoo, iCloud, or Proton.',
+      );
+    }
+
+    return const _EmailValidationResult.allowed();
+  }
+
+  String _authFailureLabel(String message) {
+    final lower = message.toLowerCase();
+    if (lower.contains('network') || lower.contains('socket')) {
+      return 'network';
+    }
+    if (lower.contains('invalid') || lower.contains('token')) {
+      return 'provider token';
+    }
+    return 'provider rejected';
+  }
+
+  String _googlePlatformFailureLabel(PlatformException e) {
+    final combined = '${e.code} ${e.message ?? ''} ${e.details ?? ''}'
+        .toLowerCase();
+    if (combined.contains('10') ||
+        combined.contains('developer_error') ||
+        combined.contains('sign_in_failed')) {
+      return 'build not verified';
+    }
+    if (combined.contains('network')) return 'network';
+    if (combined.contains('canceled') || combined.contains('cancelled')) {
+      return 'cancelled';
+    }
+    return 'platform rejected';
   }
 
   String _formatCooldown(int seconds) {
@@ -824,6 +931,21 @@ class AuthService extends ChangeNotifier {
     final box = Hive.box(_settingsBox);
     box.delete(_onboardingDoneKey);
     box.delete(_onboardingUsernameSetKey);
+  }
+
+  void _restoreProfileStateFromLocalCache() {
+    final box = Hive.box(_settingsBox);
+    final localProfileComplete =
+        box.get(_onboardingDoneKey) == true ||
+        box.get(_onboardingUsernameSetKey) == true;
+    if (!localProfileComplete) return;
+
+    // a transport failure is not proof that the remote profile disappeared.
+    // when this device already completed onboarding for the same user, keep the
+    // cached route state and let the next online check refresh the server copy.
+    _hasUsername = true;
+    _hasUsernameChecked = true;
+    _needsAgeGender = false;
   }
 
   String? _displayNameFromCurrentUser() {

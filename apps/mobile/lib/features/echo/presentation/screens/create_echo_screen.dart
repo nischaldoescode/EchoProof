@@ -13,7 +13,7 @@ import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../domain/entities/echo_entity.dart';
 import '../services/create_echo_service.dart';
-import '../../../../core/services/ad_service.dart';
+import '../services/echo_feed_service.dart';
 import '../../../../features/subscription/presentation/services/subscription_service.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../../core/utils/logger.dart';
@@ -449,32 +449,21 @@ class _CreateEchoScreenState extends State<CreateEchoScreen>
     if (service.success) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          context.read<CreateEchoService>().resetSuccess();
-
-          // show rewarded interstitial every third echo for non-pro users
-          final isPro = context.read<SubscriptionService>().isPro;
-          final count = context
-              .read<CreateEchoService>()
-              .echoesCreatedThisSession;
-
-          if (!isPro && count % 3 == 0) {
-            context.read<AdService>().showRewardedInterstitial(
-              onRewarded: () {
-                showSuccessSnack(
-                  context,
-                  context.l(
-                    'Thanks for supporting Echoproof — 1 hour ad-free!',
-                  ),
-                );
-              },
-            );
+          final createService = context.read<CreateEchoService>();
+          final createdEcho = createService.lastCreatedEcho;
+          final feedService = context.read<EchoFeedService>();
+          if (createdEcho != null) {
+            feedService.prependOwnCreatedEcho(createdEcho);
+          } else {
+            unawaited(feedService.refresh());
           }
+          createService.resetSuccess();
 
           context.pop();
           HapticFeedback.mediumImpact();
           showSuccessSnack(
             context,
-            context.l('Echo created — awaiting community signals'),
+            context.l('Echo created — shown at the top of your feed'),
           );
         }
       });

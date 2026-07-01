@@ -70,16 +70,21 @@ void showAppSnack(
   final bottomPadding = mediaQuery?.viewPadding.bottom ?? 0;
   final leftPadding = mediaQuery?.viewPadding.left ?? 0;
   final rightPadding = mediaQuery?.viewPadding.right ?? 0;
-  final resolvedMargin = bottomInset + bottomPadding + bottomMargin;
+  // hyper_snackbar already positions its overlay against the app edge. only the
+  // keyboard needs extra clearance from this adapter; adding viewpadding here
+  // makes pushed pages look like they are reserving the root bottom nav.
+  final bottomObstruction = bottomInset > 0 ? bottomInset : 0.0;
+  final resolvedMargin = bottomObstruction + bottomMargin;
   final isWideSurface = size.width >= 600;
   final horizontalMargin = isWideSurface ? 18.0 : 14.0;
-  final alignment = isWideSurface
-      ? Alignment.bottomRight
-      : Alignment.bottomCenter;
-  final maxWidth = isWideSurface ? 420.0 : 520.0;
-  final animationType = isWideSurface
-      ? HyperSnackAnimationType.right
-      : HyperSnackAnimationType.bottom;
+  final availableWidth =
+      size.width - leftPadding - rightPadding - horizontalMargin * 2;
+  final compactMaxWidth = availableWidth > 0
+      ? (availableWidth < 360 ? availableWidth : 360.0)
+      : 360.0;
+  final maxWidth = isWideSurface ? 420.0 : compactMaxWidth;
+  final alignment = Alignment.bottomRight;
+  final animationType = HyperSnackAnimationType.right;
   final route = ModalRoute.of(context);
 
   AppLogger.info(

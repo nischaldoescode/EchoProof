@@ -76,6 +76,9 @@ class EchoFeedService extends ChangeNotifier {
   int _pendingNewEchoCount = 0;
   int get pendingNewEchoCount => _pendingNewEchoCount;
 
+  int _ownEchoInsertGeneration = 0;
+  int get ownEchoInsertGeneration => _ownEchoInsertGeneration;
+
   String? _error;
   String? get error => _error;
 
@@ -93,6 +96,27 @@ class EchoFeedService extends ChangeNotifier {
     if (next.length == _echoes.length) return;
     _echoes = next;
     notifyListeners();
+  }
+
+  /// places the current user's newly created echo at the top immediately.
+  ///
+  /// realtime inserts stay behind the "new echoes" affordance for other users
+  /// so the feed does not jump while reading, but the author needs instant
+  /// confirmation that their own post exists even if ranking, cache ttl, or
+  /// active pagination would otherwise delay it.
+  void prependOwnCreatedEcho(EchoEntity? echo) {
+    if (echo == null) return;
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    if (currentUserId == null || echo.userId != currentUserId) return;
+
+    _echoes = [echo, ..._echoes.where((item) => item.id != echo.id)];
+    _pendingNewEchoCount = math.max(0, _pendingNewEchoCount - 1);
+    _ownEchoInsertGeneration++;
+    _loadState = FeedLoadState.idle;
+    _error = null;
+    notifyListeners();
+
+    unawaited(AppAnalyticsService.instance.logEvent('feed_own_echo_inserted'));
   }
 
   Future<_FeedPage> _fetchFallback() async {
@@ -571,9 +595,11 @@ class EchoFeedService extends ChangeNotifier {
     List<EchoEntity> echoes, {
     bool includeFollowedLikes = false,
   }) async {
-    if (echoes.isEmpty) return echoes;
-
     var decorated = echoes;
+    if (includeFollowedLikes) {
+      decorated = await _injectOwnRecentEchoes(decorated);
+    }
+    if (decorated.isEmpty) return decorated;
     if (includeFollowedLikes) {
       decorated = await _injectFollowingAuthoredEchoes(decorated);
       decorated = await _injectFollowedLikedEchoes(decorated);
@@ -606,6 +632,55 @@ class EchoFeedService extends ChangeNotifier {
       }
     } catch (e) {
       AppLogger.warn('feed: following graph skipped $e');
+    }
+  }
+
+  Future<List<EchoEntity>> _injectOwnRecentEchoes(
+    List<EchoEntity> echoes,
+  ) async {
+    try {
+      final client = Supabase.instance.client;
+      final userId = client.auth.currentUser?.id;
+      if (userId == null) return echoes;
+
+      final existingIds = echoes.map((echo) => echo.id).toSet();
+      final rows = await client
+          .from('echoes')
+          .select('''
+            id, title, content, category, category_detail, status, version,
+            user_id, media_urls, reply_count, proof_count, bond_count,
+            trust_score, confidence_score, controversy_score, report_score,
+            support_count, challenge_count, context_support_count,
+            context_challenge_count, context_score, public_verdict,
+            public_verdict_at, public_context_closes_at,
+            public_context_min_count, public_context_decision_reason, created_at,
+            created_record_tx, created_record_at, solana_status, solana_error,
+            verified_record_tx, verified_record_at,
+            verified_record_status, verified_record_error,
+            users_public!echoes_user_id_fkey!inner(username, display_name, avatar_url, trust_tier, is_pro, is_public)
+          ''')
+          .eq('user_id', userId)
+          .not('status', 'in', '("hidden","rejected")')
+          .order('created_at', ascending: false)
+          .limit(3);
+
+      final candidates = <EchoEntity>[];
+      for (final raw in rows as List) {
+        final row = raw as Map<String, dynamic>;
+        final echoId = row['id'] as String? ?? '';
+        if (existingIds.contains(echoId)) continue;
+        final user = row['users_public'] as Map<String, dynamic>;
+        candidates.add(_mapToEntity(row, user));
+      }
+
+      if (candidates.isEmpty) return echoes;
+      return [
+        ...candidates,
+        ...echoes.where((echo) => !candidates.any((own) => own.id == echo.id)),
+      ];
+    } catch (e) {
+      AppLogger.warn('feed: own-recent injection skipped $e');
+      return echoes;
     }
   }
 

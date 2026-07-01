@@ -11,6 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
+import '../../../../core/services/solana_service.dart';
 import '../../domain/entities/echo_entity.dart';
 import '../../domain/entities/echo_status.dart';
 import '../widgets/interaction_buttons.dart';
@@ -25,6 +26,7 @@ import '../../../../shared/widgets/rich_text_display.dart';
 import '../../../../shared/widgets/social_action_button.dart';
 import '../../../../shared/widgets/verified_badges.dart';
 import '../../../../core/utils/formatters.dart';
+import '../../../../core/utils/link_launcher.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../core/utils/media_file_safety.dart';
 import '../../../../core/utils/snack.dart';
@@ -1291,19 +1293,24 @@ class _DetailMiniPill extends StatelessWidget {
     required this.label,
     required this.color,
     required this.icon,
+    this.onTap,
+    this.tooltip,
   });
 
   final String label;
   final Color color;
   final IconData icon;
+  final VoidCallback? onTap;
+  final String? tooltip;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final radius = BorderRadius.circular(AppSpacing.radiusFull);
+    final pill = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+        borderRadius: radius,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1320,6 +1327,20 @@ class _DetailMiniPill extends StatelessWidget {
         ],
       ),
     );
+    if (onTap == null) return pill;
+
+    return Tooltip(
+      message: tooltip ?? label,
+      child: Semantics(
+        button: true,
+        label: tooltip ?? label,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: pill,
+        ),
+      ),
+    );
   }
 }
 
@@ -1330,9 +1351,16 @@ class _DetailSolanaMiniChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final anchored = echo.createdRecordTx?.isNotEmpty == true;
+    final explorerUri = SolanaService.explorerUri(echo.createdRecordTx);
+    // only validated transaction signatures become tappable. pending,
+    // delayed, or corrupted rows stay informational so the chip never opens a
+    // broken explorer page or the wrong public cluster.
+    final anchored = explorerUri != null;
+    final hasStoredSignature = echo.createdRecordTx?.trim().isNotEmpty == true;
     final recording = echo.solanaStatus == 'recording';
-    final failed = echo.solanaStatus == 'failed';
+    final failed =
+        echo.solanaStatus == 'failed' ||
+        (hasStoredSignature && explorerUri == null);
     final label = anchored
         ? context.l('Solana anchored')
         : recording
@@ -1350,6 +1378,18 @@ class _DetailSolanaMiniChip extends StatelessWidget {
       label: label,
       color: color,
       icon: anchored ? Icons.verified_rounded : Icons.bolt_rounded,
+      tooltip: explorerUri == null
+          ? label
+          : context.l('Open public Solana record'),
+      onTap: explorerUri == null
+          ? null
+          : () async {
+              await launchExternalUrlWithFallback(
+                context,
+                explorerUri.toString(),
+                errorMessage: 'Could not open the public record.',
+              );
+            },
     );
   }
 }

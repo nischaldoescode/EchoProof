@@ -24,7 +24,7 @@ class DeviceSecurityGate extends StatefulWidget {
 class _DeviceSecurityGateState extends State<DeviceSecurityGate>
     with WidgetsBindingObserver {
   Timer? _timer;
-  bool _blocked = false;
+  DeviceSecurityReport? _blockedReport;
   bool _checking = false;
 
   @override
@@ -55,13 +55,15 @@ class _DeviceSecurityGateState extends State<DeviceSecurityGate>
   }
 
   Future<void> _checkDevice() async {
-    if (!mounted || !kReleaseMode || _blocked || _checking) return;
+    if (!mounted || !kReleaseMode || _blockedReport != null || _checking) {
+      return;
+    }
     _checking = true;
     try {
       final report = await DeviceSecurity.inspect();
       if (!mounted) return;
       if (report.compromised) {
-        setState(() => _blocked = true);
+        setState(() => _blockedReport = report);
       }
     } finally {
       _checking = false;
@@ -70,22 +72,26 @@ class _DeviceSecurityGateState extends State<DeviceSecurityGate>
 
   @override
   Widget build(BuildContext context) {
-    if (_blocked) {
-      return const MaterialApp(
+    final report = _blockedReport;
+    if (report != null) {
+      return MaterialApp(
         debugShowCheckedModeBanner: false,
-        home: SecureScreen(child: SecurityLockdownScreen()),
+        home: SecureScreen(child: SecurityLockdownScreen(report: report)),
       );
     }
 
-    return kReleaseMode ? SecureScreen(child: widget.child) : widget.child;
+    return widget.child;
   }
 }
 
 class SecurityLockdownScreen extends StatelessWidget {
-  const SecurityLockdownScreen({super.key});
+  const SecurityLockdownScreen({super.key, this.report});
+
+  final DeviceSecurityReport? report;
 
   @override
   Widget build(BuildContext context) {
+    final copy = _SecurityLockdownCopy.fromReport(report);
     return PopScope(
       canPop: false,
       child: Material(
@@ -130,10 +136,10 @@ class SecurityLockdownScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: AppSpacing.lg),
-                        const Text(
-                          'Device security required',
+                        Text(
+                          copy.title,
                           textAlign: TextAlign.center,
-                          style: TextStyle(
+                          style: const TextStyle(
                             color: AppColors.charcoal,
                             fontSize: 22,
                             height: 1.15,
@@ -141,10 +147,10 @@ class SecurityLockdownScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: AppSpacing.sm),
-                        const Text(
-                          'Echoproof cannot continue on a rooted, jailbroken, or modified device. Close the app and use a secure device to protect your account and verification activity.',
+                        Text(
+                          copy.message,
                           textAlign: TextAlign.center,
-                          style: TextStyle(
+                          style: const TextStyle(
                             color: AppColors.textSecondary,
                             fontSize: 14,
                             height: 1.45,
@@ -169,6 +175,36 @@ class SecurityLockdownScreen extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _SecurityLockdownCopy {
+  const _SecurityLockdownCopy({required this.title, required this.message});
+
+  final String title;
+  final String message;
+
+  factory _SecurityLockdownCopy.fromReport(DeviceSecurityReport? report) {
+    final installOnly =
+        report?.hasInstallIntegrityIssue == true &&
+        report?.hasDeviceIntegrityIssue != true;
+
+    if (installOnly) {
+      return const _SecurityLockdownCopy(
+        title: 'Install from Google Play',
+        message:
+            'This copy of Echoproof was not installed from a trusted store or its app signature does not match the expected release. Install or update from Google Play to continue.',
+      );
+    }
+
+    // keep the generic message for rooted, hooked, debugged, or modified
+    // runtime signals. the exact technical reason stays out of the ui so the
+    // screen does not become a checklist for bypass attempts.
+    return const _SecurityLockdownCopy(
+      title: 'Device security required',
+      message:
+          'Echoproof cannot continue on a rooted, jailbroken, or modified device. Close the app and use a secure device to protect your account and verification activity.',
     );
   }
 }

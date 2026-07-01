@@ -23,6 +23,7 @@ import 'core/services/ad_service.dart';
 import 'core/services/account_device_service.dart';
 import 'core/services/app_update_service.dart';
 import 'core/services/app_analytics_service.dart';
+import 'core/services/error_monitoring_service.dart';
 import 'core/services/offline_mutation_outbox.dart';
 import 'core/services/quick_action_service.dart';
 import 'core/services/push_notification_service.dart';
@@ -45,6 +46,10 @@ import 'package:go_router/go_router.dart';
 import 'package:hyper_snackbar/hyper_snackbar.dart';
 
 Future<void> main() async {
+  await ErrorMonitoringService.initialize(appRunner: _bootstrap);
+}
+
+Future<void> _bootstrap() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -67,12 +72,10 @@ Future<void> main() async {
     debugPrint = (String? message, {int? wrapWidth}) {};
   }
 
-  await DeviceSecurity.enforceSecureWindow();
-
   // block rooted hooked repackaged or sideloaded release builds before app state loads
   final securityReport = await DeviceSecurity.inspect();
   if (securityReport.compromised && kReleaseMode) {
-    runApp(const SecurityWarningApp());
+    runApp(SecurityWarningApp(report: securityReport));
     return;
   }
 
@@ -923,14 +926,16 @@ class _AppLifecycleObserver extends WidgetsBindingObserver {
 }
 
 class SecurityWarningApp extends StatelessWidget {
-  const SecurityWarningApp({super.key});
+  const SecurityWarningApp({super.key, this.report});
+
+  final DeviceSecurityReport? report;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       navigatorKey: HyperSnackbar.navigatorKey,
-      home: const SecureScreen(child: SecurityLockdownScreen()),
+      home: SecureScreen(child: SecurityLockdownScreen(report: report)),
     );
   }
 }

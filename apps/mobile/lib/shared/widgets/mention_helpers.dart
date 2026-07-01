@@ -148,7 +148,11 @@ class _CompactMentionSuggestionsState extends State<CompactMentionSuggestions> {
       _measureScheduled = false;
       if (!mounted) return;
       final renderObject = _anchorKey.currentContext?.findRenderObject();
-      if (renderObject is! RenderBox || !renderObject.hasSize) return;
+      if (renderObject is! RenderBox ||
+          !renderObject.attached ||
+          !renderObject.hasSize) {
+        return;
+      }
       final width = renderObject.size.width;
       if ((_anchorWidth ?? -1) == width) return;
       setState(() => _anchorWidth = width);
@@ -286,7 +290,11 @@ class _MentionSuggestionPanel extends StatelessWidget {
 
 _MentionAnchorMetrics? _mentionAnchorMetrics(BuildContext context) {
   final renderObject = context.findRenderObject();
-  if (renderObject is! RenderBox || !renderObject.hasSize) return null;
+  if (renderObject is! RenderBox ||
+      !renderObject.attached ||
+      !renderObject.hasSize) {
+    return null;
+  }
 
   final media = MediaQuery.maybeOf(context);
   if (media == null) return null;

@@ -307,6 +307,78 @@ void main() {
     expect(replyInputSource, contains('hideSuggestionList: true'));
   });
 
+  test('reply source sheet owns its controller through its dismissal', () {
+    final source = File(
+      'lib/features/echo/presentation/screens/echo_replies_screen.dart',
+    ).readAsStringSync();
+
+    expect(source, contains('initialUrl: _evidenceUrl ?? \'\''));
+    expect(source, contains('late final TextEditingController _controller'));
+    expect(source, contains('..removeListener(_queuePreviewUpdate)'));
+    expect(source, contains('..dispose();'));
+    expect(source, isNot(contains('final controller = TextEditingController')));
+  });
+
+  test('reply composer gives narrow screens a dedicated writing row', () {
+    final source = File(
+      'lib/features/echo/presentation/screens/echo_replies_screen.dart',
+    ).readAsStringSync();
+    final replyInputStart = source.indexOf('class _ReplyInputState');
+    final replyInputEnd = source.indexOf(
+      'class _ComposerMetaChip',
+      replyInputStart,
+    );
+    expect(replyInputStart, isNonNegative);
+    expect(replyInputEnd, isNonNegative);
+    final replyInputSource = source.substring(replyInputStart, replyInputEnd);
+
+    expect(replyInputSource, contains('constraints.maxWidth < 460'));
+    expect(replyInputSource, contains('if (compactComposer)'));
+    expect(replyInputSource, contains('fontWeight: FontWeight.w400'));
+  });
+
+  test('reply quote inserts editable markdown without size markers', () {
+    final source = File(
+      'lib/features/echo/presentation/screens/echo_replies_screen.dart',
+    ).readAsStringSync();
+
+    expect(source, contains('String _quoteMarkdownForEditor(String content)'));
+    expect(source, contains(".replaceAll('[large]', '')"));
+    expect(source, contains(".replaceAll('[/large]', '')"));
+    expect(
+      source,
+      contains(".map((line) => line.trim().isEmpty ? '>' : '> \$line')"),
+    );
+    expect(source, contains('controller.value = TextEditingValue('));
+    expect(source, contains('final quoteWasShortened'));
+    expect(source, contains('Quote shortened to leave room for your reply'));
+    expect(
+      source,
+      contains(
+        'final quotedOriginal = _quoteOriginal && _hasQuoteLine(content)',
+      ),
+    );
+    expect(
+      source,
+      contains('quotedEchoId: quotedOriginal ? widget.echoId : null'),
+    );
+    expect(source, isNot(contains('class _ComposerQuoteNotice')));
+  });
+
+  test('reply source sheet delays keyboard focus until its entry settles', () {
+    final source = File(
+      'lib/features/echo/presentation/screens/echo_replies_screen.dart',
+    ).readAsStringSync();
+
+    expect(source, contains('requestFocus: false'));
+    expect(source, contains('late final FocusNode _urlFocusNode'));
+    expect(source, contains('Duration(milliseconds: 220)'));
+    expect(source, contains('_urlFocusNode.requestFocus()'));
+    expect(source, contains('focusNode: _urlFocusNode'));
+    expect(source, contains('final keyboardInset = MediaQuery.viewInsetsOf'));
+    expect(source, contains('availableHeight * 0.96'));
+  });
+
   test('login agreement and email field keep stable layout metrics', () {
     final source = File(
       'lib/features/auth/presentation/screens/login_screen.dart',

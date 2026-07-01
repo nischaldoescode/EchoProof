@@ -27,8 +27,6 @@ import '../../../../shared/widgets/birthday_celebration.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/storage_keys.dart';
 import '../../../../core/localization/app_copy.dart';
-import '../../../../core/services/ad_service.dart';
-import '../../../subscription/presentation/services/subscription_service.dart';
 import '../../../../core/utils/snack.dart';
 import '../../../notifications/presentation/services/notification_service.dart';
 import '../../../../shared/widgets/brand_wordmark.dart';
@@ -47,8 +45,8 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   FeedFilter _filter = const FeedFilter();
   _FeedLane _lane = _FeedLane.forYou;
   int _laneSwitchEpoch = 0;
+  int _handledOwnEchoInsertGeneration = 0;
   bool _hasPlayedInitialFeedStagger = false;
-  Timer? _feedAdTimer;
   DateTime _lastActiveAt = DateTime.now();
 
   Future<void> _maybeTriggerBirthdayEaster() async {
@@ -86,7 +84,6 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
       if (feed.echoes.isEmpty) feed.loadFeed();
       _maybeShowPermissionsOverlay();
       _maybeTriggerBirthdayEaster();
-      _startFeedAdRoutine();
       _maybeShowLinkNotice();
       // rating prompt after enough real use
       Future.delayed(const Duration(seconds: 3), () {
@@ -137,7 +134,6 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _feedAdTimer?.cancel();
     _scrollCtrl.dispose();
     super.dispose();
   }
@@ -148,66 +144,15 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
         state == AppLifecycleState.inactive ||
         state == AppLifecycleState.detached) {
       _lastActiveAt = DateTime.now();
-      _feedAdTimer?.cancel();
       return;
     }
 
     if (state == AppLifecycleState.resumed) {
       final staleFor = DateTime.now().difference(_lastActiveAt);
-      _startFeedAdRoutine();
       if (staleFor >= const Duration(minutes: 15)) {
         context.read<EchoFeedService>().refresh();
       }
     }
-  }
-
-  void _startFeedAdRoutine() {
-    final adService = context.read<AdService>();
-    adService.prepareFeedRoutine();
-    final cooldown = adService.feedRoutineCooldownRemaining;
-    _scheduleFeedAdCheck(
-      cooldown > Duration.zero ? cooldown : const Duration(minutes: 30),
-    );
-  }
-
-  void _scheduleFeedAdCheck(Duration delay) {
-    _feedAdTimer?.cancel();
-    _feedAdTimer = Timer(delay, _tryShowFeedRoutineAd);
-  }
-
-  Future<void> _tryShowFeedRoutineAd() async {
-    if (!mounted) return;
-
-    final routeIsCurrent = ModalRoute.of(context)?.isCurrent ?? false;
-    if (!routeIsCurrent) {
-      _scheduleFeedAdCheck(const Duration(minutes: 1));
-      return;
-    }
-
-    final subscription = context.read<SubscriptionService>();
-    final adService = context.read<AdService>();
-    adService.prepareFeedRoutine();
-
-    if (subscription.isPro || adService.isAdFreeActive) {
-      _scheduleFeedAdCheck(const Duration(minutes: 5));
-      return;
-    }
-
-    if (adService.canShowFeedRoutineAd) {
-      final shown = await adService.showFeedRoutineAd();
-      if (!mounted) return;
-      _scheduleFeedAdCheck(
-        shown ? const Duration(minutes: 30) : const Duration(minutes: 1),
-      );
-      return;
-    }
-
-    final cooldown = adService.feedRoutineCooldownRemaining;
-    _scheduleFeedAdCheck(
-      cooldown > Duration.zero
-          ? cooldown + const Duration(seconds: 10)
-          : const Duration(minutes: 1),
-    );
   }
 
   void _onScroll() {
@@ -273,7 +218,9 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   }
 
   bool _isFollowingCandidate(EchoEntity echo, EchoFeedService feed) {
-    return feed.followingIds.contains(echo.userId) ||
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    return echo.userId == currentUserId ||
+        feed.followingIds.contains(echo.userId) ||
         echo.socialContext != null ||
         echo.previewReplies.any((reply) => reply.isFromFollowed);
   }
@@ -318,6 +265,36 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
     });
   }
 
+  void _handleOwnEchoInserted(EchoFeedService feed) {
+    final generation = feed.ownEchoInsertGeneration;
+    if (generation == 0 || generation == _handledOwnEchoInsertGeneration) {
+      return;
+    }
+    _handledOwnEchoInsertGeneration = generation;
+
+    // own posts should be obvious immediately. a user may have been viewing
+    // following or a narrow filter, so this one-shot reset prevents a freshly
+    // created echo from being technically present but visually hidden.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _lane = _FeedLane.forYou;
+        _filter = const FeedFilter();
+        _laneSwitchEpoch++;
+        _hasPlayedInitialFeedStagger = true;
+      });
+      if (_scrollCtrl.hasClients) {
+        unawaited(
+          _scrollCtrl.animateTo(
+            0,
+            duration: const Duration(milliseconds: 360),
+            curve: Curves.easeOutCubic,
+          ),
+        );
+      }
+    });
+  }
+
   Widget _refreshableState(Widget child) {
     final minHeight =
         MediaQuery.sizeOf(context).height -
@@ -343,6 +320,7 @@ class _FeedScreenState extends State<FeedScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final feed = context.watch<EchoFeedService>();
+    _handleOwnEchoInserted(feed);
     final size = MediaQuery.sizeOf(context);
     final isTablet = size.width > 700;
 

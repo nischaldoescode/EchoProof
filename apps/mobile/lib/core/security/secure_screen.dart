@@ -15,6 +15,7 @@ class SecureScreen extends StatefulWidget {
 
 class _SecureScreenState extends State<SecureScreen> {
   static int _activeLocks = 0;
+  bool _lockHeld = false;
 
   @override
   void initState() {
@@ -30,21 +31,32 @@ class _SecureScreenState extends State<SecureScreen> {
 
   Future<void> _lock() async {
     if (!Platform.isAndroid) return;
+    if (_lockHeld) return;
+    _lockHeld = true;
     _activeLocks += 1;
     try {
       await FlutterWindowManagerPlus.addFlags(
         FlutterWindowManagerPlus.FLAG_SECURE,
       );
-    } catch (_) {}
+    } catch (_) {
+      if (_activeLocks > 0) _activeLocks -= 1;
+      _lockHeld = false;
+    }
   }
 
   Future<void> _unlock() async {
     if (!Platform.isAndroid) return;
+    if (!_lockHeld) return;
+    _lockHeld = false;
     if (_activeLocks > 0) {
       _activeLocks -= 1;
     }
-    // screenshot blocking is global now
-    // never clear the secure flag from a route dispose
+    if (_activeLocks > 0) return;
+    try {
+      await FlutterWindowManagerPlus.clearFlags(
+        FlutterWindowManagerPlus.FLAG_SECURE,
+      );
+    } catch (_) {}
   }
 
   @override

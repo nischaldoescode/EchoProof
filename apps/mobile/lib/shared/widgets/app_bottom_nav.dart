@@ -10,7 +10,6 @@ import '../../app/theme/colors.dart';
 import '../../app/theme/spacing.dart';
 import '../../features/echo/presentation/services/echo_feed_service.dart';
 import '../../features/notifications/presentation/services/notification_service.dart';
-import 'app_banner_ad.dart';
 
 class AppBottomNav extends StatelessWidget {
   const AppBottomNav({
@@ -260,7 +259,10 @@ class AppBottomNav extends StatelessWidget {
                 ),
               ),
             ),
-            const AppBannerAd(),
+            // root navigation stays ad-free so banners cannot sit directly
+            // under high-frequency tab controls and invite accidental taps.
+            // screens that have a natural pause can opt in with the banner
+            // widget directly.
           ],
         ),
       ),
