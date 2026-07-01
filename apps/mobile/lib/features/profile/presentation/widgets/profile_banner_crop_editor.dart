@@ -1,6 +1,5 @@
 // profile banner crop editor
 // @params bytes source image bytes selected by the owner
-// @params sourceName file name used only for a readable editor label
 
 import 'dart:math' as math;
 
@@ -37,7 +36,6 @@ class ProfileBannerCropResult {
 Future<ProfileBannerCropResult?> showProfileBannerCropEditor({
   required BuildContext context,
   required Uint8List bytes,
-  required String sourceName,
   required int imageWidth,
   required int imageHeight,
 }) {
@@ -48,25 +46,35 @@ Future<ProfileBannerCropResult?> showProfileBannerCropEditor({
       pageBuilder: (context, animation, secondaryAnimation) =>
           _ProfileBannerCropEditor(
             bytes: bytes,
-            sourceName: sourceName,
             imageWidth: imageWidth,
             imageHeight: imageHeight,
           ),
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        final curved = CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-          reverseCurve: Curves.easeInCubic,
-        );
-        return FadeTransition(
-          opacity: curved,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0, 0.04),
-              end: Offset.zero,
-            ).animate(curved),
-            child: child,
-          ),
+        final reduceMotion = MediaQuery.disableAnimationsOf(context);
+        return AnimatedBuilder(
+          animation: animation,
+          child: RepaintBoundary(child: child),
+          builder: (context, child) {
+            final raw = animation.value.clamp(0.0, 1.0).toDouble();
+            final progress = Curves.easeOutCubic.transform(raw);
+
+            if (reduceMotion) {
+              return Opacity(opacity: progress, child: child);
+            }
+
+            final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+            final offset = (1 - progress) * 18;
+            final snappedOffset =
+                (offset * devicePixelRatio).roundToDouble() / devicePixelRatio;
+
+            return Opacity(
+              opacity: progress,
+              child: Transform.translate(
+                offset: Offset(0, snappedOffset),
+                child: child,
+              ),
+            );
+          },
         );
       },
       transitionDuration: const Duration(milliseconds: 240),
@@ -78,13 +86,11 @@ Future<ProfileBannerCropResult?> showProfileBannerCropEditor({
 class _ProfileBannerCropEditor extends StatefulWidget {
   const _ProfileBannerCropEditor({
     required this.bytes,
-    required this.sourceName,
     required this.imageWidth,
     required this.imageHeight,
   });
 
   final Uint8List bytes;
-  final String sourceName;
   final int imageWidth;
   final int imageHeight;
 
@@ -300,7 +306,6 @@ class _ProfileBannerCropEditorState extends State<_ProfileBannerCropEditor> {
                             ),
                             const SizedBox(height: AppSpacing.md),
                             _BannerCropMeta(
-                              sourceName: widget.sourceName,
                               imageWidth: widget.imageWidth,
                               imageHeight: widget.imageHeight,
                             ),
@@ -471,28 +476,20 @@ class _ZoomControl extends StatelessWidget {
 }
 
 class _BannerCropMeta extends StatelessWidget {
-  const _BannerCropMeta({
-    required this.sourceName,
-    required this.imageWidth,
-    required this.imageHeight,
-  });
+  const _BannerCropMeta({required this.imageWidth, required this.imageHeight});
 
-  final String sourceName;
   final int imageWidth;
   final int imageHeight;
 
   @override
   Widget build(BuildContext context) {
-    final displayName = sourceName.length > 34
-        ? '${sourceName.substring(0, 31)}...'
-        : sourceName;
-
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 220),
       opacity: 1,
       child: Text(
-        '${context.l('Selected {name}', {'name': displayName})}\n'
-        '${context.l('Output: 1500 x 500, under 1 MB. Original: {size}.', {'size': '$imageWidth x $imageHeight'})}',
+        context.l('Output: 1500 x 500, under 1 MB. Original: {size}.', {
+          'size': '$imageWidth x $imageHeight',
+        }),
         textAlign: TextAlign.center,
         style: GoogleFonts.josefinSans(
           fontSize: 12,

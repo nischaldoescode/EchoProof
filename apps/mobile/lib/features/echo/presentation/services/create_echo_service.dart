@@ -6,12 +6,14 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../data/models/echo_model.dart';
 import '../../domain/entities/echo_entity.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../core/utils/media_file_safety.dart';
 import '../../../../core/utils/sanitizer.dart';
 import '../../../../core/services/onnx_spam_checker.dart';
 import '../../../../core/utils/ai_slop_guard.dart';
+import '../../../../core/services/app_analytics_service.dart';
 
 const _kDraftKey = 'echo_draft';
 
@@ -24,6 +26,7 @@ class CreateEchoService extends ChangeNotifier {
   bool _success = false;
   String? _error;
   int _echoesCreatedThisSession = 0;
+  EchoEntity? _lastCreatedEcho;
 
   String get title => _title;
   String get content => _content;
@@ -34,6 +37,12 @@ class CreateEchoService extends ChangeNotifier {
   bool get success => _success;
   String? get error => _error;
   int get echoesCreatedThisSession => _echoesCreatedThisSession;
+
+  /// holds the inserted echo until the composer hands it to the feed.
+  ///
+  /// the feed uses this local copy as the author's immediate confirmation,
+  /// while normal ranking, realtime, and public-context refreshes catch up.
+  EchoEntity? get lastCreatedEcho => _lastCreatedEcho;
   bool _isPro = false;
   bool get isPro => _isPro;
 
@@ -180,6 +189,7 @@ class CreateEchoService extends ChangeNotifier {
     _error = null;
     _isSubmitting = false;
     _success = false;
+    _lastCreatedEcho = null;
 
     notifyListeners();
   }
@@ -230,13 +240,14 @@ class CreateEchoService extends ChangeNotifier {
         await addMedia(path);
       }
 
+      final selectedCategory = _category!.dbValue;
       final inserted = await client
           .from('echoes')
           .insert({
             'user_id': userId,
             'title': Sanitizer.text(_title),
             'content': Sanitizer.text(_content),
-            'category': _category!.dbValue,
+            'category': selectedCategory,
             'category_detail': _category == EchoCategory.other
                 ? Sanitizer.text(_categoryDetail).trim()
                 : null,
@@ -244,10 +255,28 @@ class CreateEchoService extends ChangeNotifier {
             'status': 'pending_verification',
             'media_urls': _mediaUrls,
           })
-          .select('id')
+          .select('''
+            id, title, content, category, category_detail, status, version,
+            user_id, media_urls, reply_count, proof_count, bond_count,
+            trust_score, confidence_score, controversy_score, report_score,
+            support_count, challenge_count, context_support_count,
+            context_challenge_count, context_score, public_verdict,
+            public_verdict_at, public_context_closes_at,
+            public_context_min_count, public_context_decision_reason, created_at,
+            created_record_tx, created_record_at, solana_status, solana_error,
+            verified_record_tx, verified_record_at,
+            verified_record_status, verified_record_error,
+            users_public!echoes_user_id_fkey!inner(username, display_name, avatar_url, trust_tier, is_pro, is_public)
+          ''')
           .single();
+      final hadMedia = _mediaUrls.isNotEmpty;
+      final insertedRow = Map<String, dynamic>.from(inserted);
+      final insertedUser = Map<String, dynamic>.from(
+        insertedRow['users_public'] as Map,
+      );
+      _lastCreatedEcho = EchoModel.fromRow(insertedRow, insertedUser);
 
-      unawaited(_anchorEchoOnChain(client, inserted['id'] as String));
+      unawaited(_anchorEchoOnChain(client, _lastCreatedEcho!.id));
 
       _echoesCreatedThisSession++;
 
@@ -260,6 +289,10 @@ class CreateEchoService extends ChangeNotifier {
       _category = null;
       _categoryDetail = '';
       _success = true;
+      await AppAnalyticsService.instance.logEvent(
+        'echo_created',
+        parameters: {'category': selectedCategory, 'has_media': hadMedia},
+      );
 
       AppLogger.info('echo: created successfully');
     } on _CooldownException catch (e) {

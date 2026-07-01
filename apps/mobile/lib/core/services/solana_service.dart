@@ -14,6 +14,10 @@ const _rpcUrl = String.fromEnvironment(
   defaultValue: 'https://api.devnet.solana.com',
 );
 
+final RegExp _solanaSignaturePattern = RegExp(
+  r'^[1-9A-HJ-NP-Za-km-z]{64,100}$',
+);
+
 class SolanaWalletAddress {
   const SolanaWalletAddress(this.base58);
   final String base58;
@@ -54,7 +58,7 @@ class SolanaService {
           'method': 'getBalance',
           'params': [
             walletAddress,
-            {'commitment': 'confirmed'}
+            {'commitment': 'confirmed'},
           ],
         }),
       );
@@ -122,8 +126,10 @@ class SolanaService {
     required double confidenceScore,
     required String jwtToken,
   }) async {
-    final contentHash =
-        sha256.convert(utf8.encode(content)).toString().substring(0, 32);
+    final contentHash = sha256
+        .convert(utf8.encode(content))
+        .toString()
+        .substring(0, 32);
     final memo =
         'echoproof:verified:$echoId:$contentHash:${confidenceScore.toStringAsFixed(0)}';
     return writeMemo(memo: memo, jwtToken: jwtToken);
@@ -138,13 +144,48 @@ class SolanaService {
     return writeMemo(memo: memo, jwtToken: jwtToken);
   }
 
-  static String explorerUrl(String signature) {
-    final cluster = _rpcUrl.contains('mainnet')
-        ? ''
-        : _rpcUrl.contains('testnet')
-            ? '?cluster=testnet'
-            : '?cluster=devnet';
-    return 'https://explorer.solana.com/tx/$signature$cluster';
+  /// returns a browser-safe explorer uri for a stored transaction signature.
+  ///
+  /// transaction signatures are stored as database text, so the app validates
+  /// the base58 shape before building the outbound link. this keeps pending,
+  /// corrupted, or unexpected rows from becoming arbitrary redirect targets.
+  static Uri? explorerUri(String? signature, {String rpcUrl = _rpcUrl}) {
+    final normalized = _normalizedSignature(signature);
+    if (normalized == null) return null;
+
+    final cluster = _explorerClusterForRpc(rpcUrl);
+    if (cluster == null) return null;
+
+    return Uri.https(
+      'explorer.solana.com',
+      '/tx/$normalized',
+      cluster == 'mainnet-beta' ? null : {'cluster': cluster},
+    );
+  }
+
+  static String explorerUrl(String signature, {String rpcUrl = _rpcUrl}) {
+    return explorerUri(signature, rpcUrl: rpcUrl)?.toString() ?? '';
+  }
+
+  static bool isValidTransactionSignature(String? signature) {
+    return _normalizedSignature(signature) != null;
+  }
+
+  static String? _normalizedSignature(String? signature) {
+    final value = signature?.trim();
+    if (value == null || value.isEmpty) return null;
+    if (!_solanaSignaturePattern.hasMatch(value)) return null;
+    return value;
+  }
+
+  static String? _explorerClusterForRpc(String rpcUrl) {
+    final value = rpcUrl.toLowerCase();
+    if (value.contains('localhost') || value.contains('127.0.0.1')) {
+      return null;
+    }
+    if (value.contains('mainnet')) return 'mainnet-beta';
+    if (value.contains('testnet')) return 'testnet';
+    return 'devnet';
   }
 
   static String shortSignature(String signature) {

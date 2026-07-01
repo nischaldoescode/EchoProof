@@ -5,8 +5,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../app/theme/colors.dart';
-import 'dart:io' show Platform;
-import 'package:flutter_windowmanager_plus/flutter_windowmanager_plus.dart';
 
 class ImageViewer extends StatefulWidget {
   const ImageViewer({super.key, required this.urls, this.initialIndex = 0});
@@ -45,20 +43,6 @@ class _ImageViewerState extends State<ImageViewer> {
   final TransformationController _transformCtrl = TransformationController();
   bool _isZoomed = false;
 
-  Future<void> _lockScreen() async {
-    if (!Platform.isAndroid) return;
-    try {
-      await FlutterWindowManagerPlus.addFlags(
-        FlutterWindowManagerPlus.FLAG_SECURE,
-      );
-    } catch (_) {}
-  }
-
-  Future<void> _unlockScreen() async {
-    // image routes used to clear flag_secure on dispose
-    // keep it sticky so one viewer cannot reopen screenshots globally
-  }
-
   @override
   void initState() {
     super.initState();
@@ -66,7 +50,6 @@ class _ImageViewerState extends State<ImageViewer> {
         ? 0
         : widget.initialIndex.clamp(0, widget.urls.length - 1).toInt();
     _pageController = PageController(initialPage: _current);
-    _lockScreen();
   }
 
   @override
@@ -77,7 +60,6 @@ class _ImageViewerState extends State<ImageViewer> {
 
   @override
   void dispose() {
-    _unlockScreen();
     _pageController.dispose();
     _transformCtrl.dispose();
     super.dispose();

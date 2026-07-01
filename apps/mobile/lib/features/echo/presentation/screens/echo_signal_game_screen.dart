@@ -17,6 +17,7 @@ import '../../../../core/utils/app_haptics.dart';
 import '../../../../shared/widgets/app_banner_ad.dart';
 import '../../../../shared/widgets/rating_prompt.dart';
 import '../../../subscription/presentation/services/subscription_service.dart';
+import '../services/signal_drift_physics.dart';
 import '../services/signal_drift_score_service.dart';
 
 const _fieldBase = Color(0xFFFCFBF7);
@@ -150,9 +151,14 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
   bool _liteMode = false;
   int _runToken = 0;
   int _slowFrameScore = 0;
+  int _repeatingPlayPathCount = 0;
+  int _axisLockedPathCount = 0;
+  double _laneBreakPolarity = 1.0;
   DateTime? _lastTick;
   DateTime? _runStartedAt;
   DateTime? _lastFeedbackAt;
+  DateTime? _lastPlayPathExitAt;
+  Offset? _lastPlayPathExitVelocity;
   String? _fieldNote;
   String? _unlockedFieldThisRun;
   DateTime? _fieldNoteUntil;
@@ -241,42 +247,51 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
     final widePressure = ((size.width - 520) / 360).clamp(0.0, 1.0).toDouble();
     final tallPressure = ((size.height - 780) / 420).clamp(0.0, 1.0).toDouble();
     return (_arenaDifficulty(size) +
-            compactWidth * 0.28 +
-            compactHeight * 0.16 +
-            widePressure * 0.56 +
-            tallPressure * 0.38)
-        .clamp(1.22, 2.24)
+            compactWidth * 0.16 +
+            compactHeight * 0.10 +
+            widePressure * 0.34 +
+            tallPressure * 0.24)
+        .clamp(1.0, 1.84)
         .toDouble();
   }
 
   List<_SignalReflectorPlan> _createReflectorPlans(Size size) {
     final difficulty = _speedDifficulty(size);
-    final largeShift = ((difficulty - 1) * 16).round();
-    final wideArena = size.width >= 520 || size.height >= 760;
+    final largeShift = ((difficulty - 1) * 5).round();
+    final canUseFifthReflector = size.width >= 390 && size.height >= 560;
+    final canUseSixthReflector = size.width >= 480 && size.height >= 680;
     const patterns = <List<Offset>>[
       [
-        Offset(0.31, 0.43),
-        Offset(0.69, 0.61),
-        Offset(0.50, 0.34),
-        Offset(0.53, 0.53),
+        Offset(0.30, 0.42),
+        Offset(0.70, 0.58),
+        Offset(0.49, 0.33),
+        Offset(0.34, 0.66),
+        Offset(0.68, 0.47),
+        Offset(0.51, 0.72),
       ],
       [
-        Offset(0.57, 0.39),
-        Offset(0.28, 0.58),
-        Offset(0.71, 0.47),
-        Offset(0.45, 0.66),
+        Offset(0.58, 0.39),
+        Offset(0.27, 0.58),
+        Offset(0.72, 0.49),
+        Offset(0.46, 0.67),
+        Offset(0.34, 0.36),
+        Offset(0.64, 0.70),
       ],
       [
         Offset(0.42, 0.52),
-        Offset(0.72, 0.37),
-        Offset(0.30, 0.66),
-        Offset(0.58, 0.55),
+        Offset(0.73, 0.36),
+        Offset(0.29, 0.67),
+        Offset(0.58, 0.57),
+        Offset(0.36, 0.38),
+        Offset(0.70, 0.70),
       ],
       [
-        Offset(0.66, 0.49),
-        Offset(0.35, 0.34),
-        Offset(0.52, 0.64),
-        Offset(0.76, 0.58),
+        Offset(0.67, 0.48),
+        Offset(0.34, 0.34),
+        Offset(0.53, 0.65),
+        Offset(0.74, 0.57),
+        Offset(0.28, 0.46),
+        Offset(0.47, 0.73),
       ],
     ];
     final pattern = patterns[_rng.nextInt(patterns.length)];
@@ -297,10 +312,10 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
       return _SignalReflectorPlan(
         id: id,
         unlockScore: unlock,
-        x: (baseX + (_rng.nextDouble() - 0.5) * 0.16)
+        x: (baseX + (_rng.nextDouble() - 0.5) * 0.10)
             .clamp(0.22, 0.78)
             .toDouble(),
-        y: (anchor.dy + (_rng.nextDouble() - 0.5) * 0.14)
+        y: (anchor.dy + (_rng.nextDouble() - 0.5) * 0.08)
             .clamp(0.30, 0.70)
             .toDouble(),
         widthFactor: widthFactor,
@@ -312,40 +327,59 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
     return [
       plan(
         id: 1,
-        baseUnlock: 3,
-        variance: 6,
+        baseUnlock: 4,
+        variance: 4,
         anchor: pattern[0],
-        widthFactor: 0.27,
-        maxWidth: 144,
-        drift: 0.024,
+        widthFactor: 0.24,
+        maxWidth: 136,
+        drift: 0.016,
       ),
       plan(
         id: 2,
-        baseUnlock: 10,
-        variance: 7,
+        baseUnlock: 12,
+        variance: 5,
         anchor: pattern[1],
-        widthFactor: 0.24,
-        maxWidth: 128,
-        drift: 0.026,
+        widthFactor: 0.21,
+        maxWidth: 122,
+        drift: 0.018,
       ),
       plan(
         id: 3,
-        baseUnlock: 19,
-        variance: 9,
+        baseUnlock: 23,
+        variance: 6,
         anchor: pattern[2],
-        widthFactor: 0.20,
-        maxWidth: 112,
-        drift: 0.021,
+        widthFactor: 0.19,
+        maxWidth: 108,
+        drift: 0.015,
       ),
-      if (wideArena)
+      plan(
+        id: 4,
+        baseUnlock: 37,
+        variance: 7,
+        anchor: pattern[3],
+        widthFactor: 0.17,
+        maxWidth: 96,
+        drift: 0.016,
+      ),
+      if (canUseFifthReflector)
         plan(
-          id: 4,
-          baseUnlock: 14,
-          variance: 11,
-          anchor: pattern[3],
-          widthFactor: 0.18,
-          maxWidth: 106,
-          drift: 0.019,
+          id: 5,
+          baseUnlock: 54,
+          variance: 8,
+          anchor: pattern[4],
+          widthFactor: 0.16,
+          maxWidth: 88,
+          drift: 0.014,
+        ),
+      if (canUseSixthReflector)
+        plan(
+          id: 6,
+          baseUnlock: 72,
+          variance: 10,
+          anchor: pattern[5],
+          widthFactor: 0.14,
+          maxWidth: 78,
+          drift: 0.012,
         ),
     ];
   }
@@ -360,9 +394,9 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
       _signal = Offset(size.width * 0.5, size.height * 0.34);
       _velocity = Offset(
         (_rng.nextBool() ? 1 : -1) *
-            (252 + _rng.nextDouble() * 112) *
+            (262 + _rng.nextDouble() * 122) *
             difficulty,
-        -364 * difficulty,
+        -405 * difficulty,
       );
       _paddleCenter = 0.5;
       _score = 0;
@@ -378,7 +412,12 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
       _dailyCompletedThisRun = false;
       _liteMode = false;
       _slowFrameScore = 0;
+      _repeatingPlayPathCount = 0;
+      _axisLockedPathCount = 0;
+      _laneBreakPolarity = 1.0;
       _lastScoreResult = null;
+      _lastPlayPathExitAt = null;
+      _lastPlayPathExitVelocity = null;
       _unlockedFieldThisRun = null;
       _fieldNote = _dailyCompleted ? _fieldName : _dailyPrompt;
       _fieldNoteUntil = DateTime.now().add(const Duration(milliseconds: 1400));
@@ -437,8 +476,8 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
 
     _syncReflectors(score);
 
-    if (score >= 45) {
-      final drift = math.sin(now.millisecondsSinceEpoch / 210.0) * 13 * dt;
+    if (score >= 42) {
+      final drift = math.sin(now.millisecondsSinceEpoch / 330.0) * 8.5 * dt;
       velocity = Offset(velocity.dx + drift, velocity.dy);
     }
 
@@ -478,12 +517,14 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
       score += 1 + (isPerfect ? 1 : 0) + (combo >= 4 ? 1 : 0) + focusBonus;
       final difficulty = _speedDifficulty(_arena);
       final speedUp = math.min(
-        1.38 + score * 0.016 + (difficulty - 1) * 0.62,
-        2.24,
+        1.16 + score * 0.0098 + (difficulty - 1) * 0.40,
+        1.88,
       );
-      velocity = _capVelocity(
-        Offset(
-          offset * (318 + score * 10.4) * math.min(difficulty, 1.34),
+      velocity = _stabilizePlayableExit(
+        now: now,
+        source: _SignalExitSource.paddle,
+        velocity: Offset(
+          offset * (274 + score * 6.6) * math.min(difficulty, 1.28),
           -velocity.dy.abs() * speedUp,
         ),
       );
@@ -561,41 +602,46 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
     if (_arena == Size.zero) return;
 
     final width = _arena.width;
-    final height = _arena.height;
     final barHeight = width < 390 ? 9.0 : 11.0;
     final targets = <_SignalReflectorSpec>[];
     if (_reflectorPlans.isEmpty) {
       _reflectorPlans.addAll(_createReflectorPlans(_arena));
     }
+    final maxActiveReflectors = _reflectorLimitForScore(score);
     final seconds = DateTime.now().millisecondsSinceEpoch / 1000.0;
 
-    Offset center(double x, double y) {
-      return Offset(
-        (width * x).clamp(58.0, width - 58).toDouble(),
-        (height * y).clamp(112.0, height - 148).toDouble(),
-      );
-    }
-
     for (final plan in _reflectorPlans) {
+      if (targets.length >= maxActiveReflectors) break;
       if (score < plan.unlockScore) continue;
-      if (plan.id == 3 && width < 340) continue;
+      if (plan.id == 5 && width < 390) continue;
       final liveShift = ((score - plan.unlockScore + 1) / 8)
           .clamp(0.0, 1.0)
           .toDouble();
       final phase = seconds * 0.45 + plan.id * 1.7;
       final dx = math.sin(phase) * plan.drift * liveShift;
       final dy = math.cos(phase * 0.8) * plan.drift * 0.45 * liveShift;
-      targets.add(
-        _SignalReflectorSpec(
-          id: plan.id,
-          unlockScore: plan.unlockScore,
-          center: center(plan.x + dx, plan.y + dy),
-          size: Size(
-            math.min(width * plan.widthFactor, plan.maxWidth),
-            barHeight,
-          ),
-        ),
+      final lateGameScale = score >= 76
+          ? 0.84
+          : score >= 56
+          ? 0.91
+          : 1.0;
+      final targetSize = Size(
+        math.min(width * plan.widthFactor, plan.maxWidth) * lateGameScale,
+        barHeight,
       );
+      final candidate = _SignalReflectorSpec(
+        id: plan.id,
+        unlockScore: plan.unlockScore,
+        center: SignalDriftPhysics.clampReflectorCenter(
+          arena: _arena,
+          x: plan.x + dx,
+          y: plan.y + dy,
+          reflectorSize: targetSize,
+        ),
+        size: targetSize,
+      );
+      if (_reflectorTargetsConflict(candidate, targets)) continue;
+      targets.add(candidate);
     }
 
     final previousCount = _reflectors.length;
@@ -604,13 +650,6 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
 
     for (final target in targets) {
       var targetCenter = target.center;
-      if ((targetCenter - _signal).distance < 58) {
-        targetCenter = Offset(
-          targetCenter.dx,
-          (targetCenter.dy - 52).clamp(112.0, height - 148).toDouble(),
-        );
-      }
-
       _SignalReflector? existing;
       for (final reflector in _reflectors) {
         if (reflector.id == target.id) {
@@ -620,6 +659,7 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
       }
 
       if (existing == null) {
+        if ((targetCenter - _signal).distance < 64) continue;
         _reflectors.add(
           _SignalReflector(
             id: target.id,
@@ -629,8 +669,11 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
           ),
         );
       } else {
-        existing.center = targetCenter;
-        existing.size = target.size;
+        existing.center = _settleReflectorCenter(
+          current: existing.center,
+          target: targetCenter,
+        );
+        existing.size = Size.lerp(existing.size, target.size, 0.18)!;
       }
     }
 
@@ -641,6 +684,43 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
     }
   }
 
+  int _reflectorLimitForScore(int score) {
+    return SignalDriftPhysics.reflectorLimitForScore(
+      score: score,
+      arena: _arena,
+    );
+  }
+
+  bool _reflectorTargetsConflict(
+    _SignalReflectorSpec candidate,
+    List<_SignalReflectorSpec> targets,
+  ) {
+    for (final target in targets) {
+      // prevent stacked bars from creating an unavoidable wall during a run.
+      if (SignalDriftPhysics.reflectorTargetsConflict(
+        candidateCenter: candidate.center,
+        candidateSize: candidate.size,
+        targetCenter: target.center,
+        targetSize: target.size,
+      )) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Offset _settleReflectorCenter({
+    required Offset current,
+    required Offset target,
+  }) {
+    final delta = target - current;
+    if (delta.distance <= 0.18) return target;
+    // reflectors drift toward their live target instead of snapping around the
+    // signal. this prevents a visible jitter when the ball skims the spawn
+    // guard or when a paused/resumed run resumes with a different clock phase.
+    return Offset.lerp(current, target, _liteMode ? 0.12 : 0.18)!;
+  }
+
   _ReflectorHit _advanceSignal({
     required DateTime now,
     required Offset signal,
@@ -649,8 +729,8 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
     required double radius,
   }) {
     final travel = velocity.distance * dt;
-    final maxStep = math.max(0.65, radius * 0.055);
-    final stepCap = _liteMode ? 140 : 220;
+    final maxStep = math.max(0.42, radius * 0.035);
+    final stepCap = _liteMode ? 200 : 320;
     final steps = travel <= maxStep
         ? 1
         : math.min(stepCap, math.max(2, (travel / maxStep).ceil()));
@@ -659,7 +739,8 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
     var currentVelocity = velocity;
     var didHit = false;
 
-    // small steps stop fast frames from skipping thin reflectors
+    // small steps stop fast frames from tunneling through thin reflectors.
+    // the cap keeps older phones from spending unbounded work on one frame.
     for (var i = 0; i < steps; i++) {
       final previous = currentSignal;
       currentSignal = previous + currentVelocity * stepDt;
@@ -667,14 +748,29 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
       if (currentSignal.dx <= radius) {
         currentSignal = Offset(radius, currentSignal.dy);
         currentVelocity = Offset(currentVelocity.dx.abs(), currentVelocity.dy);
+        currentVelocity = _stabilizePlayableExit(
+          now: now,
+          source: _SignalExitSource.wall,
+          velocity: currentVelocity,
+        );
       } else if (currentSignal.dx >= _arena.width - radius) {
         currentSignal = Offset(_arena.width - radius, currentSignal.dy);
         currentVelocity = Offset(-currentVelocity.dx.abs(), currentVelocity.dy);
+        currentVelocity = _stabilizePlayableExit(
+          now: now,
+          source: _SignalExitSource.wall,
+          velocity: currentVelocity,
+        );
       }
 
       if (currentSignal.dy <= radius) {
         currentSignal = Offset(currentSignal.dx, radius);
         currentVelocity = Offset(currentVelocity.dx, currentVelocity.dy.abs());
+        currentVelocity = _stabilizePlayableExit(
+          now: now,
+          source: _SignalExitSource.ceiling,
+          velocity: currentVelocity,
+        );
       }
 
       final reflectorHit = _resolveReflectorHit(
@@ -705,58 +801,70 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
   }) {
     for (final reflector in _reflectors) {
       final lastHit = reflector.lastHitAt;
-      if (lastHit != null && now.difference(lastHit).inMilliseconds < 20) {
+      if (lastHit != null && now.difference(lastHit).inMilliseconds < 64) {
         final stillSeparating = reflector.rect
-            .inflate(radius + 14)
+            .inflate(radius + 6)
             .contains(previous);
-        final movingBackIn = _movingTowardRect(
+        final movingAway = _movingAwayFromRect(
           previous,
           velocity,
           reflector.rect,
         );
-        if (!stillSeparating || movingBackIn) {
+        if (!stillSeparating || !movingAway) {
           reflector.lastHitAt = null;
         }
       }
       if (lastHit != null &&
           reflector.lastHitAt != null &&
-          now.difference(lastHit).inMilliseconds < 20) {
+          now.difference(lastHit).inMilliseconds < 64) {
         continue;
       }
 
       final rect = reflector.rect;
-      final expandedRect = rect.inflate(radius + 18);
+      final expandedRect = rect.inflate(_reflectorCollisionPadding(radius));
+      final forgeHit = SignalDriftPhysics.forgeCircleOverlapsRect(
+        circleCenter: signal,
+        circleRadius: radius,
+        rect: rect.inflate(_liteMode ? 16 : 18),
+      );
       final sweepHit =
+          _sweptCircleRectHit(previous, signal, rect, radius) ??
           _segmentRectHit(previous, signal, expandedRect) ??
           _segmentBandHit(previous, signal, expandedRect);
-      final hitPath = expandedRect.contains(signal) || sweepHit != null;
+      final hitPath =
+          forgeHit || expandedRect.contains(signal) || sweepHit != null;
       if (!hitPath) continue;
 
       var nextSignal = signal;
       var nextVelocity = velocity;
       final hitNormal = sweepHit?.normal;
+      var exitNormal = hitNormal ?? Offset.zero;
 
       if (hitNormal != null && hitNormal.dy < 0) {
+        exitNormal = const Offset(0, -1);
         nextSignal = Offset(
           previous.dx + (signal.dx - previous.dx) * sweepHit!.time,
-          rect.top - radius - 1,
+          expandedRect.top - 1,
         );
         nextVelocity = Offset(velocity.dx, -velocity.dy.abs());
       } else if (hitNormal != null && hitNormal.dy > 0) {
+        exitNormal = const Offset(0, 1);
         nextSignal = Offset(
           previous.dx + (signal.dx - previous.dx) * sweepHit!.time,
-          rect.bottom + radius + 1,
+          expandedRect.bottom + 1,
         );
         nextVelocity = Offset(velocity.dx, velocity.dy.abs());
       } else if (hitNormal != null && hitNormal.dx < 0) {
+        exitNormal = const Offset(-1, 0);
         nextSignal = Offset(
-          rect.left - radius - 1,
+          expandedRect.left - 1,
           previous.dy + (signal.dy - previous.dy) * sweepHit!.time,
         );
         nextVelocity = Offset(-velocity.dx.abs(), velocity.dy);
       } else if (hitNormal != null && hitNormal.dx > 0) {
+        exitNormal = const Offset(1, 0);
         nextSignal = Offset(
-          rect.right + radius + 1,
+          expandedRect.right + 1,
           previous.dy + (signal.dy - previous.dy) * sweepHit!.time,
         );
         nextVelocity = Offset(velocity.dx.abs(), velocity.dy);
@@ -767,9 +875,10 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
             .toDouble();
         if (yWeight >= xWeight) {
           final direction = signal.dy < rect.center.dy ? -1.0 : 1.0;
+          exitNormal = Offset(0, direction);
           nextSignal = Offset(
             signal.dx,
-            direction < 0 ? rect.top - radius - 1 : rect.bottom + radius + 1,
+            direction < 0 ? expandedRect.top - 1 : expandedRect.bottom + 1,
           );
           nextVelocity = Offset(
             velocity.dx,
@@ -777,8 +886,9 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
           );
         } else {
           final direction = signal.dx < rect.center.dx ? -1.0 : 1.0;
+          exitNormal = Offset(direction, 0);
           nextSignal = Offset(
-            direction < 0 ? rect.left - radius - 1 : rect.right + radius + 1,
+            direction < 0 ? expandedRect.left - 1 : expandedRect.right + 1,
             signal.dy,
           );
           nextVelocity = Offset(
@@ -791,8 +901,19 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
       final bias = ((signal.dx - rect.center.dx) / (rect.width / 2))
           .clamp(-1.0, 1.0)
           .toDouble();
-      nextVelocity = _capVelocity(
-        Offset(nextVelocity.dx + bias * 72, nextVelocity.dy),
+      nextVelocity = _stabilizeReflectorExit(
+        reflector: reflector,
+        rect: rect,
+        signal: signal,
+        velocity: Offset(nextVelocity.dx + bias * 46, nextVelocity.dy),
+        now: now,
+      );
+      nextSignal = _escapeReflectorBand(
+        signal: nextSignal,
+        band: expandedRect,
+        normal: exitNormal,
+        radius: radius,
+        repeatCount: reflector.repeatingExitCount,
       );
       reflector.lastHitAt = now;
       reflector.hitUntil = now.add(const Duration(milliseconds: 150));
@@ -810,116 +931,253 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
     return _ReflectorHit(signal: signal, velocity: velocity, hit: false);
   }
 
-  _SegmentRectHit? _segmentRectHit(Offset start, Offset end, Rect rect) {
-    final delta = end - start;
-    var tMin = 0.0;
-    var tMax = 1.0;
-    var normal = Offset.zero;
-
-    bool axis({
-      required double startValue,
-      required double deltaValue,
-      required double min,
-      required double max,
-      required Offset nearNormal,
-      required Offset farNormal,
-    }) {
-      if (deltaValue.abs() < 0.0001) {
-        return startValue >= min && startValue <= max;
-      }
-
-      var near = (min - startValue) / deltaValue;
-      var far = (max - startValue) / deltaValue;
-      var nearSide = nearNormal;
-      var farSide = farNormal;
-      if (near > far) {
-        final tmp = near;
-        near = far;
-        far = tmp;
-        final tmpSide = nearSide;
-        nearSide = farSide;
-        farSide = tmpSide;
-      }
-
-      if (near > tMin) {
-        tMin = near;
-        normal = nearSide;
-      }
-      if (far < tMax) {
-        tMax = far;
-      }
-      return tMin <= tMax;
-    }
-
-    final hitX = axis(
-      startValue: start.dx,
-      deltaValue: delta.dx,
-      min: rect.left,
-      max: rect.right,
-      nearNormal: const Offset(-1, 0),
-      farNormal: const Offset(1, 0),
-    );
-    if (!hitX) return null;
-    final hitY = axis(
-      startValue: start.dy,
-      deltaValue: delta.dy,
-      min: rect.top,
-      max: rect.bottom,
-      nearNormal: const Offset(0, -1),
-      farNormal: const Offset(0, 1),
-    );
-    if (!hitY || tMin < 0 || tMin > 1) return null;
-    return _SegmentRectHit(tMin, normal);
+  SignalDriftSegmentHit? _segmentRectHit(Offset start, Offset end, Rect rect) {
+    return SignalDriftPhysics.segmentRectHit(start, end, rect);
   }
 
-  _SegmentRectHit? _segmentBandHit(Offset start, Offset end, Rect rect) {
-    final delta = end - start;
-    _SegmentRectHit? best;
-
-    void consider(double t, Offset normal) {
-      if (t < 0 || t > 1) return;
-      final point = start + delta * t;
-      if (!rect.contains(point)) return;
-      if (best == null || t < best!.time) {
-        best = _SegmentRectHit(t, normal);
-      }
-    }
-
-    // fallback for very fast frames crossing a thin reflector band
-    if (delta.dy.abs() > 0.0001) {
-      consider((rect.top - start.dy) / delta.dy, const Offset(0, -1));
-      consider((rect.bottom - start.dy) / delta.dy, const Offset(0, 1));
-    }
-    if (delta.dx.abs() > 0.0001) {
-      consider((rect.left - start.dx) / delta.dx, const Offset(-1, 0));
-      consider((rect.right - start.dx) / delta.dx, const Offset(1, 0));
-    }
-    return best;
+  SignalDriftSegmentHit? _segmentBandHit(Offset start, Offset end, Rect rect) {
+    return SignalDriftPhysics.segmentBandHit(start, end, rect);
   }
 
-  bool _movingTowardRect(Offset point, Offset velocity, Rect rect) {
-    final nearest = Offset(
-      point.dx.clamp(rect.left, rect.right).toDouble(),
-      point.dy.clamp(rect.top, rect.bottom).toDouble(),
+  SignalDriftSegmentHit? _sweptCircleRectHit(
+    Offset start,
+    Offset end,
+    Rect rect,
+    double radius,
+  ) {
+    return SignalDriftPhysics.sweptCircleRectHit(
+      start: start,
+      end: end,
+      rect: rect,
+      radius: radius,
+      liteMode: _liteMode,
     );
-    final toRect = nearest - point;
-    if (toRect.distanceSquared <= 0.01) return true;
-    return velocity.dx * toRect.dx + velocity.dy * toRect.dy > 0;
+  }
+
+  double _reflectorCollisionPadding(double radius) {
+    // the painted reflector is visually thin, so collision uses the signal
+    // radius plus a small tolerance. this favors expected deflections over a
+    // strict mathematical edge that can look like the ball passed through.
+    return SignalDriftPhysics.reflectorCollisionPadding(
+      radius,
+      liteMode: _liteMode,
+    );
+  }
+
+  Offset _escapeReflectorBand({
+    required Offset signal,
+    required Rect band,
+    required Offset normal,
+    required double radius,
+    required int repeatCount,
+  }) {
+    // collision is tested against the inflated band, not the painted bar.
+    // placing the ball outside that same band prevents a second substep from
+    // immediately seeing the old reflector as a fresh hit and trapping the run.
+    return SignalDriftPhysics.escapeReflectorBand(
+      signal: signal,
+      band: band,
+      normal: normal,
+      radius: radius,
+      arena: _arena,
+      repeatCount: repeatCount,
+    );
+  }
+
+  Offset _stabilizeReflectorExit({
+    required _SignalReflector reflector,
+    required Rect rect,
+    required Offset signal,
+    required Offset velocity,
+    required DateTime now,
+  }) {
+    var adjusted = velocity;
+    final previous = reflector.lastExitVelocity;
+    final previousAt = reflector.lastExitAt;
+    if (previous != null && previousAt != null) {
+      final recent = now.difference(previousAt).inMilliseconds < 1500;
+      final similarExit = _velocitySimilarity(previous, velocity) > 0.94;
+      reflector.repeatingExitCount = recent && similarExit
+          ? math.min(4, reflector.repeatingExitCount + 1)
+          : 0;
+    } else {
+      reflector.repeatingExitCount = 0;
+    }
+
+    if (reflector.repeatingExitCount > 0 && velocity.distance > 0.001) {
+      final horizontalSign = velocity.dx == 0 ? 1.0 : -velocity.dx.sign;
+      final radians = (0.055 + reflector.repeatingExitCount * 0.028)
+          .clamp(0.055, 0.14)
+          .toDouble();
+      final edgeBias = ((signal.dx - rect.center.dx) / (rect.width / 2))
+          .clamp(-1.0, 1.0)
+          .toDouble();
+      // repeated exits are nudged toward a slightly steeper angle, with a
+      // small edge bias so the correction still follows where the player hit.
+      adjusted = _rotateVelocity(velocity, horizontalSign * radians);
+      adjusted = Offset(
+        adjusted.dx + edgeBias * (24 + reflector.repeatingExitCount * 8),
+        adjusted.dy,
+      );
+    }
+
+    adjusted = _stabilizePlayableExit(
+      now: now,
+      source: _SignalExitSource.reflector,
+      velocity: adjusted,
+    );
+    reflector.lastExitVelocity = adjusted;
+    reflector.lastExitAt = now;
+    return adjusted;
+  }
+
+  Offset _stabilizePlayableExit({
+    required DateTime now,
+    required _SignalExitSource source,
+    required Offset velocity,
+  }) {
+    var adjusted = _capVelocity(velocity);
+    adjusted = _capVelocity(
+      _applyNaturalPaceVariation(source: source, velocity: adjusted),
+    );
+    final previous = _lastPlayPathExitVelocity;
+    final previousAt = _lastPlayPathExitAt;
+    if (previous != null && previousAt != null) {
+      final recent = now.difference(previousAt).inMilliseconds < 1800;
+      final sameLane = _laneSimilarity(previous, adjusted) > 0.975;
+      _repeatingPlayPathCount = recent && sameLane
+          ? math.min(5, _repeatingPlayPathCount + 1)
+          : math.max(0, _repeatingPlayPathCount - 1);
+    } else {
+      _repeatingPlayPathCount = 0;
+    }
+
+    final verticalLock =
+        adjusted.dx.abs() < math.max(54.0, adjusted.dy.abs() * 0.095);
+    final horizontalLock =
+        adjusted.dy.abs() < math.max(120.0, adjusted.dx.abs() * 0.22);
+    _axisLockedPathCount = verticalLock || horizontalLock
+        ? math.min(5, _axisLockedPathCount + 1)
+        : math.max(0, _axisLockedPathCount - 1);
+
+    final pressure = math.max(_repeatingPlayPathCount, _axisLockedPathCount);
+    if (pressure > 0 && adjusted.distance > 0.001) {
+      final hasHorizontalDirection = adjusted.dx.abs() > 1;
+      final sign = hasHorizontalDirection
+          ? -adjusted.dx.sign
+          : _laneBreakPolarity;
+      _laneBreakPolarity = -_laneBreakPolarity;
+      final sourceWeight = source == _SignalExitSource.paddle ? 0.75 : 1.0;
+      final radians = ((0.034 + pressure * 0.018) * sourceWeight)
+          .clamp(0.026, 0.12)
+          .toDouble();
+      final rotated = _rotateVelocity(adjusted, sign * radians);
+      final minHorizontal = (rotated.dy.abs() * 0.13)
+          .clamp(62.0, _liteMode ? 124.0 : 154.0)
+          .toDouble();
+      // lane correction is shared by wall, ceiling, paddle, and reflector
+      // exits. it breaks repeated slopes and near-straight paths while keeping
+      // the same speed, so the result feels guided instead of random.
+      adjusted = _capVelocity(
+        _withHorizontalFloor(
+          velocity: rotated,
+          minHorizontal: minHorizontal,
+          sign: sign,
+        ),
+      );
+    }
+
+    _lastPlayPathExitVelocity = adjusted;
+    _lastPlayPathExitAt = now;
+    return adjusted;
+  }
+
+  Offset _applyNaturalPaceVariation({
+    required _SignalExitSource source,
+    required Offset velocity,
+  }) {
+    if (_score < 6 || velocity.distance <= 0.001) return velocity;
+    final pressure = ((_score - 6) / 34).clamp(0.18, 1.0).toDouble();
+    final sourceScale = switch (source) {
+      _SignalExitSource.paddle => 0.050,
+      _SignalExitSource.reflector => 0.042,
+      _SignalExitSource.wall => 0.030,
+      _SignalExitSource.ceiling => 0.024,
+    };
+    final signed = (_rng.nextDouble() - 0.5) * sourceScale * pressure;
+    final speedLift = 1 + (_rng.nextDouble() * 0.018 * pressure);
+    // after the first few points, small per-hit variation keeps the game from
+    // becoming a memorized slope exercise. the lift is tiny and capped later,
+    // so it increases tension without creating sudden unfair jumps.
+    return _rotateVelocity(velocity * speedLift, signed);
+  }
+
+  bool _movingAwayFromRect(Offset point, Offset velocity, Rect rect) {
+    return SignalDriftPhysics.movingAwayFromRect(point, velocity, rect);
+  }
+
+  double _laneSimilarity(Offset a, Offset b) {
+    return SignalDriftPhysics.laneSimilarity(a, b);
+  }
+
+  Offset _withHorizontalFloor({
+    required Offset velocity,
+    required double minHorizontal,
+    required double sign,
+  }) {
+    return SignalDriftPhysics.withHorizontalFloor(
+      velocity: velocity,
+      minHorizontal: minHorizontal,
+      sign: sign,
+    );
+  }
+
+  double _velocitySimilarity(Offset a, Offset b) {
+    return SignalDriftPhysics.velocitySimilarity(a, b);
+  }
+
+  Offset _rotateVelocity(Offset velocity, double radians) {
+    return SignalDriftPhysics.rotateVelocity(velocity, radians);
   }
 
   Offset _capVelocity(Offset velocity) {
     final difficulty = _speedDifficulty(_arena);
-    final baseMaxSpeed = _liteMode ? 820.0 : 1020.0;
+    final baseMaxSpeed = _liteMode ? 930.0 : 1210.0;
     final maxSpeed = math.min(
       baseMaxSpeed * difficulty,
-      _liteMode ? 1040.0 : 1480.0,
+      _liteMode ? 1160.0 : 1575.0,
     );
     final speed = velocity.distance;
     var capped = speed > maxSpeed ? velocity * (maxSpeed / speed) : velocity;
-    final minVertical = 224.0 * math.min(difficulty, 1.36);
+    // keep vertical travel dominant so late-game play reads as an arc instead
+    // of a shallow wall-to-wall zigzag. this also protects split-screen sizes
+    // where the arena is short and a tiny angle can become unfair quickly.
+    final minVertical = 314.0 * math.min(difficulty, 1.30);
     if (capped.dy.abs() < minVertical) {
       final direction = capped.dy < 0 ? -1.0 : 1.0;
       capped = Offset(capped.dx, direction * minVertical);
+    }
+    final speedBeforeHorizontalCap = capped.distance;
+    final maxHorizontal = (capped.dy.abs() * 0.70)
+        .clamp(190.0, _liteMode ? 550.0 : 710.0)
+        .toDouble();
+    if (capped.dx.abs() > maxHorizontal) {
+      final direction = capped.dx < 0 ? -1.0 : 1.0;
+      final verticalDirection = capped.dy < 0 ? -1.0 : 1.0;
+      final preservedVertical = math.sqrt(
+        math.max(
+          minVertical * minVertical,
+          speedBeforeHorizontalCap * speedBeforeHorizontalCap -
+              maxHorizontal * maxHorizontal,
+        ),
+      );
+      // horizontal limiting should change the angle, not drain speed. when a
+      // reflector exit is too shallow, the removed horizontal energy is folded
+      // into vertical travel so the ball keeps the same perceived pace.
+      capped = Offset(
+        direction * maxHorizontal,
+        verticalDirection * preservedVertical,
+      );
     }
     return capped;
   }
@@ -1180,21 +1438,21 @@ class _EchoSignalGameScreenState extends State<EchoSignalGameScreen>
   }
 
   double get _signalRadius {
-    if (_score >= 45) return 10.5;
-    if (_score >= 25) return 11.5;
-    return 13;
+    if (_score >= 55) return 9.6;
+    if (_score >= 28) return 10.6;
+    return 12.0;
   }
 
   double _paddleWidth(double width) {
-    final base = width.clamp(320.0, 760.0).toDouble() * 0.25;
+    final base = width.clamp(320.0, 760.0).toDouble() * 0.235;
     final difficulty = _arena == Size.zero
         ? 1.0
         : _arenaDifficulty(Size(width, _arena.height));
     final scoreScale = switch (_score) {
-      >= 65 => 0.64,
-      >= 44 => 0.70,
-      >= 26 => 0.76,
-      >= 14 => 0.84,
+      >= 72 => 0.65,
+      >= 48 => 0.71,
+      >= 28 => 0.78,
+      >= 14 => 0.85,
       >= 6 => 0.92,
       _ => 1.0,
     };
@@ -1557,6 +1815,9 @@ class _SignalReflector {
   Size size;
   DateTime? lastHitAt;
   DateTime? hitUntil;
+  DateTime? lastExitAt;
+  Offset? lastExitVelocity;
+  int repeatingExitCount = 0;
 
   Rect get rect =>
       Rect.fromCenter(center: center, width: size.width, height: size.height);
@@ -1574,12 +1835,7 @@ class _ReflectorHit {
   final bool hit;
 }
 
-class _SegmentRectHit {
-  const _SegmentRectHit(this.time, this.normal);
-
-  final double time;
-  final Offset normal;
-}
+enum _SignalExitSource { wall, ceiling, paddle, reflector }
 
 // paints a calm field with brief feedback instead of constant arcade glow
 class _SignalGamePainter extends CustomPainter {

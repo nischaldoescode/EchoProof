@@ -9,6 +9,9 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/utils/logger.dart';
+import '../../../../core/services/app_analytics_service.dart';
+import '../../../../core/services/connectivity_service.dart';
+import '../../../../core/services/offline_mutation_outbox.dart';
 import '../../data/models/echo_model.dart';
 import '../../domain/entities/echo_entity.dart';
 
@@ -83,6 +86,20 @@ class BookmarkService extends ChangeNotifier {
     await _writeLocal(userId);
     notifyListeners();
 
+    if (!ConnectivityService.instance.isOnline) {
+      await OfflineMutationOutbox.instance.setBookmark(
+        echoId: echoId,
+        saved: nextSaved,
+      );
+      unawaited(
+        AppAnalyticsService.instance.logEvent(
+          'bookmark_changed',
+          parameters: {'saved': nextSaved, 'queued_offline': true},
+        ),
+      );
+      return true;
+    }
+
     if (!_serverAvailable) return true;
     try {
       if (nextSaved) {
@@ -97,21 +114,24 @@ class BookmarkService extends ChangeNotifier {
             .eq('user_id', userId)
             .eq('echo_id', echoId);
       }
+      unawaited(
+        AppAnalyticsService.instance.logEvent(
+          'bookmark_changed',
+          parameters: {'saved': nextSaved, 'queued_offline': false},
+        ),
+      );
       return true;
     } on PostgrestException catch (e) {
       _serverAvailable = e.code != '42P01' && e.code != 'PGRST205';
       AppLogger.warn('bookmarks: remote toggle skipped ${e.code}');
       return true;
     } catch (e) {
-      if (nextSaved) {
-        _ids.remove(echoId);
-      } else {
-        _ids.add(echoId);
-      }
-      await _writeLocal(userId);
-      notifyListeners();
-      AppLogger.warn('bookmarks: toggle failed $e');
-      return false;
+      await OfflineMutationOutbox.instance.setBookmark(
+        echoId: echoId,
+        saved: nextSaved,
+      );
+      AppLogger.warn('bookmarks: queued after remote failure $e');
+      return true;
     }
   }
 

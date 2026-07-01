@@ -57,9 +57,12 @@ signingConfigs {
                 isMinifyEnabled = true
             isShrinkResources = true
 
+            // the local rules file is intentionally ignored because it can carry
+            // release-only hardening choices. the file name is safe to reference,
+            // while the actual rules stay local to the machine that builds.
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
             )
 
         }

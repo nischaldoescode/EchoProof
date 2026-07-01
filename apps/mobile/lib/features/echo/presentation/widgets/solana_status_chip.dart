@@ -2,11 +2,11 @@
 // @params none
 
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../../../core/services/solana_service.dart';
+import '../../../../core/utils/link_launcher.dart';
 
 class SolanaStatusChip extends StatelessWidget {
   const SolanaStatusChip({
@@ -26,39 +26,51 @@ class SolanaStatusChip extends StatelessWidget {
   final Future<void> Function()? onRetry;
   final bool isRetrying;
 
-  bool get _isAnchored =>
-      (signature != null && signature!.isNotEmpty) || status == 'anchored';
-
   @override
   Widget build(BuildContext context) {
-    final canRetry = !_isAnchored && onRetry != null;
-    final normalized =
-        isRetrying ? 'recording' : (_isAnchored ? 'anchored' : status);
+    final explorerUri = SolanaService.explorerUri(signature);
+    final hasOpenableSignature = explorerUri != null;
+    final hasStoredSignature = signature?.trim().isNotEmpty == true;
+    final anchoredWithoutLink = status == 'anchored' && !hasOpenableSignature;
+    final canRetry = !hasStoredSignature && onRetry != null;
+    final normalized = isRetrying
+        ? 'recording'
+        : hasOpenableSignature
+        ? 'anchored'
+        : anchoredWithoutLink
+        ? 'record_unavailable'
+        : status;
     final (text, icon, color, bg) = switch (normalized) {
       'anchored' => (
-          '$label anchored',
-          Icons.hub_outlined,
-          AppColors.fernGreenDark,
-          AppColors.fernGreenLight,
-        ),
+        '$label anchored',
+        Icons.hub_outlined,
+        AppColors.fernGreenDark,
+        AppColors.fernGreenLight,
+      ),
       'recording' => (
-          '$label recording',
-          Icons.sync_rounded,
-          const Color(0xFF6B4FA0),
-          const Color(0xFFF3EEF9),
-        ),
+        '$label recording',
+        Icons.sync_rounded,
+        const Color(0xFF6B4FA0),
+        const Color(0xFFF3EEF9),
+      ),
       'failed' => (
-          canRetry ? '$label retry' : '$label delayed',
-          canRetry ? Icons.refresh_rounded : Icons.warning_amber_rounded,
-          AppColors.sunsetCoralDark,
-          AppColors.sunsetCoralLight,
-        ),
+        canRetry ? '$label retry' : '$label delayed',
+        canRetry ? Icons.refresh_rounded : Icons.warning_amber_rounded,
+        AppColors.sunsetCoralDark,
+        AppColors.sunsetCoralLight,
+      ),
+      'record_unavailable' => (
+        canRetry ? '$label retry' : '$label delayed',
+        canRetry ? Icons.refresh_rounded : Icons.link_off_rounded,
+        AppColors.sunsetCoralDark,
+        AppColors.sunsetCoralLight,
+      ),
       _ => (
-          canRetry ? '$label queued' : '$label pending',
-          canRetry ? Icons.refresh_rounded : Icons.schedule_rounded,
-          AppColors.textTertiary,
-          AppColors.softSand,
-        ),
+        canRetry ? '$label queued' : '$label pending',
+        canRetry ? Icons.refresh_rounded : Icons.schedule_rounded,
+        AppColors.textTertiary,
+        AppColors.softSand,
+      ),
     };
 
     final child = AnimatedContainer(
@@ -86,7 +98,7 @@ class SolanaStatusChip extends StatelessWidget {
               fontFamily: AppTypography.fontFamily,
             ),
           ),
-          if (signature != null && signature!.isNotEmpty) ...[
+          if (hasOpenableSignature) ...[
             const SizedBox(width: 5),
             Icon(
               Icons.open_in_new_rounded,
@@ -105,7 +117,7 @@ class SolanaStatusChip extends StatelessWidget {
       ),
     );
 
-    if (signature == null || signature!.isEmpty) {
+    if (!hasOpenableSignature) {
       if (!canRetry || isRetrying) return child;
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -117,10 +129,11 @@ class SolanaStatusChip extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () async {
-        final uri = Uri.parse(SolanaService.explorerUrl(signature!));
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-        }
+        await launchExternalUrlWithFallback(
+          context,
+          explorerUri.toString(),
+          errorMessage: 'Could not open the public record.',
+        );
       },
       child: child,
     );

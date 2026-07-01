@@ -3,6 +3,9 @@
 // these are speed bumps, not walls a determined attacker can bypass them
 // the real security is in supabase rls + server-side validation
 // never rely on client-side security as the sole protection for sensitive data
+// magisk, zygisk, revanced-style patches, and custom roms can spoof many local
+// checks. use a server-verified play integrity verdict for high-risk actions
+// when the backend needs stronger proof of app and device integrity.
 
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -54,6 +57,16 @@ abstract final class DeviceSecurity {
       '/system/app/SuperSU.apk',
       '/system/xbin/busybox',
       '/cache/magisk.log',
+      '/data/adb/modules',
+      '/data/adb/zygisk',
+      '/data/adb/ksu',
+      '/data/adb/ap',
+      '/data/adb/shamiko',
+      '/system/bin/magisk',
+      '/system/xbin/daemonsu',
+      '/su/bin/su',
+      '/system/bin/.ext/.su',
+      '/system/etc/init.d/99SuperSUDaemon',
     ];
 
     if (_hasAnyPath(rootPaths, 'root')) return true;
@@ -119,6 +132,29 @@ abstract final class DeviceSecurity {
     }
   }
 
+  /// returns the android installer package without running the full security scan.
+  ///
+  /// this is intentionally narrow because launch and resume checks call it more
+  /// often than the lockdown gate. root, hook, mount, and signature probes stay
+  /// in inspect(), while play-only features can cheaply skip themselves on adb,
+  /// shared apk, missing installer, and device-restore installs.
+  static Future<String> androidInstallerPackageName() async {
+    if (!Platform.isAndroid) return '';
+    try {
+      final installer = await _channel.invokeMethod<String>(
+        'installerPackageName',
+      );
+      return installer ?? '';
+    } catch (e) {
+      AppLogger.warn('security: installer lookup failed $e');
+      return '';
+    }
+  }
+
+  static bool isTrustedPlayInstallerPackage(String installer) {
+    return _trustedPlayInstaller(installer);
+  }
+
   static Future<DeviceSecurityReport> inspect() async {
     if (kDebugMode || !_strictDeviceSecurity) {
       return const DeviceSecurityReport(compromised: false);
@@ -143,7 +179,7 @@ abstract final class DeviceSecurity {
       final installer = _asString(native['installerPackageName']);
       if (_requirePlayInstaller && !_trustedPlayInstaller(installer)) {
         reasons.add(
-          installer.isEmpty ? 'installer_missing' : 'installer_$installer',
+          installer.isEmpty ? 'installer_missing' : 'installer_untrusted',
         );
       }
 
@@ -152,6 +188,21 @@ abstract final class DeviceSecurity {
 
       final nativeRoots = _asStringList(native['rootIndicators']);
       if (nativeRoots.isNotEmpty) reasons.add('native_root_indicator');
+
+      final mounts = _asStringList(native['mountIndicators']);
+      if (mounts.isNotEmpty) reasons.add('modified_mount_state');
+
+      final buildTags = _asStringList(native['dangerousBuildTags']);
+      if (buildTags.isNotEmpty) reasons.add('unsafe_android_build');
+
+      if (_asBool(native['suProbe'])) {
+        reasons.add('su_binary_available');
+      }
+
+      final tracerPid = _asInt(native['tracerPid']);
+      if (tracerPid > 0) {
+        reasons.add('native_tracer_attached');
+      }
 
       final expected = _normalizeHash(_expectedAndroidCertSha256);
       if (expected.isNotEmpty) {
@@ -196,6 +247,8 @@ abstract final class DeviceSecurity {
 
   static String _asString(Object? value) => value is String ? value : '';
 
+  static int _asInt(Object? value) => value is int ? value : 0;
+
   static List<String> _asStringList(Object? value) {
     if (value is List) {
       return value.whereType<String>().toList(growable: false);
@@ -223,4 +276,16 @@ class DeviceSecurityReport {
   final bool compromised;
   final List<String> reasons;
   final Map<String, Object?> nativeSignals;
+
+  bool get hasInstallIntegrityIssue => reasons.any(_installIntegrityReasons);
+
+  bool get hasDeviceIntegrityIssue =>
+      reasons.any((reason) => !_installIntegrityReasons(reason));
+
+  static bool _installIntegrityReasons(String reason) {
+    return reason == 'installer_missing' ||
+        reason == 'installer_untrusted' ||
+        reason == 'signature_mismatch' ||
+        reason == 'package_mismatch';
+  }
 }

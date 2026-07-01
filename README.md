@@ -11,7 +11,6 @@ High-signal echoes get verified on-chain. Built with Flutter + Supabase.
 
 [![Android](https://img.shields.io/badge/Get%20it%20on-Google%20Play-3DDC84?style=flat-square&logo=google-play&logoColor=white)](https://play.google.com/store/apps/details?id=com.echoproof.app)
 [![Flutter](https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter&logoColor=white)](https://flutter.dev)
-[![Supabase](https://img.shields.io/badge/Supabase-backend-3ECF8E?style=flat-square&logo=supabase&logoColor=white)](https://supabase.com)
 [![Solana](https://img.shields.io/badge/Solana-on--chain-9945FF?style=flat-square&logo=solana&logoColor=white)](https://solana.com)
 [![License](https://img.shields.io/badge/license-private-gray?style=flat-square)](LICENSE)
 
@@ -104,35 +103,92 @@ Production targets same Devnet (THE MAIN REQUIRES FUNDING).
 
 ## Feed Ranking Algorithm
 
-Echoproof uses a six-layer blended ranking pipeline designed to balance quality,
-fairness, and discovery.
+The home feed is a server-ranked, user-specific feed with a safe recency
+fallback. It is implemented by the `get_personalized_feed` PostgreSQL function,
+the `personalized-feed` Supabase Edge Function, and the mobile
+`EchoFeedService`. The defaults are an authenticated request, 20 echoes per
+page, a maximum requested page size of 50, and a 30-day candidate window.
 
-### Layers (in order)
+### 1. Candidate eligibility and safety gates
 
-1. **Candidate Pull** — All eligible echoes from the last 30 days
-2. **Base Score** — Tier-agnostic quality signal (40% trust + 30% affinity + 20% recency + 10% confidence)
-3. **Engagement Decay** — Posts older than 24h decay to prevent stale viral content dominating
-4. **Tier Soft Boost** — Pro/Verified authors get max 1.25x multiplier (not a head start, better shoes)
-5. **Creator Diversity** — Second post from same creator gets 30% penalty; third+ gets 60%
-6. **Exploration Injection** — 10% of each page is random, enabling discovery of new creators
+Before scoring, the SQL function excludes hidden and rejected echoes, authors
+blocked by either party, and echoes that the viewer marked as not interested,
+reported, or blocked by author. It admits public profiles, the viewer's own
+echoes, and private authors the viewer follows. Echoes with a public verdict of
+`not_supported` or `insufficient_context` are excluded for other viewers but
+remain visible to their author. The Edge Function repeats the feedback, block,
+and verdict checks when it fetches full echo records, so a stale ranked ID cannot
+silently bypass those rules.
 
-### Fairness Constraints
+### 2. Personal relevance signals
 
-- Free user posts are never excluded by design
-- Pro posts capped at 40% of any given page
-- A free user with better content always beats a Pro user with worse content
+The ranker uses selected onboarding categories and the viewer's recent
+`user_feed_signals`. Category views, support/challenge activity, category
+clicks, and hashtag views are considered for seven days with exponential time
+decay. It also recognises authors the viewer follows, support activity from
+followed accounts during the last 14 days, and replies from followed accounts
+during the same window. The Edge Function records lightweight category-view
+signals from the first five returned echoes without delaying the response.
 
-### Trust Tiers and Voting Weight
+### 3. Quality and context scoring
 
-| Tier       | Vote Weight | Feed Boost |
-|------------|-------------|------------|
-| Unverified | 1x          | None       |
-| Low        | 2x          | None       |
-| Medium     | 3x          | 1.05x      |
-| High       | 4x          | 1.10x      |
-| Elite      | 5x          | 1.10x      |
-| Pro        | —           | +1.15x     |
-| Pro+High   | —           | +1.25x     |
+Each eligible echo receives a blended score. The score uses bounded trust,
+confidence, category affinity, the viewer's selected categories, social
+proximity, engagement, proof count, and context-response activity. Logarithmic
+caps prevent large interaction or proof counts from growing without limit.
+Public verdicts and context evidence can raise or lower reach: supported echoes
+receive a boost, while contested, needs-context, insufficient-context, and
+not-supported outcomes receive progressively stronger penalties. Additional
+penalties apply to active context reach caps, very new third-party echoes,
+one-sided context challenges, reports, and echoes the viewer has already
+interacted with.
+
+### 4. Freshness, author diversity, and exploration
+
+The blended score is multiplied by a recency curve: full weight for the first
+three hours, then decreasing through 12 hours, one day, three days, one week,
+and older content. Followed authors receive a modest multiplier. Trust and Pro
+status are soft multipliers only: medium is 1.05x, high/elite is 1.10x, Pro is
+1.07x, and Pro with high or elite trust is 1.16x. Creator diversity then keeps
+the first echo from an author at full weight, reduces their second to 0.68x, and
+their later echoes to 0.36x.
+
+Each fresh feed session receives a random opaque seed. The ranker uses that
+seed to give roughly 10% of otherwise eligible candidates a small, stable
+discovery bonus. The same echo therefore keeps the same exploratory treatment
+for the whole session instead of changing position because of a new random
+draw on every page request. The bonus is intentionally smaller than the trust,
+context, social, and recency signals, so discovery cannot dominate the feed.
+
+### 5. Serving, cache, and recovery behaviour
+
+The Edge Function preserves the ranked ID order while fetching full records.
+It returns an opaque next cursor based on `(personalized_score, created_at,
+echo_id)` and reuses the session seed for every following page. This is keyset
+pagination: new echoes and score changes cannot move an already seen echo back
+into a later page of the same session. It caches each user's cursor page in
+Upstash Redis for 120 seconds. The cache key includes user ID, session seed,
+cursor, page limit, and a feedback-version count; a pull to refresh starts a
+new session and bypasses the cache. If the SQL ranker returns no usable
+candidates, the function falls back to recent safe public echoes.
+
+A ranked page can also become short after privacy, feedback, block, or verdict
+filters remove candidates. In that case the Edge Function tops it up from
+recent safe public echoes, scanning up to 60 rows while preserving exclusions
+and removing duplicates. The mobile client independently performs the same
+guard, so an older deployment, a short cached response, or a transient Edge
+Function failure does not make the feed appear to contain only a few echoes.
+Load-more requests exclude IDs already rendered before appending results.
+
+### 6. Important current limits
+
+The feed no longer uses offset pagination or per-request randomness. The client
+still deduplicates IDs as a defence against legacy/cache responses and safe
+recency recovery. Cache entries expire quickly, but follow changes, score
+changes, and moderation changes do not yet have targeted invalidation events;
+they are visible after the TTL or a forced refresh. New qualifying echoes are
+reported through Realtime as a deferred `New echoes` control and are only loaded
+after the reader opts in, so the list never jumps under an active scroll.
 
 ## Content Moderation Pipeline
 

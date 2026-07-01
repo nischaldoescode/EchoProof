@@ -133,14 +133,15 @@ class _LinkPreviewCardState extends State<LinkPreviewCard> {
           // og image if present
           if (imageUrl != null && imageUrl.isNotEmpty)
             ClipRRect(
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(11)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(11),
+              ),
               child: Image.network(
                 imageUrl,
                 height: 140,
                 width: double.infinity,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                errorBuilder: (_, _, _) => const SizedBox.shrink(),
               ),
             ),
           Padding(
@@ -158,7 +159,7 @@ class _LinkPreviewCardState extends State<LinkPreviewCard> {
                           faviconUrl,
                           width: 14,
                           height: 14,
-                          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                          errorBuilder: (_, _, _) => const SizedBox.shrink(),
                         ),
                       ),
                     Text(
@@ -265,11 +266,15 @@ class EchoLinkPreview extends StatefulWidget {
     super.key,
     required this.url,
     this.variant = EchoLinkPreviewVariant.compact,
+    this.metadata,
+    this.fetchWhenMetadataMissing = true,
     this.onUnavailable,
   });
 
   final String url;
   final EchoLinkPreviewVariant variant;
+  final Map<String, dynamic>? metadata;
+  final bool fetchWhenMetadataMissing;
   final VoidCallback? onUnavailable;
 
   @override
@@ -278,29 +283,45 @@ class EchoLinkPreview extends StatefulWidget {
 
 class _EchoLinkPreviewState extends State<EchoLinkPreview> {
   Map<String, dynamic>? _meta;
-  bool _isLoading = true;
+  bool _isLoading = false;
 
   bool get _isDetail => widget.variant == EchoLinkPreviewVariant.detail;
 
   @override
   void initState() {
     super.initState();
-    _fetch();
+    _initializePreview();
   }
 
   @override
   void didUpdateWidget(covariant EchoLinkPreview oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.url != widget.url) {
-      setState(() {
-        _meta = null;
-        _isLoading = true;
-      });
-      _fetch();
+    if (oldWidget.url != widget.url ||
+        oldWidget.metadata != widget.metadata ||
+        oldWidget.fetchWhenMetadataMissing != widget.fetchWhenMetadataMissing) {
+      _configurePreview();
     }
   }
 
+  void _initializePreview() {
+    final metadata = _sanitizePreviewMetadata(widget.metadata);
+    _meta = metadata;
+    _isLoading = metadata == null && widget.fetchWhenMetadataMissing;
+    if (_isLoading) _fetch();
+  }
+
+  void _configurePreview() {
+    final metadata = _sanitizePreviewMetadata(widget.metadata);
+    final shouldFetch = metadata == null && widget.fetchWhenMetadataMissing;
+    setState(() {
+      _meta = metadata;
+      _isLoading = shouldFetch;
+    });
+    if (shouldFetch) _fetch();
+  }
+
   Future<void> _fetch() async {
+    final requestedUrl = widget.url;
     try {
       final client = Supabase.instance.client;
       final session = client.auth.currentSession;
@@ -322,11 +343,11 @@ class _EchoLinkPreviewState extends State<EchoLinkPreview> {
         body: jsonEncode({'url': widget.url}),
       );
 
-      if (!mounted) return;
+      if (!mounted || widget.url != requestedUrl) return;
       if (res.statusCode == 200) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         setState(() {
-          _meta = data['error'] == null ? data : null;
+          _meta = data['error'] == null ? _sanitizePreviewMetadata(data) : null;
           _isLoading = false;
         });
         if (data['error'] != null) widget.onUnavailable?.call();
@@ -336,7 +357,9 @@ class _EchoLinkPreviewState extends State<EchoLinkPreview> {
       }
     } catch (e) {
       AppLogger.warn('echo link preview: fetch failed $e');
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted && widget.url == requestedUrl) {
+        setState(() => _isLoading = false);
+      }
       widget.onUnavailable?.call();
     }
   }
@@ -357,17 +380,10 @@ class _EchoLinkPreviewState extends State<EchoLinkPreview> {
             .trim();
     final displayTitle = title.isNotEmpty ? title : widget.url;
 
-    if (_meta == null) {
-      return const SizedBox.shrink();
-    }
-
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => showOpenLinkSheet(
-        context,
-        url: widget.url,
-        title: displayTitle,
-      ),
+      onTap: () =>
+          showOpenLinkSheet(context, url: widget.url, title: displayTitle),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
@@ -402,6 +418,38 @@ class _EchoLinkPreviewState extends State<EchoLinkPreview> {
   }
 }
 
+Map<String, dynamic>? _sanitizePreviewMetadata(Map<String, dynamic>? value) {
+  if (value == null) return null;
+
+  String cleanText(String key, int maxLength) {
+    final raw = value[key];
+    if (raw is! String) return '';
+    final clean = raw
+        .replaceAll(RegExp(r'[\x00-\x1F\x7F]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    return clean.length <= maxLength ? clean : clean.substring(0, maxLength);
+  }
+
+  String? cleanImageUrl() {
+    final raw = cleanText('image', 2048);
+    final uri = Uri.tryParse(raw);
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) return null;
+    return uri.toString();
+  }
+
+  final metadata = <String, dynamic>{
+    'title': cleanText('title', 180),
+    'description': cleanText('description', 360),
+    'site_name': cleanText('site_name', 80),
+    'image': cleanImageUrl(),
+  };
+  final hasText = metadata.values.any(
+    (value) => value is String && value.isNotEmpty,
+  );
+  return hasText || metadata['image'] != null ? metadata : null;
+}
+
 class _CompactPreviewLayout extends StatelessWidget {
   const _CompactPreviewLayout({
     required this.title,
@@ -427,7 +475,7 @@ class _CompactPreviewLayout extends StatelessWidget {
               ? Image.network(
                   imageUrl!,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const Icon(
+                  errorBuilder: (_, _, _) => const Icon(
                     Icons.link_rounded,
                     color: AppColors.textTertiary,
                   ),
@@ -518,7 +566,7 @@ class _DetailPreviewLayout extends StatelessWidget {
             child: Image.network(
               imageUrl!,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              errorBuilder: (_, _, _) => const SizedBox.shrink(),
             ),
           ),
         Padding(
@@ -652,20 +700,27 @@ class _PreviewSkeleton extends StatelessWidget {
             width: 16,
             height: 16,
             child: CircularProgressIndicator(
-                strokeWidth: 2, color: AppColors.fernGreen),
+              strokeWidth: 2,
+              color: AppColors.fernGreen,
+            ),
           ),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Text(
               'Loading preview...',
               style: GoogleFonts.josefinSans(
-                  fontSize: 12, color: AppColors.textTertiary),
+                fontSize: 12,
+                color: AppColors.textTertiary,
+              ),
             ),
           ),
           GestureDetector(
             onTap: onDismiss,
-            child: const Icon(Icons.close_rounded,
-                size: 16, color: AppColors.textTertiary),
+            child: const Icon(
+              Icons.close_rounded,
+              size: 16,
+              color: AppColors.textTertiary,
+            ),
           ),
         ],
       ),

@@ -158,23 +158,37 @@ class _LoginScreenState extends State<LoginScreen>
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               if (hasPendingDeepLink) ...[
-                                const _PendingDeepLinkBanner(),
+                                _LoginEntranceItem(
+                                  animation: _entranceCtrl,
+                                  start: 0.00,
+                                  child: const _PendingDeepLinkBanner(),
+                                ),
                                 const SizedBox(height: AppSpacing.md),
                               ],
-                              _LoginPanel(
-                                formKey: _formKey,
-                                emailCtrl: _emailCtrl,
-                                agreed: _agreedToTerms,
-                                isLoading: isLoading,
-                                onAgreementChanged: (value) =>
-                                    setState(() => _agreedToTerms = value),
-                                onSubmit: _submit,
-                                onGoogle: _googleSignIn,
+                              _LoginEntranceItem(
+                                animation: _entranceCtrl,
+                                start: hasPendingDeepLink ? 0.10 : 0.00,
+                                child: _LoginPanel(
+                                  formKey: _formKey,
+                                  emailCtrl: _emailCtrl,
+                                  agreed: _agreedToTerms,
+                                  isLoading: isLoading,
+                                  onAgreementChanged: (value) =>
+                                      setState(() => _agreedToTerms = value),
+                                  onSubmit: _submit,
+                                  onGoogle: _googleSignIn,
+                                ),
                               ),
                               const SizedBox(height: AppSpacing.xl),
-                              _LoginFooter(
-                                label: context.l('Your data is safe with us.'),
-                                sublabel: context.tx('login.secureCopy'),
+                              _LoginEntranceItem(
+                                animation: _entranceCtrl,
+                                start: 0.26,
+                                child: _LoginFooter(
+                                  label: context.l(
+                                    'Your data is safe with us.',
+                                  ),
+                                  sublabel: context.tx('login.secureCopy'),
+                                ),
                               ),
                             ],
                           ),
@@ -188,6 +202,50 @@ class _LoginScreenState extends State<LoginScreen>
           ),
         ],
       ),
+    );
+  }
+}
+
+class _LoginEntranceItem extends StatelessWidget {
+  const _LoginEntranceItem({
+    required this.animation,
+    required this.start,
+    required this.child,
+  });
+
+  final Animation<double> animation;
+  final double start;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+
+    // the login entrance only changes opacity and transform values after
+    // layout, so keyboard insets, split-screen widths, and text wrapping do not
+    // reflow while the screen is appearing.
+    return AnimatedBuilder(
+      animation: animation,
+      child: child,
+      builder: (context, child) {
+        final curved = Curves.easeOutCubic.transform(
+          ((animation.value - start) / (1 - start)).clamp(0.0, 1.0).toDouble(),
+        );
+        if (reduceMotion) {
+          return Opacity(opacity: curved, child: child);
+        }
+        return Opacity(
+          opacity: curved,
+          child: Transform.translate(
+            offset: Offset(0, (1 - curved) * 18),
+            child: Transform.scale(
+              scale: 0.985 + curved * 0.015,
+              alignment: Alignment.topCenter,
+              child: child,
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -679,10 +737,13 @@ class _EmailFieldState extends State<_EmailField> {
   @override
   Widget build(BuildContext context) {
     return Focus(
-      onFocusChange: (value) => setState(() => _focused = value),
+      onFocusChange: (value) {
+        if (_focused == value) return;
+        setState(() => _focused = value);
+      },
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOut,
         decoration: BoxDecoration(
           color: widget.enabled ? Colors.white : AppColors.surfaceSecondary,
           borderRadius: BorderRadius.circular(17),
@@ -690,7 +751,7 @@ class _EmailFieldState extends State<_EmailField> {
             color: _focused
                 ? AppColors.fernGreen.withValues(alpha: 0.78)
                 : const Color(0xFFDADDD8),
-            width: _focused ? 1.6 : 1.2,
+            width: 1.3,
           ),
           boxShadow: [
             if (_focused)
@@ -910,80 +971,100 @@ class _AgreementCheckbox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: enabled ? () => onChanged(!agreed) : null,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            width: 22,
-            height: 22,
-            decoration: BoxDecoration(
-              color: agreed ? AppColors.fernGreen : Colors.white,
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: agreed ? AppColors.fernGreen : const Color(0xFFBFC5CE),
-                width: 1.5,
-              ),
-              boxShadow: [
-                if (agreed)
-                  BoxShadow(
-                    color: AppColors.fernGreen.withValues(alpha: 0.18),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
+    final toggle = enabled ? () => onChanged(!agreed) : null;
+    final textStyle = GoogleFonts.josefinSans(
+      fontSize: 15,
+      color: const Color(0xFF737B86),
+      height: 1.45,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0,
+    );
+
+    return Semantics(
+      checked: agreed,
+      enabled: enabled,
+      label: context.l('Accept privacy policy and terms of service'),
+      onTap: toggle,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: toggle,
+          borderRadius: BorderRadius.circular(14),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 30,
+                  height: 30,
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 120),
+                      curve: Curves.easeOut,
+                      width: 22,
+                      height: 22,
+                      margin: const EdgeInsets.only(top: 1),
+                      decoration: BoxDecoration(
+                        color: agreed ? AppColors.fernGreen : Colors.white,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: agreed
+                              ? AppColors.fernGreen
+                              : const Color(0xFFBFC5CE),
+                          width: 1.4,
+                        ),
+                      ),
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 110),
+                        switchInCurve: Curves.easeOut,
+                        switchOutCurve: Curves.easeIn,
+                        child: agreed
+                            ? const Icon(
+                                Icons.check_rounded,
+                                key: ValueKey('checked'),
+                                size: 16,
+                                color: Colors.white,
+                              )
+                            : const SizedBox(key: ValueKey('empty')),
+                      ),
+                    ),
                   ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      style: textStyle,
+                      children: [
+                        TextSpan(text: context.tx('login.termsPrefix')),
+                        WidgetSpan(
+                          alignment: PlaceholderAlignment.baseline,
+                          baseline: TextBaseline.alphabetic,
+                          child: _InlineLink(
+                            label: context.tx('login.terms'),
+                            url: 'https://echoproof.online/terms',
+                          ),
+                        ),
+                        TextSpan(text: ' ${context.l('and')} '),
+                        WidgetSpan(
+                          alignment: PlaceholderAlignment.baseline,
+                          baseline: TextBaseline.alphabetic,
+                          child: _InlineLink(
+                            label: context.tx('login.privacy'),
+                            url: 'https://echoproof.online/privacy',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 140),
-              child: agreed
-                  ? const Icon(
-                      Icons.check_rounded,
-                      key: ValueKey('checked'),
-                      size: 16,
-                      color: Colors.white,
-                    )
-                  : const SizedBox(key: ValueKey('empty')),
-            ),
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Text.rich(
-              TextSpan(
-                style: GoogleFonts.josefinSans(
-                  fontSize: 15,
-                  color: const Color(0xFF737B86),
-                  height: 1.45,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0,
-                ),
-                children: [
-                  TextSpan(text: context.tx('login.termsPrefix')),
-                  WidgetSpan(
-                    alignment: PlaceholderAlignment.baseline,
-                    baseline: TextBaseline.alphabetic,
-                    child: _InlineLink(
-                      label: context.tx('login.terms'),
-                      url: 'https://echoproof.online/terms',
-                    ),
-                  ),
-                  TextSpan(text: ' ${context.l('and')} '),
-                  WidgetSpan(
-                    alignment: PlaceholderAlignment.baseline,
-                    baseline: TextBaseline.alphabetic,
-                    child: _InlineLink(
-                      label: context.tx('login.privacy'),
-                      url: 'https://echoproof.online/privacy',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

@@ -25,7 +25,7 @@ export default function TermsPage() {
           className="text-sm text-neutral-400 mb-12"
           style={{ fontFamily: "'Josefin Sans', sans-serif" }}
         >
-          Last updated: May 10, 2026
+          Last updated: July 1, 2026
         </p>
 
         {sections.map((s) => (
@@ -79,6 +79,10 @@ const sections = [
     body: "You are responsible for maintaining the security of your account credentials. You may not share your account with others or use another person's account without permission. You are responsible for all activity that occurs under your account.",
   },
   {
+    title: "Account data",
+    body: "We do not sell your personal data to any third party. Your username is used as your public identity and may also be used for support, safety review, echo reports, abuse reports, appeals, and moderation. Your age or date of birth is used for eligibility, safety, and moderation context and is not displayed publicly.",
+  },
+  {
     title: "Content you post",
     body: "You retain ownership of the content you post on Echoproof, including echoes, replies, support context, challenge context, images, and videos. By posting, you grant us a worldwide, non-exclusive, royalty-free licence to display, distribute, moderate, and store your content on the platform. You are solely responsible for ensuring your content does not violate any laws or third-party rights.",
   },
@@ -101,6 +105,10 @@ const sections = [
   {
     title: "Subscriptions and payments",
     body: "Pro subscriptions are billed through Google Play. All billing, refunds, and payment disputes are governed by Google Play's policies. We do not store payment card information. Subscriptions automatically renew unless cancelled before the renewal date through your Google Play account settings.",
+  },
+  {
+    title: "Security and diagnostics",
+    body: "We use encryption in transit and storage security controls, including encryption at rest where provided by our infrastructure. Secure room content is encrypted before storage. We use Sentry only for background error tracking, such as recording that a crash happened on a specific app version or screen so we can fix it. Sentry data is not sold, is not used to show ads, and is not used to read private messages or private room content.",
   },
   {
     title: "On-chain records",

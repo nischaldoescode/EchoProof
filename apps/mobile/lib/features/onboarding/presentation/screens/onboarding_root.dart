@@ -20,27 +20,50 @@ class OnboardingRoot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final step = context.watch<OnboardingService>().currentStep;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
 
-    // animated page transitions between steps
+    // step motion is intentionally small and fixed in pixels. using a child
+    // size fraction here can jitter if split view or keyboard insets resize
+    // the onboarding page while animatedswitcher is still fading old content.
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 320),
-      transitionBuilder: (child, animation) {
-        final slide = Tween<Offset>(
-          begin: const Offset(0.06, 0),
-          end: Offset.zero,
-        ).animate(
-            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
-
-        final fade = Tween<double>(begin: 0, end: 1).animate(
-          CurvedAnimation(
-            parent: animation,
-            curve: const Interval(0, 0.6, curve: Curves.easeOut),
-          ),
+      duration: reduceMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 260),
+      reverseDuration: reduceMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 200),
+      layoutBuilder: (currentChild, previousChildren) {
+        return Stack(
+          alignment: Alignment.topCenter,
+          children: [...previousChildren, ?currentChild],
         );
+      },
+      transitionBuilder: (child, animation) {
+        return AnimatedBuilder(
+          animation: animation,
+          child: RepaintBoundary(child: child),
+          builder: (context, child) {
+            final raw = animation.value.clamp(0.0, 1.0).toDouble();
+            final fade = Curves.easeOutCubic.transform(raw);
 
-        return FadeTransition(
-          opacity: fade,
-          child: SlideTransition(position: slide, child: child),
+            if (reduceMotion) {
+              return Opacity(opacity: fade, child: child);
+            }
+
+            final eased = Curves.easeOutCubic.transform(raw);
+            final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+            final offset = (1 - eased) * 14;
+            final snappedOffset =
+                (offset * devicePixelRatio).roundToDouble() / devicePixelRatio;
+
+            return Opacity(
+              opacity: fade,
+              child: Transform.translate(
+                offset: Offset(snappedOffset, 0),
+                child: child,
+              ),
+            );
+          },
         );
       },
       child: KeyedSubtree(

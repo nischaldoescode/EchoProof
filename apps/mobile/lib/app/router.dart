@@ -36,32 +36,53 @@ import '../features/search/presentation/screens/search_screen.dart';
 import '../features/echo/presentation/screens/echo_replies_screen.dart';
 import '../core/utils/logger.dart';
 import '../core/utils/snack.dart';
+import '../core/security/secure_screen.dart';
+import '../core/services/error_monitoring_service.dart';
 import '../features/subscription/presentation/screens/purchase_history_screen.dart';
 import 'package:hyper_snackbar/hyper_snackbar.dart';
 
 CustomTransitionPage<void> _slidePage(Widget child) {
   return CustomTransitionPage<void>(
     child: child,
+    transitionDuration: const Duration(milliseconds: 240),
+    reverseTransitionDuration: const Duration(milliseconds: 200),
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
-      final curve = CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutCubic,
-      );
+      final reduceMotion = MediaQuery.disableAnimationsOf(context);
+      final textDirection = Directionality.of(context);
+      final directionSign = textDirection == TextDirection.rtl ? -1.0 : 1.0;
 
-      return FadeTransition(
-        opacity: Tween<double>(begin: 0.0, end: 1.0).animate(
-          CurvedAnimation(parent: animation, curve: const Interval(0, 0.5)),
-        ),
-        child: SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0.04, 0),
-            end: Offset.zero,
-          ).animate(curve),
+      // route motion is fixed in logical pixels instead of a child-size
+      // fraction. this prevents small jumps when split screen, keyboard
+      // insets, or dynamic content change the route size mid-transition.
+      return RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: animation,
           child: child,
+          builder: (context, child) {
+            final raw = animation.value.clamp(0.0, 1.0).toDouble();
+            final fade = Curves.easeOutCubic.transform(raw);
+
+            if (reduceMotion) {
+              return Opacity(opacity: fade, child: child);
+            }
+
+            final eased = Curves.easeOutCubic.transform(raw);
+            final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+            final offset = (1 - eased) * 18 * directionSign;
+            final snappedOffset =
+                (offset * devicePixelRatio).roundToDouble() / devicePixelRatio;
+
+            return Opacity(
+              opacity: fade,
+              child: Transform.translate(
+                offset: Offset(snappedOffset, 0),
+                child: child,
+              ),
+            );
+          },
         ),
       );
     },
-    transitionDuration: const Duration(milliseconds: 280),
   );
 }
 
@@ -143,6 +164,11 @@ CustomTransitionPage<void> _signalDriftPage(GoRouterState state) {
       );
     },
   );
+}
+
+List<NavigatorObserver> _sentryRouterObservers() {
+  final observer = ErrorMonitoringService.navigatorObserver();
+  return observer == null ? const [] : [observer];
 }
 
 class _SignalDriftRevealPainter extends CustomPainter {
@@ -284,7 +310,7 @@ GoRouter createRouter({
     navigatorKey: HyperSnackbar.navigatorKey,
     initialLocation: '/splash',
     refreshListenable: _RouterRefreshStream([authService, onboardingService]),
-    observers: [RouteScopedSnackObserver()],
+    observers: [RouteScopedSnackObserver(), ..._sentryRouterObservers()],
     redirect: (context, state) async {
       final isLoggedIn = authService.isLoggedIn;
       final location = state.matchedLocation;
@@ -305,6 +331,10 @@ GoRouter createRouter({
       // check username status once before redirecting
       if (!authService.hasUsernameChecked) {
         await authService.checkUsername();
+        if (!authService.hasUsernameChecked) {
+          AppLogger.warn('router: profile check waiting for network');
+          return null;
+        }
       }
 
       final hasUsername = authService.hasUsername;
@@ -367,11 +397,11 @@ GoRouter createRouter({
     routes: [
       GoRoute(
         path: '/splash',
-        pageBuilder: (_, __) => _slidePage(const SplashScreen()),
+        pageBuilder: (_, _) => _slidePage(const SplashScreen()),
       ),
       GoRoute(
         path: '/login',
-        pageBuilder: (_, __) => _slidePage(const LoginScreen()),
+        pageBuilder: (_, _) => _slidePage(const LoginScreen()),
       ),
       GoRoute(
         path: '/verify-email',
@@ -380,7 +410,7 @@ GoRouter createRouter({
       ),
       GoRoute(
         path: '/onboarding',
-        pageBuilder: (_, __) => _slidePage(const OnboardingRoot()),
+        pageBuilder: (_, _) => _slidePage(const OnboardingRoot()),
       ),
       GoRoute(
         path: '/age-gender',
@@ -389,11 +419,11 @@ GoRouter createRouter({
       ),
       GoRoute(
         path: '/permissions',
-        pageBuilder: (_, __) => _slidePage(const PermissionsScreen()),
+        pageBuilder: (_, _) => _slidePage(const PermissionsScreen()),
       ),
       GoRoute(
         path: '/feed',
-        builder: (_, __) => const FeedScreen(),
+        builder: (_, _) => const FeedScreen(),
         routes: [
           GoRoute(
             path: 'echo/:id',
@@ -442,7 +472,7 @@ GoRouter createRouter({
       ),
       GoRoute(
         path: '/create',
-        pageBuilder: (_, __) => _slidePage(const CreateEchoScreen()),
+        pageBuilder: (_, _) => _slidePage(const CreateEchoScreen()),
       ),
       GoRoute(
         path: '/signal-drift',
@@ -460,7 +490,7 @@ GoRouter createRouter({
           ),
         ),
       ),
-      GoRoute(path: '/discover', builder: (_, __) => const DiscoverScreen()),
+      GoRoute(path: '/discover', builder: (_, _) => const DiscoverScreen()),
       GoRoute(
         path: '/search',
         pageBuilder: (_, s) =>
@@ -468,15 +498,15 @@ GoRouter createRouter({
       ),
       GoRoute(
         path: '/profile',
-        pageBuilder: (_, __) => _profilePage(const ProfileScreen()),
+        pageBuilder: (_, _) => _profilePage(const ProfileScreen()),
       ),
       GoRoute(
         path: '/profile/bookmarks',
-        pageBuilder: (_, __) => _profilePage(const BookmarksScreen()),
+        pageBuilder: (_, _) => _profilePage(const BookmarksScreen()),
       ),
       GoRoute(
         path: '/profile/analytics',
-        pageBuilder: (_, __) => _profilePage(const ProfileAnalyticsScreen()),
+        pageBuilder: (_, _) => _profilePage(const ProfileAnalyticsScreen()),
       ),
       GoRoute(
         path: '/profile/:username/follows',
@@ -494,37 +524,42 @@ GoRouter createRouter({
       ),
       GoRoute(
         path: '/notifications',
-        pageBuilder: (_, __) => _slidePage(const NotificationsScreen()),
+        pageBuilder: (_, _) => _slidePage(const NotificationsScreen()),
       ),
       GoRoute(
         path: '/rooms',
         pageBuilder: (_, s) => _slidePage(
-          RoomsScreen(
-            initialInviteCode: s.uri.queryParameters['code'],
-            initialRoomKey: _secureRoomKeyFromUri(s.uri),
+          SecureScreen(
+            child: RoomsScreen(
+              initialInviteCode: s.uri.queryParameters['code'],
+              initialRoomKey: _secureRoomKeyFromUri(s.uri),
+            ),
           ),
         ),
       ),
       GoRoute(
         path: '/rooms/:id',
-        pageBuilder: (_, s) =>
-            _slidePage(SecureRoomChatScreen(roomId: s.pathParameters['id']!)),
+        pageBuilder: (_, s) => _slidePage(
+          SecureScreen(
+            child: SecureRoomChatScreen(roomId: s.pathParameters['id']!),
+          ),
+        ),
       ),
       GoRoute(
         path: '/settings',
-        pageBuilder: (_, __) => _slidePage(const SettingsScreen()),
+        pageBuilder: (_, _) => _slidePage(const SettingsScreen()),
       ),
       GoRoute(
         path: '/subscribe',
-        pageBuilder: (_, __) => _slidePage(const SubscribeScreen()),
+        pageBuilder: (_, _) => _slidePage(const SubscribeScreen()),
       ),
       GoRoute(
         path: '/verify-identity',
-        pageBuilder: (_, __) => _slidePage(const IdentityVerificationScreen()),
+        pageBuilder: (_, _) => _slidePage(const IdentityVerificationScreen()),
       ),
       GoRoute(
         path: '/purchase-history',
-        pageBuilder: (_, __) => _slidePage(const PurchaseHistoryScreen()),
+        pageBuilder: (_, _) => _slidePage(const PurchaseHistoryScreen()),
       ),
     ],
   );

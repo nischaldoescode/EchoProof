@@ -25,7 +25,7 @@ export default function PrivacyPage() {
           className="text-sm text-neutral-400 mb-12"
           style={{ fontFamily: "'Josefin Sans', sans-serif" }}
         >
-          Last updated: May 5, 2025
+          Last updated: July 1, 2026
         </p>
 
         {sections.map((s) => (
@@ -72,15 +72,15 @@ const sections = [
   },
   {
     title: "What we collect",
-    body: "We collect your email address, username, and age when you create an account. If you choose to verify your identity, we collect a government-issued ID and a liveness selfie — this is processed by Didit, our identity verification partner, and we only receive a verification status, not the raw documents. We also collect your echoes (posts), interactions (supports and challenges), and device tokens for push notifications.",
+    body: "We collect your email address, username, and age or date of birth when you create an account. If you choose to verify your identity, a government-issued ID and liveness selfie are processed by Didit, our identity verification partner, and we receive only a verification status, not the raw documents. We also collect your echoes, replies, support and challenge context, reports, attachments you choose to upload, and device tokens for push notifications.",
   },
   {
     title: "What we do not collect",
-    body: "We do not collect your real name unless you provide it. We do not sell your data to advertisers. We do not share your data with third parties except as described below. We do not read your notifications, contacts, or any data outside the Echoproof app.",
+    body: "We do not collect your real name unless you provide it. We do not sell your personal data to any third party. We do not share your data except as described in this policy. We do not read your notifications, contacts, or any data outside the Echoproof app.",
   },
   {
     title: "How we use your data",
-    body: "Your email is used for account authentication and important notifications. Your username is your public identity — it is visible to other users. Your age is used only to verify you meet our minimum age requirement (13+) and is never displayed publicly. Your echoes and interactions are the core of the platform and are visible to all users by design.",
+    body: "Your email is used for account authentication and important notices. Your username is your public identity and may be used to review echo reports, abuse reports, appeals, and moderation history for the correct account. Your age is used for eligibility, safety, and moderation context and is not displayed publicly. Your public echoes and interactions are visible to users by design.",
   },
   {
     title: "Identity verification",
@@ -91,12 +91,20 @@ const sections = [
     body: "We use Firebase Cloud Messaging to send you notifications. Your device token is stored securely in our database and is only used to deliver notifications to your device. You can disable notifications at any time from your device settings.",
   },
   {
+    title: "Security and encryption",
+    body: "We protect data in transit with encryption and store data using database and storage security controls, including encryption at rest where provided by our infrastructure. Secure room content is encrypted before storage. Public echoes, public context, and public blockchain hashes remain public by design.",
+  },
+  {
+    title: "Diagnostics and crash reports",
+    body: "We use Sentry only for error tracking and reliability. For example, if the app crashes during sign in, Sentry may receive the app version, device model, operating system version, screen name, and technical stack trace needed to fix the issue. We do not use Sentry to sell data, show ads, read private messages, collect private room content, or capture screenshots by default. We value transparency and user privacy above all.",
+  },
+  {
     title: "Data retention",
     body: "Your account data is retained as long as your account exists. If you request deletion, your account enters a 7-day recovery window before permanent removal. Some records may be retained longer when required by law, abuse prevention, billing, or public blockchain records that Echoproof cannot remove.",
   },
   {
     title: "Your rights",
-    body: "You have the right to access the data we hold about you, request a correction of inaccurate data, request deletion of your account and associated personal data, and withdraw consent at any time. To exercise any of these rights, contact us at privacy@echoproof.online.",
+    body: "You have the right to access the data we hold about you, request a correction of inaccurate data, request deletion of your account and associated personal data, and withdraw consent at any time. To exercise any of these rights, contact us at support@echoproof.online.",
   },
   {
     title: "Internal operations",

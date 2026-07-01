@@ -1,1 +1,4 @@
+# local constants can contain console-provided values and must stay out of git.
 ad_constants.dart
+play_licensing.dart
+play_constants.dart

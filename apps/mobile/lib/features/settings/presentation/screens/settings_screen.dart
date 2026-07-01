@@ -405,7 +405,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     final adService = context.read<AdService>();
     final isAdFree = adService.isAdFreeActive;
     final minsLeft = adService.adFreeMinutesRemaining;
-    final feedStatus = adService.feedRoutineStatusText;
 
     showGeneralDialog(
       context: context,
@@ -426,7 +425,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           ),
         );
       },
-      pageBuilder: (ctx, _, __) {
+      pageBuilder: (ctx, _, _) {
         return Center(
           child: Material(
             color: Colors.transparent,
@@ -465,7 +464,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   Text(
                     isAdFree
                         ? 'You earned $minsLeft more minutes of ad-free browsing by watching a video. Ads will resume after your session ends.'
-                        : 'Echoproof is free to use. Feed ads are limited to 2 per hour and spaced at least 30 minutes apart while you are actively on the feed. $feedStatus You can remove ads by going Pro, or earn 1 hour ad-free by watching a short video.',
+                        : 'Echoproof is free to use. Ads are kept away from root navigation and are shown only in explicit or natural app moments, such as an opt-in rewarded video or a clear completed-flow break. You can remove ads by going Pro, or earn 1 hour ad-free by watching a short video.',
                     style: GoogleFonts.josefinSans(
                       fontSize: 13,
                       color: AppColors.textSecondary,

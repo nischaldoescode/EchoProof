@@ -1,9 +1,8 @@
 // discover screen
-// @params none shows trending signals by ip country or globally
+// @params none shows trending signals for india by default or by user choice
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:ip_hunter/ip_hunter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
@@ -38,14 +37,15 @@ class DiscoverScreen extends StatefulWidget {
   State<DiscoverScreen> createState() => _DiscoverScreenState();
 }
 
-class _DiscoverScreenState extends State<DiscoverScreen>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _entranceController;
-
+class _DiscoverScreenState extends State<DiscoverScreen> {
   String? _selectedCountry;
   List<TrendingSignal> _signals = [];
   bool _isLoading = true;
   late final Future<String?> _avatarFuture;
+
+  static const String _defaultCountryCode = 'IN';
+  static String? _lastSelectedCountry;
+  static bool _hasStoredCountryChoice = false;
 
   static const _countries = [
     (code: null, label: 'Global'),
@@ -63,12 +63,11 @@ class _DiscoverScreenState extends State<DiscoverScreen>
   @override
   void initState() {
     super.initState();
-    _entranceController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
-    );
     _avatarFuture = _loadAvatarUrl();
-    _detectCountryAndLoad();
+    _selectedCountry = _hasStoredCountryChoice
+        ? _lastSelectedCountry
+        : _defaultCountryCode;
+    _loadSignals();
     _subscribeRealtime();
   }
 
@@ -98,47 +97,8 @@ class _DiscoverScreenState extends State<DiscoverScreen>
     });
   }
 
-  Future<void> _detectCountryAndLoad() async {
-    var code = await _detectIpCountryCode();
-    code ??= _supportedCountryCode(
-      WidgetsBinding.instance.platformDispatcher.locale.countryCode,
-    );
-    if (code != null) {
-      setState(() => _selectedCountry = code);
-    }
-
-    await _loadSignals();
-  }
-
-  Future<String?> _detectIpCountryCode() async {
-    try {
-      final code = await IpHunter.getCountryCode().timeout(
-        const Duration(seconds: 3),
-      );
-      final supported = _supportedCountryCode(code);
-      AppLogger.info('discover: ip country ${supported ?? 'unsupported'}');
-      return supported;
-    } catch (e) {
-      AppLogger.warn('discover: ip country lookup failed $e');
-      return null;
-    }
-  }
-
-  String? _supportedCountryCode(String? code) {
-    if (code == null || code.isEmpty) return null;
-
-    final normalized = code.trim().toUpperCase();
-    final supported = _countries.map((c) => c.code).whereType<String>().toSet();
-    return supported.contains(normalized) ? normalized : null;
-  }
-
-  @override
-  void dispose() {
-    _entranceController.dispose();
-    super.dispose();
-  }
-
   Future<void> _loadSignals() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
 
     try {
@@ -160,6 +120,7 @@ class _DiscoverScreenState extends State<DiscoverScreen>
             .limit(30);
       }
 
+      if (!mounted) return;
       setState(() {
         _signals = rows
             .map(
@@ -176,16 +137,15 @@ class _DiscoverScreenState extends State<DiscoverScreen>
             .toList();
         _isLoading = false;
       });
-
-      _entranceController.reset();
-      _entranceController.forward();
     } catch (e) {
       AppLogger.error('discover: load signals failed', e);
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   void _selectCountry(String? code) {
+    _hasStoredCountryChoice = true;
+    _lastSelectedCountry = code;
     setState(() => _selectedCountry = code);
     _loadSignals();
   }
@@ -308,43 +268,16 @@ class _DiscoverScreenState extends State<DiscoverScreen>
                                 padding: const EdgeInsets.only(bottom: 96),
                                 itemCount: _signals.length,
                                 itemBuilder: (context, index) {
-                                  final delay = index * 0.04;
-                                  final end = (delay + 0.3).clamp(0.0, 1.0);
-                                  final anim = Tween<double>(begin: 0, end: 1)
-                                      .animate(
-                                        CurvedAnimation(
-                                          parent: _entranceController,
-                                          curve: Interval(
-                                            delay,
-                                            end,
-                                            curve: Curves.easeOut,
-                                          ),
-                                        ),
-                                      );
-
                                   return Center(
                                     child: ConstrainedBox(
                                       constraints: BoxConstraints(
                                         maxWidth: maxWidth,
                                       ),
-                                      child: AnimatedBuilder(
-                                        animation: anim,
-                                        builder: (context, child) => Opacity(
-                                          opacity: anim.value,
-                                          child: Transform.translate(
-                                            offset: Offset(
-                                              0,
-                                              (1 - anim.value) * 16,
-                                            ),
-                                            child: child,
-                                          ),
-                                        ),
-                                        child: _SignalRow(
-                                          signal: _signals[index],
-                                          rank: index + 1,
-                                          onTap: () => _openSignalFeed(
-                                            _signals[index].signal,
-                                          ),
+                                      child: _SignalRow(
+                                        signal: _signals[index],
+                                        rank: index + 1,
+                                        onTap: () => _openSignalFeed(
+                                          _signals[index].signal,
                                         ),
                                       ),
                                     ),

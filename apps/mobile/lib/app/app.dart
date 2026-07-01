@@ -173,10 +173,12 @@ class _ExitConfirmWrapperState extends State<ExitConfirmWrapper> {
   }
 
   double _rootSnackBottomMargin(BuildContext context) {
-    // root screens include bottom nav, optional ad units, and the gesture bar
-    // keep the exit prompt visibly above that chrome
-    final shortestSide = MediaQuery.sizeOf(context).shortestSide;
-    return shortestSide >= 600 ? 118 : 142;
+    // root exit prompts are global overlays, not scaffold footers. keeping this
+    // margin small avoids lifting the snack above the compose button or into the
+    // middle of split-screen layouts while the shared snack helper still honors
+    // gesture navigation and keyboard insets.
+    final size = MediaQuery.sizeOf(context);
+    return size.shortestSide >= 600 ? 18.0 : 12.0;
   }
 
   @override

@@ -2,6 +2,8 @@
 // manages the multi-step onboarding flow state
 // steps: 0=language, 1=identity, 2=categories, 3=username, 4=trust, 5=guide, 6=first_echo
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -9,6 +11,7 @@ import '../../../../core/services/avatar_service.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../auth/presentation/services/auth_service.dart';
 import '../../../../core/utils/sanitizer.dart';
+import '../../../../core/services/app_analytics_service.dart';
 
 const _kStep = 'onboarding_step';
 const _kUsernameSet = 'onboarding_username_set';
@@ -138,16 +141,15 @@ class OnboardingService extends ChangeNotifier {
           );
         } catch (e) {
           AppLogger.warn(
-              'onboarding: avatar generation failed, continuing: $e');
+            'onboarding: avatar generation failed, continuing: $e',
+          );
         }
 
         // only update the db trigger at signup already created the row
         // upsert (insert on conflict) fails with rls 42501 because the
         // authenticated role has no insert policy on users_public
         // we only patch the fields that belong to onboarding completion
-        final patch = <String, dynamic>{
-          'onboarding_complete': true,
-        };
+        final patch = <String, dynamic>{'onboarding_complete': true};
         if (username.isNotEmpty) {
           patch['username'] = Sanitizer.username(username);
         }
@@ -168,33 +170,45 @@ class OnboardingService extends ChangeNotifier {
           final tempUsername = username.isNotEmpty
               ? username
               : 'user${userId.replaceAll('-', '').substring(0, 8)}';
-          await client.from('users_public').upsert(
-            {
-              'id': userId,
-              'username': tempUsername,
-              'display_name':
-                  displayName.isNotEmpty ? displayName : tempUsername,
-              'avatar_url': AvatarService.defaultAvatarUrlFor(userId),
-              'onboarding_complete': true,
-              'trust_tier': 'unverified',
-              'trust_score': 0,
-              'echo_count': 0,
-              'proof_count': 0,
-              'is_public': true,
-              'created_at': DateTime.now().toUtc().toIso8601String(),
-            },
-            onConflict: 'id',
-          );
+          await client.from('users_public').upsert({
+            'id': userId,
+            'username': tempUsername,
+            'display_name': displayName.isNotEmpty ? displayName : tempUsername,
+            'avatar_url': AvatarService.defaultAvatarUrlFor(userId),
+            'onboarding_complete': true,
+            'trust_tier': 'unverified',
+            'trust_score': 0,
+            'echo_count': 0,
+            'proof_count': 0,
+            'is_public': true,
+            'created_at': DateTime.now().toUtc().toIso8601String(),
+          }, onConflict: 'id');
         } else {
           // row existed patch display_name too if provided
           if (displayName.isNotEmpty) {
             await client
                 .from('users_public')
-                .update({'display_name': displayName}).eq('id', userId);
+                .update({'display_name': displayName})
+                .eq('id', userId);
           }
         }
 
         AppLogger.info('onboarding: onboarding_complete written to DB');
+        final box = Hive.box('app_settings');
+        final analyticsKey = 'analytics_signup_user_id';
+        if (box.get(analyticsKey) != userId) {
+          final provider =
+              client.auth.currentUser?.appMetadata['provider'] as String? ??
+              'email';
+          unawaited(AppAnalyticsService.instance.logSignUp(method: provider));
+          unawaited(
+            AppAnalyticsService.instance.logEvent(
+              'onboarding_completed',
+              parameters: {'category_count': _selectedCategories.length},
+            ),
+          );
+          await box.put(analyticsKey, userId);
+        }
       }
     } catch (e) {
       AppLogger.error('onboarding: completeOnboarding DB write failed: $e');

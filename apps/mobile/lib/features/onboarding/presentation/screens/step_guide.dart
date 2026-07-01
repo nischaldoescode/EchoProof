@@ -10,7 +10,7 @@ import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
 import '../../../../core/localization/app_copy.dart';
 import '../services/onboarding_service.dart';
-import '../widgets/onboarding_progress.dart';
+import '../widgets/onboarding_story_frame.dart';
 
 class StepGuide extends StatefulWidget {
   const StepGuide({super.key});
@@ -19,11 +19,8 @@ class StepGuide extends StatefulWidget {
   State<StepGuide> createState() => _StepGuideState();
 }
 
-class _StepGuideState extends State<StepGuide> with TickerProviderStateMixin {
+class _StepGuideState extends State<StepGuide> {
   late PageController _pageController;
-  late AnimationController _entryAnim;
-  late Animation<double> _fade;
-  late Animation<Offset> _slide;
   int _page = 0;
 
   static const _cards = [
@@ -31,7 +28,7 @@ class _StepGuideState extends State<StepGuide> with TickerProviderStateMixin {
       icon: Icons.campaign_outlined,
       title: 'Create an Echo',
       body:
-          'An Echo is a claim, story, or observation. Post it — the community rates its credibility.',
+          'An Echo is a claim, story, or observation. Post it and the community rates its credibility.',
       color: Color(0xFFE8F5E9),
       iconColor: Color(0xFF388E3C),
     ),
@@ -72,31 +69,20 @@ class _StepGuideState extends State<StepGuide> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _pageController = PageController();
-    _entryAnim = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 450),
-    );
-    _fade = CurvedAnimation(parent: _entryAnim, curve: Curves.easeOut);
-    _slide = Tween<Offset>(
-      begin: const Offset(0, 0.05),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _entryAnim, curve: Curves.easeOut));
-    _entryAnim.forward();
+    _pageController = PageController(viewportFraction: 0.88);
   }
 
   @override
   void dispose() {
     _pageController.dispose();
-    _entryAnim.dispose();
     super.dispose();
   }
 
   void _next() {
     if (_page < _cards.length - 1) {
       _pageController.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
       );
     } else {
       context.read<OnboardingService>().nextStep();
@@ -105,116 +91,98 @@ class _StepGuideState extends State<StepGuide> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.white,
-      body: SafeArea(
-        child: FadeTransition(
-          opacity: _fade,
-          child: SlideTransition(
-            position: _slide,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.xl,
-                    AppSpacing.xl,
-                    AppSpacing.xl,
-                    0,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const OnboardingProgress(currentStep: 5, totalSteps: 6),
-                      const SizedBox(height: AppSpacing.xxl),
-                      Text(
-                        context.l('Here\'s how it works'),
-                        style: AppTypography.textTheme.headlineMedium,
-                      ),
-                      const SizedBox(height: AppSpacing.xs),
-                      Text(
-                        context.l('Swipe through to see what you can do.'),
-                        style: AppTypography.textTheme.bodyMedium?.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
+    final mediaHeight = MediaQuery.sizeOf(context).height;
+    final compactHeight = mediaHeight < 680;
+
+    return OnboardingStoryFrame(
+      currentStep: 6,
+      totalSteps: 7,
+      title: context.l('Watch the loop once.'),
+      body: context.l(
+        'Create, proof, signal, and discover. These are the moves you will use every day.',
+      ),
+      sceneIcon: Icons.movie_filter_outlined,
+      sceneLabel: context.l('a quick pass through the echo loop'),
+      sceneBackground: AppColors.surfaceSecondary,
+      footer: Row(
+        children: [
+          if (_page > 0)
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => _pageController.previousPage(
+                  duration: const Duration(milliseconds: 280),
+                  curve: Curves.easeOutCubic,
                 ),
-                const SizedBox(height: AppSpacing.xxl),
-                SizedBox(
-                  height: 280,
-                  child: PageView.builder(
-                    controller: _pageController,
-                    onPageChanged: (i) => setState(() => _page = i),
-                    itemCount: _cards.length,
-                    itemBuilder: (context, i) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: _GuideCardWidget(card: _cards[i]),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: AppSpacing.lg),
-                // dot indicator
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(_cards.length, (i) {
-                    return AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      margin: const EdgeInsets.symmetric(horizontal: 3),
-                      width: _page == i ? 20 : 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: _page == i
-                            ? AppColors.fernGreen
-                            : AppColors.fernGreen.withValues(alpha: 0.25),
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    );
-                  }),
-                ),
-                const Spacer(),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.xl,
-                    0,
-                    AppSpacing.xl,
-                    AppSpacing.xl,
-                  ),
-                  child: Row(
-                    children: [
-                      if (_page > 0)
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => _pageController.previousPage(
-                              duration: const Duration(milliseconds: 300),
-                              curve: Curves.easeInOut,
-                            ),
-                            child: Text(context.l('Back')),
-                          ),
-                        ),
-                      if (_page > 0) const SizedBox(width: 12),
-                      Expanded(
-                        flex: 2,
-                        child: ElevatedButton(
-                          onPressed: _next,
-                          child: Text(
-                            _page == _cards.length - 1
-                                ? context.l('Let\'s go!')
-                                : context.l('Next'),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+                child: Text(context.l('Back')),
+              ),
+            ),
+          if (_page > 0) const SizedBox(width: AppSpacing.md),
+          Expanded(
+            flex: 2,
+            child: ElevatedButton(
+              onPressed: _next,
+              child: Text(
+                _page == _cards.length - 1
+                    ? context.l('Let\'s go')
+                    : context.l('Next'),
+              ),
             ),
           ),
-        ),
+        ],
       ),
+      children: [
+        SizedBox(
+          height: compactHeight ? 236 : 286,
+          child: PageView.builder(
+            controller: _pageController,
+            onPageChanged: (i) => setState(() => _page = i),
+            itemCount: _cards.length,
+            itemBuilder: (context, i) {
+              return AnimatedBuilder(
+                animation: _pageController,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: _GuideCardWidget(card: _cards[i]),
+                ),
+                builder: (context, child) {
+                  var pageOffset = _page.toDouble();
+                  if (_pageController.hasClients &&
+                      _pageController.position.haveDimensions) {
+                    pageOffset = _pageController.page ?? pageOffset;
+                  }
+                  final distance = (pageOffset - i).abs().clamp(0.0, 1.0);
+                  final scale = 1 - (distance * 0.035);
+                  final translateY = distance * 10;
+
+                  return Transform.translate(
+                    offset: Offset(0, translateY),
+                    child: Transform.scale(scale: scale, child: child),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: AppSpacing.lg),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(_cards.length, (i) {
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              width: _page == i ? 20 : 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: _page == i
+                    ? AppColors.fernGreen
+                    : AppColors.fernGreen.withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(3),
+              ),
+            );
+          }),
+        ),
+      ],
     );
   }
 }
@@ -241,48 +209,67 @@ class _GuideCardWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: card.color,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      padding: const EdgeInsets.all(28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: card.iconColor.withValues(alpha: 0.15),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxHeight < 260;
+        final iconSize = compact ? 48.0 : 56.0;
+
+        return Container(
+          decoration: BoxDecoration(
+            color: card.color,
+            borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+            border: Border.all(color: AppColors.white.withValues(alpha: 0.65)),
+          ),
+          padding: EdgeInsets.all(compact ? AppSpacing.lg : AppSpacing.xl),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: iconSize,
+                height: iconSize,
+                decoration: BoxDecoration(
+                  color: AppColors.white,
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+                  boxShadow: [
+                    BoxShadow(
+                      color: card.iconColor.withValues(alpha: 0.14),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            child: Icon(card.icon, size: 28, color: card.iconColor),
+                child: Icon(
+                  card.icon,
+                  size: compact ? 24 : 28,
+                  color: card.iconColor,
+                ),
+              ),
+              SizedBox(height: compact ? AppSpacing.md : AppSpacing.lg),
+              Text(
+                context.l(card.title),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  context.l(card.body),
+                  overflow: TextOverflow.fade,
+                  style: AppTypography.textTheme.bodyMedium?.copyWith(
+                    color: AppColors.textSecondary,
+                    height: 1.45,
+                    letterSpacing: 0,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 20),
-          Text(
-            context.l(card.title),
-            style: AppTypography.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            context.l(card.body),
-            style: AppTypography.textTheme.bodyMedium?.copyWith(
-              color: AppColors.textSecondary,
-              height: 1.5,
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

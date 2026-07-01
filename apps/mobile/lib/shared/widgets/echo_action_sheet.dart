@@ -2,6 +2,8 @@
 // themed to match echoproof design system
 // no riverpod uses supabase instance directly
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../app/theme/colors.dart';
@@ -18,7 +20,10 @@ void showEchoActionSheet({
 }) {
   showModalBottomSheet<void>(
     context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
     backgroundColor: AppColors.white,
+    constraints: BoxConstraints(maxWidth: _adaptiveSheetMaxWidth(context)),
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(
         top: Radius.circular(AppSpacing.radiusLg),
@@ -32,6 +37,12 @@ void showEchoActionSheet({
       onHidden: onHidden,
     ),
   );
+}
+
+/// caps modal width to the active window so split-screen sheets stay readable.
+double _adaptiveSheetMaxWidth(BuildContext context) {
+  final width = MediaQuery.sizeOf(context).width;
+  return math.min(width, 560);
 }
 
 class _EchoActionSheet extends StatelessWidget {
@@ -55,10 +66,12 @@ class _EchoActionSheet extends StatelessWidget {
     final isOwnEcho = authorId.isNotEmpty && authorId == currentUserId;
 
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.only(
+      top: false,
+      child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: EdgeInsets.only(
           top: AppSpacing.sm,
-          bottom: AppSpacing.md,
+          bottom: AppSpacing.md + MediaQuery.paddingOf(context).bottom,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -309,7 +322,12 @@ void _showReportSheet({
 }) {
   showModalBottomSheet<void>(
     context: parentContext,
+    isScrollControlled: true,
+    useSafeArea: true,
     backgroundColor: AppColors.white,
+    constraints: BoxConstraints(
+      maxWidth: _adaptiveSheetMaxWidth(parentContext),
+    ),
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(
         top: Radius.circular(AppSpacing.radiusLg),
@@ -397,10 +415,12 @@ class _ReportSheetState extends State<_ReportSheet> {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.only(
+      top: false,
+      child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: EdgeInsets.only(
           top: AppSpacing.sm,
-          bottom: AppSpacing.md,
+          bottom: AppSpacing.md + MediaQuery.paddingOf(context).bottom,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -467,15 +487,27 @@ void _confirmDeleteEcho({
 }) {
   showModalBottomSheet<void>(
     context: parentContext,
+    isScrollControlled: true,
+    useSafeArea: true,
     backgroundColor: AppColors.white,
+    constraints: BoxConstraints(
+      maxWidth: _adaptiveSheetMaxWidth(parentContext),
+    ),
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(
         top: Radius.circular(AppSpacing.radiusLg),
       ),
     ),
     builder: (context) => SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xl),
+      top: false,
+      child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: EdgeInsets.fromLTRB(
+          AppSpacing.xl,
+          AppSpacing.xl,
+          AppSpacing.xl,
+          AppSpacing.xl + MediaQuery.paddingOf(context).bottom,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,

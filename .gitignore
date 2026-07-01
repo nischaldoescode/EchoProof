@@ -124,9 +124,28 @@ supabase/config.toml
 supabase/seed/seed.sql
 firebase.json
 .solana-keypair.json
+
+# local mobile security and monitoring files.
+# these files can contain private build switches, store verification details,
+# crash-monitoring configuration, or local shrinker choices. the app may use
+# them on this machine, but they should not become part of shared git history.
+apps/mobile/lib/core/services/error_monitoring_service.dart
+apps/mobile/lib/core/services/play_constants.dart
+apps/mobile/lib/core/services/play_licensing.dart
+apps/mobile/lib/core/security/play_constants.dart
+apps/mobile/lib/core/security/play_licensing.dart
+apps/mobile/lib/features/echo/presentation/services/signal_drift_physics.dart
+apps/mobile/test/unit/signal_drift_physics_test.dart
+apps/mobile/android/app/proguard-rules.pro
+apps/mobile/android/app/src/main/AndroidManifest.xml
+apps/mobile/sentry.properties
+apps/mobile/.sentryclirc
+**/sentry.properties
+**/.sentryclirc
+
+# keep all local supabase project files out of git.
 supabase/
-Echoproof/supabase
-supabse/functions
+Echoproof/supabase/
 **/supabase/
 docs/
 modeltrain/

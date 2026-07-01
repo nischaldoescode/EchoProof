@@ -15,6 +15,7 @@ class RichTextDisplay extends StatelessWidget {
     this.overflow,
     this.hideUrls = false,
     this.onHashtagTap,
+    this.onMentionTap,
   });
 
   final String text;
@@ -23,6 +24,7 @@ class RichTextDisplay extends StatelessWidget {
   final TextOverflow? overflow;
   final bool hideUrls;
   final ValueChanged<String>? onHashtagTap;
+  final ValueChanged<String>? onMentionTap;
 
   @override
   Widget build(BuildContext context) {
@@ -105,15 +107,27 @@ class RichTextDisplay extends StatelessWidget {
           );
         }
       } else if (match.group(8) != null) {
-        spans.add(
-          TextSpan(
-            text: match.group(8),
-            style: base.copyWith(
-              color: AppColors.fernGreen,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+        final mention = match.group(8)!;
+        final username = mention.substring(1);
+        final mentionStyle = base.copyWith(
+          color: AppColors.fernGreen,
+          fontWeight: FontWeight.w600,
         );
+        if (onMentionTap == null) {
+          spans.add(TextSpan(text: mention, style: mentionStyle));
+        } else {
+          spans.add(
+            WidgetSpan(
+              alignment: PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onMentionTap!(username),
+                child: Text(mention, style: mentionStyle),
+              ),
+            ),
+          );
+        }
       } else if (match.group(9) != null) {
         final tag = match.group(9)!;
         final searchTag = tag.startsWith('~') ? '#${tag.substring(1)}' : tag;

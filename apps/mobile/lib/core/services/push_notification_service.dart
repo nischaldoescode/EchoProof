@@ -10,6 +10,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hyper_snackbar/hyper_snackbar.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'connectivity_service.dart';
 import '../utils/logger.dart';
 
 @pragma('vm:entry-point')
@@ -26,6 +27,9 @@ class PushNotificationService {
   StreamSubscription<RemoteMessage>? _foregroundSub;
   StreamSubscription<RemoteMessage>? _openedSub;
   StreamSubscription<String>? _tokenRefreshSub;
+  Timer? _tokenRetryTimer;
+  String? _pendingTokenRetry;
+  int _tokenRetryAttempt = 0;
   bool _initialized = false;
 
   static const _channelId = 'echoproof_default';
@@ -66,8 +70,10 @@ class PushNotificationService {
       onDidReceiveNotificationResponse: _onNotificationTapped,
     );
 
-    final androidPlugin = _localNotifs.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
+    final androidPlugin = _localNotifs
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
 
     await androidPlugin?.createNotificationChannel(
       const AndroidNotificationChannel(
@@ -89,8 +95,9 @@ class PushNotificationService {
     await _foregroundSub?.cancel();
     await _openedSub?.cancel();
     await _tokenRefreshSub?.cancel();
-    _foregroundSub =
-        FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
+    _foregroundSub = FirebaseMessaging.onMessage.listen(
+      _handleForegroundMessage,
+    );
     _openedSub = FirebaseMessaging.onMessageOpenedApp.listen(_handleMessageTap);
 
     final initial = await _messaging.getInitialMessage();
@@ -108,6 +115,11 @@ class PushNotificationService {
       AppLogger.info('fcm: token obtained');
       await _persistToken(token);
     } catch (e) {
+      if (AppLogger.isTransientNetworkError(e, 'fcm: get token failed')) {
+        AppLogger.warn('fcm: token retry scheduled after transient network');
+        _scheduleTokenRetry();
+        return;
+      }
       AppLogger.error('fcm: get token failed', e);
     }
   }
@@ -118,21 +130,46 @@ class PushNotificationService {
     if (userId == null) return;
 
     try {
-      await client.from('device_tokens').upsert(
-        {
-          'user_id': userId,
-          'token': token,
-          'platform': defaultTargetPlatform == TargetPlatform.android
-              ? 'android'
-              : 'ios',
-          'updated_at': DateTime.now().toIso8601String(),
-        },
-        onConflict: 'user_id,token',
-      );
+      await client.from('device_tokens').upsert({
+        'user_id': userId,
+        'token': token,
+        'platform': defaultTargetPlatform == TargetPlatform.android
+            ? 'android'
+            : 'ios',
+        'updated_at': DateTime.now().toIso8601String(),
+      }, onConflict: 'user_id,token');
       AppLogger.info('fcm: token saved');
+      _pendingTokenRetry = null;
+      _tokenRetryAttempt = 0;
     } catch (e) {
+      if (AppLogger.isTransientNetworkError(e, 'fcm: save token failed')) {
+        AppLogger.warn('fcm: save token retry scheduled transient network');
+        _scheduleTokenRetry(token: token);
+        return;
+      }
       AppLogger.error('fcm: save token failed', e);
     }
+  }
+
+  void _scheduleTokenRetry({String? token}) {
+    _pendingTokenRetry = token ?? _pendingTokenRetry;
+    if (_tokenRetryTimer?.isActive ?? false) return;
+    final attempt = _tokenRetryAttempt.clamp(0, 5);
+    final baseSeconds = ConnectivityService.instance.isOnline ? 8 : 24;
+    final delay = Duration(seconds: baseSeconds * (attempt + 1));
+
+    // token registration is idempotent because the db upsert uses user+token.
+    // retrying quietly avoids losing push capability when android turns the
+    // screen off, dns changes, or supabase closes a background socket mid-write.
+    _tokenRetryTimer = Timer(delay, () {
+      _tokenRetryAttempt = (_tokenRetryAttempt + 1).clamp(0, 5);
+      final pending = _pendingTokenRetry;
+      if (pending == null) {
+        unawaited(_saveToken());
+      } else {
+        unawaited(_persistToken(pending));
+      }
+    });
   }
 
   void _onTokenRefresh(String token) {
@@ -197,9 +234,12 @@ class PushNotificationService {
       await _foregroundSub?.cancel();
       await _openedSub?.cancel();
       await _tokenRefreshSub?.cancel();
+      _tokenRetryTimer?.cancel();
       _foregroundSub = null;
       _openedSub = null;
       _tokenRefreshSub = null;
+      _pendingTokenRetry = null;
+      _tokenRetryAttempt = 0;
       _initialized = false;
     } catch (e) {
       AppLogger.error('fcm: remove token failed', e);

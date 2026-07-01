@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
@@ -21,6 +22,9 @@ import 'core/security/secure_screen.dart';
 import 'core/services/ad_service.dart';
 import 'core/services/account_device_service.dart';
 import 'core/services/app_update_service.dart';
+import 'core/services/app_analytics_service.dart';
+import 'core/services/error_monitoring_service.dart';
+import 'core/services/offline_mutation_outbox.dart';
 import 'core/services/quick_action_service.dart';
 import 'core/services/push_notification_service.dart';
 import 'core/utils/app_haptics.dart';
@@ -42,6 +46,10 @@ import 'package:go_router/go_router.dart';
 import 'package:hyper_snackbar/hyper_snackbar.dart';
 
 Future<void> main() async {
+  await ErrorMonitoringService.initialize(appRunner: _bootstrap);
+}
+
+Future<void> _bootstrap() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -57,24 +65,24 @@ Future<void> main() async {
 
   // initialize firebase first required before any firebase service
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await AppAnalyticsService.instance.initialize();
 
   // suppress all debug prints in release
   if (kReleaseMode) {
     debugPrint = (String? message, {int? wrapWidth}) {};
   }
 
-  await DeviceSecurity.enforceSecureWindow();
-
   // block rooted hooked repackaged or sideloaded release builds before app state loads
   final securityReport = await DeviceSecurity.inspect();
   if (securityReport.compromised && kReleaseMode) {
-    runApp(const SecurityWarningApp());
+    runApp(SecurityWarningApp(report: securityReport));
     return;
   }
 
   await Hive.initFlutter();
   await Hive.openBox('app_settings');
   await Hive.openBox('echo_cache');
+  await Hive.openBox('offline_outbox');
   tz.initializeTimeZones();
   tz.setLocalLocation(tz.getLocation('Asia/Kolkata'));
 
@@ -93,6 +101,7 @@ Future<void> main() async {
 
   AppLogger.info('main: supabase initialized');
   await ConnectivityService.instance.initialize();
+  await OfflineMutationOutbox.instance.initialize();
 
   final authService = AuthService();
   final onboardingService = OnboardingService();
@@ -110,7 +119,9 @@ Future<void> main() async {
   if (authService.isLoggedIn) {
     notificationService.loadNotifications();
     notificationService.startRealtime();
+    echoFeedService.startRealtime();
     unawaited(bookmarkService.loadBookmarks());
+    unawaited(OfflineMutationOutbox.instance.flush());
     unawaited(_startPushIfEnabled());
   }
 
@@ -119,6 +130,7 @@ Future<void> main() async {
     onboardingService: onboardingService,
     subscriptionService: subscriptionService,
   );
+  AppAnalyticsService.instance.attachRouter(router);
   unawaited(
     QuickActionService.attach(
       router,
@@ -130,6 +142,11 @@ Future<void> main() async {
   if (wasLoggedIn) {
     adService.onUserLoggedIn();
     unawaited(
+      AppAnalyticsService.instance.setAuthenticatedUser(
+        userId: authService.currentUser?.id,
+      ),
+    );
+    unawaited(
       _registerAccountDevice(accountDeviceService, authService, router),
     );
   }
@@ -140,13 +157,20 @@ Future<void> main() async {
     if (isLoggedIn && !wasLoggedIn) {
       adService.onUserLoggedIn();
       unawaited(
+        AppAnalyticsService.instance.setAuthenticatedUser(
+          userId: authService.currentUser?.id,
+        ),
+      );
+      unawaited(
         QuickActionService.syncForAuth(
           profileEnabled: _quickActionsAllowed(authService),
         ),
       );
       notificationService.loadNotifications();
       notificationService.startRealtime();
+      echoFeedService.startRealtime();
       unawaited(bookmarkService.loadBookmarks());
+      unawaited(OfflineMutationOutbox.instance.flush());
       unawaited(_startPushIfEnabled());
       unawaited(
         _registerAccountDevice(accountDeviceService, authService, router),
@@ -161,8 +185,12 @@ Future<void> main() async {
       }
     } else if (!isLoggedIn && wasLoggedIn) {
       adService.onUserLoggedOut();
+      unawaited(
+        AppAnalyticsService.instance.setAuthenticatedUser(userId: null),
+      );
       unawaited(QuickActionService.syncForAuth(profileEnabled: false));
       notificationService.stopRealtime();
+      unawaited(echoFeedService.stopRealtime());
       bookmarkService.clearForLogout();
       accountDeviceService.stopRealtime();
       unawaited(PushNotificationService.instance.removeToken());
@@ -898,14 +926,16 @@ class _AppLifecycleObserver extends WidgetsBindingObserver {
 }
 
 class SecurityWarningApp extends StatelessWidget {
-  const SecurityWarningApp({super.key});
+  const SecurityWarningApp({super.key, this.report});
+
+  final DeviceSecurityReport? report;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       navigatorKey: HyperSnackbar.navigatorKey,
-      home: const SecureScreen(child: SecurityLockdownScreen()),
+      home: SecureScreen(child: SecurityLockdownScreen(report: report)),
     );
   }
 }
