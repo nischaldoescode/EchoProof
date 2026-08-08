@@ -514,6 +514,7 @@ class AuthService extends ChangeNotifier {
     } on PlatformException catch (e) {
       AppLogger.error(
         'auth: google platform sign in failed - ${_googlePlatformFailureLabel(e)}',
+        e,
       );
       _error = _friendlyGooglePlatformError(e);
       _setLoading(false);

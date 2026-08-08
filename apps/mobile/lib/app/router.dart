@@ -28,6 +28,7 @@ import '../features/notifications/presentation/screens/notifications_screen.dart
 import '../features/settings/presentation/screens/settings_screen.dart';
 import '../features/rooms/presentation/screens/rooms_screen.dart';
 import '../features/rooms/presentation/screens/secure_room_chat_screen.dart';
+import '../features/rooms/presentation/screens/anonymous_secure_room_screen.dart';
 import '../features/subscription/presentation/screens/subscribe_screen.dart';
 import '../features/auth/presentation/services/auth_service.dart';
 import '../features/onboarding/presentation/services/onboarding_service.dart';
@@ -301,6 +302,11 @@ bool _isOnboardingRoute(String location) {
   return routes.any((r) => location.startsWith(r));
 }
 
+bool _isAnonymousRoomRoute(String location) {
+  return location == '/anonymous-room' ||
+      location.startsWith('/anonymous-room/');
+}
+
 GoRouter createRouter({
   required AuthService authService,
   required OnboardingService onboardingService,
@@ -322,7 +328,9 @@ GoRouter createRouter({
 
       // signed-out users can only reach auth routes
       if (!isLoggedIn) {
-        if (location == '/login' || location.startsWith('/verify-email')) {
+        if (location == '/login' ||
+            location.startsWith('/verify-email') ||
+            _isAnonymousRoomRoute(location)) {
           return null;
         }
         return '/login';
@@ -350,6 +358,10 @@ GoRouter createRouter({
 
       // signed-in user has completed onboarding
       if (hasUsername && isHiveDone) {
+        if (_isAnonymousRoomRoute(location)) {
+          AppLogger.info('router: signed-in users cannot use anonymous rooms');
+          return '/feed';
+        }
         // return completed users from onboarding to feed
         if (_isOnboardingRoute(location)) {
           AppLogger.info('router: onboarding done, redirecting to feed');
@@ -542,6 +554,23 @@ GoRouter createRouter({
         pageBuilder: (_, s) => _slidePage(
           SecureScreen(
             child: SecureRoomChatScreen(roomId: s.pathParameters['id']!),
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/anonymous-room',
+        pageBuilder: (_, s) => _slidePage(
+          AnonymousRoomEntryScreen(
+            initialInviteCode: s.uri.queryParameters['code'],
+            initialRoomKey: _secureRoomKeyFromUri(s.uri),
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/anonymous-room/:id',
+        pageBuilder: (_, s) => _slidePage(
+          SecureScreen(
+            child: AnonymousRoomChatScreen(roomId: s.pathParameters['id']!),
           ),
         ),
       ),

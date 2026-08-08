@@ -12,7 +12,7 @@ abstract final class AppLogger {
     final safeMessage = _friendly(message);
     if (!kDebugMode) return;
     debugPrint('echoproof audit: $safeMessage');
-    dev.log('[AUDIT] $safeMessage', name: 'echoproof');
+    dev.log('$safeMessage', name: 'echoproof');
   }
 
   static void info(String message) {
@@ -27,7 +27,7 @@ abstract final class AppLogger {
     ErrorMonitoringService.captureBreadcrumb('warn', safeMessage);
     if (!kDebugMode) return;
     debugPrint('echoproof warn: $safeMessage');
-    dev.log('[WARN] $safeMessage', name: 'echoproof');
+    dev.log('warn,: $safeMessage', name: 'echoproof');
   }
 
   static void error(String message, [Object? error, StackTrace? stack]) {
@@ -38,7 +38,7 @@ abstract final class AppLogger {
       ErrorMonitoringService.captureBreadcrumb('warn', breadcrumb);
       if (!kDebugMode) return;
       debugPrint('echoproof warn: $breadcrumb');
-      dev.log('[WARN] $breadcrumb', name: 'echoproof', error: error);
+      dev.log('warn,: $breadcrumb', name: 'echoproof', error: error);
       return;
     }
 
@@ -50,7 +50,7 @@ abstract final class AppLogger {
     if (!kDebugMode) return;
     debugPrint('echoproof error: $safeMessage');
     dev.log(
-      '[ERROR] $safeMessage',
+      'error:, $safeMessage',
       name: 'echoproof',
       error: error,
       stackTrace: stack,
@@ -61,7 +61,7 @@ abstract final class AppLogger {
     final safeMessage = _friendly(message);
     if (!kDebugMode) return;
     debugPrint('echoproof debug: $safeMessage');
-    dev.log('[DEBUG] $safeMessage', name: 'echoproof');
+    dev.log('debug:, $safeMessage', name: 'echoproof');
   }
 
   /// true for short-lived transport failures that should stay as breadcrumbs.
