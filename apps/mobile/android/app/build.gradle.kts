@@ -21,7 +21,9 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.echoproof.app"
-    compileSdk = flutter.compileSdkVersion
+    // compile against the installed platform required by current androidx
+    // dependencies without changing the devices the app can run on
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -54,9 +56,8 @@ signingConfigs {
             // todo: add your own signing config for the release build
             // signing with the debug keys for now, so `flutter run --release` works
             signingConfig = signingConfigs.getByName("release")
-                isMinifyEnabled = true
+            isMinifyEnabled = true
             isShrinkResources = true
-
             // the local rules file is intentionally ignored because it can carry
             // release-only hardening choices. the file name is safe to reference,
             // while the actual rules stay local to the machine that builds.

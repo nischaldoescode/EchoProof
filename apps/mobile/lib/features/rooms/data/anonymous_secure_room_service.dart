@@ -2,10 +2,16 @@
 // keeps guest room keys and member tokens local so anonymous rooms never create accounts
 
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/utils/logger.dart';
+import '../../../core/utils/media_file_safety.dart';
 import 'secure_room_crypto.dart';
 import 'secure_room_service.dart';
 
@@ -35,6 +41,14 @@ class AnonymousSecureRoomSummary {
 
   String get memberProgressLabel =>
       '${activeMemberCount.clamp(1, maxMembers)}/$maxMembers joined';
+
+  String get friendlyPresenceLabel {
+    final active = activeMemberCount.clamp(1, maxMembers).toInt();
+    if (active >= maxMembers) return '$active/$maxMembers joined';
+    final waiting = maxMembers - active;
+    final noun = waiting == 1 ? 'guest' : 'guests';
+    return 'Waiting for $waiting $noun';
+  }
 }
 
 class AnonymousRoomMember {
@@ -68,6 +82,13 @@ class AnonymousRoomMessage {
     required this.expiresAt,
     required this.integrityOk,
     this.text,
+    this.mediaPath,
+    this.mediaNonce,
+    this.mediaMac,
+    this.mediaSizeBytes,
+    this.mediaContentType,
+    this.localMediaPath,
+    this.pending = false,
   });
 
   final String id;
@@ -79,8 +100,17 @@ class AnonymousRoomMessage {
   final DateTime expiresAt;
   final bool integrityOk;
   final String? text;
+  final String? mediaPath;
+  final String? mediaNonce;
+  final String? mediaMac;
+  final int? mediaSizeBytes;
+  final String? mediaContentType;
+  final String? localMediaPath;
+  final bool pending;
 
   bool get isExpired => expiresAt.isBefore(DateTime.now());
+  bool get hasMedia => kind == 'image' || kind == 'gif' || kind == 'video';
+  bool get isVideo => kind == 'video';
 }
 
 class AnonymousRoomState {
@@ -119,11 +149,16 @@ class AnonymousSecureRoomService {
 
   static const int maxAnonymousTextCharacters = 1000;
   static const int maxAnonymousTextLines = 20;
+  static const int maxAnonymousImageBytes = 1 * 1024 * 1024;
+  static const int maxAnonymousVideoBytes = 5 * 1024 * 1024;
+  static const _anonymousMediaBucket = 'anonymous-room-media';
   static const _storage = FlutterSecureStorage();
   static final _anonCodeRegex = RegExp(r'^anon-[a-z2-9]{10}$');
 
   final _client = Supabase.instance.client;
   final _localSendTimes = <String, List<DateTime>>{};
+  final _mediaPlaintextCache = <String, Uint8List>{};
+  int _mediaPlaintextCacheBytes = 0;
 
   bool get accountIsSignedIn => _client.auth.currentUser != null;
 
@@ -242,11 +277,10 @@ class AnonymousSecureRoomService {
     required String roomId,
     required String text,
     int ttlSeconds = 120,
+    String? clientMessageId,
   }) async {
     _assertSignedOut();
-    final clean = SecureRoomService.redactLinks(
-      SecureRoomService.sanitizeRoomText(text),
-    );
+    final clean = sanitizeAnonymousText(text);
     if (clean.isEmpty) throw Exception('Message is empty.');
     _assertLocalSendRate(roomId);
 
@@ -255,12 +289,12 @@ class AnonymousSecureRoomService {
       clean,
       credentials.roomKey,
     );
-    final clientMessageId = SecureRoomCrypto.generateClientMessageId();
+    final messageId = clientMessageId ?? newClientMessageId();
     final createdAt = DateTime.now().toUtc().toIso8601String();
     final signature = SecureRoomCrypto.signMessage(
       roomKey: credentials.roomKey,
       roomId: roomId,
-      clientMessageId: clientMessageId,
+      clientMessageId: messageId,
       nonce: encrypted.nonce,
       ciphertext: encrypted.ciphertext,
       createdAt: createdAt,
@@ -276,7 +310,7 @@ class AnonymousSecureRoomService {
         'nonce': encrypted.nonce,
         'mac': encrypted.mac,
         'signature': signature,
-        'client_message_id': clientMessageId,
+        'client_message_id': messageId,
         'client_created_at': createdAt,
         'ttl_seconds': ttlSeconds.clamp(120, 300),
       },
@@ -286,6 +320,172 @@ class AnonymousSecureRoomService {
       Map<String, dynamic>.from(data['message'] as Map),
       credentials.roomKey,
     );
+  }
+
+  Future<AnonymousRoomMessage> sendMedia({
+    required String roomId,
+    required String localPath,
+    required MediaFileKind kind,
+    required int ttlSeconds,
+    String? clientMessageId,
+  }) async {
+    _assertSignedOut();
+    final validation = await MediaFileSafety.validateLocalFile(
+      localPath,
+      expectedKind: kind,
+    );
+    if (!validation.isValid) {
+      throw Exception(validation.error ?? 'Unsupported media.');
+    }
+
+    final maxBytes = kind == MediaFileKind.video
+        ? maxAnonymousVideoBytes
+        : maxAnonymousImageBytes;
+    if (validation.sizeBytes > maxBytes) {
+      throw Exception(
+        kind == MediaFileKind.video
+            ? 'Anonymous videos must be 5 MB or smaller.'
+            : 'Anonymous photos must be 1 MB or smaller.',
+      );
+    }
+
+    _assertLocalSendRate(roomId);
+    final credentials = await _credentials(roomId);
+    final bytes = await File(localPath).readAsBytes();
+    final encryptedMedia = await SecureRoomCrypto.encryptBytes(
+      Uint8List.fromList(bytes),
+      credentials.roomKey,
+    );
+    final encryptedBytes = base64Decode(encryptedMedia.ciphertext);
+    final messageKind = _messageKindFor(validation);
+    final messageId = clientMessageId ?? newClientMessageId();
+
+    final upload = await _invoke(
+      'anonymous-secure-room-media-url',
+      body: {
+        'intent': 'upload',
+        'room_id': roomId,
+        'member_token': credentials.memberToken,
+        'kind': messageKind,
+        'encrypted_size_bytes': encryptedBytes.length,
+      },
+    );
+    final mediaPath = upload['path'] as String? ?? '';
+    final token = upload['token'] as String? ?? '';
+    if (mediaPath.isEmpty || token.isEmpty) {
+      throw Exception('Could not prepare anonymous media upload.');
+    }
+
+    await _client.storage
+        .from(_anonymousMediaBucket)
+        .uploadBinaryToSignedUrl(
+          mediaPath,
+          token,
+          encryptedBytes,
+          const FileOptions(
+            contentType: 'application/octet-stream',
+            upsert: false,
+          ),
+        );
+
+    final label = switch (messageKind) {
+      'gif' => 'Encrypted GIF',
+      'image' => 'Encrypted image',
+      'video' => 'Encrypted video',
+      _ => 'Encrypted media',
+    };
+    final encryptedLabel = await SecureRoomCrypto.encryptString(
+      label,
+      credentials.roomKey,
+    );
+    final createdAt = DateTime.now().toUtc().toIso8601String();
+    final signedCiphertext = _signedCiphertextForMedia(
+      ciphertext: encryptedLabel.ciphertext,
+      mediaPath: mediaPath,
+      mediaNonce: encryptedMedia.nonce,
+      mediaMac: encryptedMedia.mac,
+    );
+    final signature = SecureRoomCrypto.signMessage(
+      roomKey: credentials.roomKey,
+      roomId: roomId,
+      clientMessageId: messageId,
+      nonce: encryptedLabel.nonce,
+      ciphertext: signedCiphertext,
+      createdAt: createdAt,
+    );
+
+    final data = await _invoke(
+      'send-anonymous-secure-room-message',
+      body: {
+        'room_id': roomId,
+        'member_token': credentials.memberToken,
+        'kind': messageKind,
+        'ciphertext': encryptedLabel.ciphertext,
+        'nonce': encryptedLabel.nonce,
+        'mac': encryptedLabel.mac,
+        'signature': signature,
+        'client_message_id': messageId,
+        'client_created_at': createdAt,
+        'ttl_seconds': ttlSeconds.clamp(120, 300),
+        'media_path': mediaPath,
+        'media_nonce': encryptedMedia.nonce,
+        'media_mac': encryptedMedia.mac,
+        'media_size_bytes': bytes.length,
+        'media_content_type': MediaFileSafety.contentTypeForExtension(
+          validation.extension,
+        ),
+      },
+    );
+
+    _cachePlaintextMedia(mediaPath, bytes);
+    return _decryptMessage(
+      Map<String, dynamic>.from(data['message'] as Map),
+      credentials.roomKey,
+    );
+  }
+
+  Future<Uint8List> decryptMedia(AnonymousRoomMessage message) async {
+    if (!message.hasMedia ||
+        message.mediaPath == null ||
+        message.mediaNonce == null ||
+        message.mediaMac == null) {
+      throw Exception('Missing anonymous media payload.');
+    }
+    if (message.localMediaPath != null) {
+      return Uint8List.fromList(
+        await File(message.localMediaPath!).readAsBytes(),
+      );
+    }
+    final cached = _mediaPlaintextCache[message.mediaPath!];
+    if (cached != null) return Uint8List.fromList(cached);
+
+    final credentials = await _credentials(message.roomId);
+    final signed = await _invoke(
+      'anonymous-secure-room-media-url',
+      body: {
+        'intent': 'download',
+        'room_id': message.roomId,
+        'member_token': credentials.memberToken,
+        'message_id': message.id,
+        'media_path': message.mediaPath,
+      },
+    );
+    final url = signed['signed_url'] as String? ?? '';
+    if (url.isEmpty) throw Exception('Could not open anonymous media.');
+    final response = await http.get(Uri.parse(url));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Anonymous media download failed.');
+    }
+    final bytes = await SecureRoomCrypto.decryptBytes(
+      EncryptedPayload(
+        ciphertext: base64Encode(response.bodyBytes),
+        nonce: message.mediaNonce!,
+        mac: message.mediaMac!,
+      ),
+      credentials.roomKey,
+    );
+    _cachePlaintextMedia(message.mediaPath!, bytes);
+    return bytes;
   }
 
   Future<void> leaveRoom(String roomId) async {
@@ -343,6 +543,62 @@ class AnonymousSecureRoomService {
         .trim();
     if (clean.length < 2 || clean.length > 32) return null;
     return clean;
+  }
+
+  static String sanitizeAnonymousText(String value) {
+    return SecureRoomService.redactLinks(
+      SecureRoomService.sanitizeRoomText(value),
+    );
+  }
+
+  static String newClientMessageId() =>
+      SecureRoomCrypto.generateClientMessageId();
+
+  static AnonymousRoomMessage pendingTextMessage({
+    required String roomId,
+    required String senderMemberId,
+    required String clientMessageId,
+    required String text,
+    required int ttlSeconds,
+  }) {
+    final now = DateTime.now().toUtc();
+    return AnonymousRoomMessage(
+      id: 'pending-$clientMessageId',
+      roomId: roomId,
+      senderMemberId: senderMemberId,
+      kind: 'text',
+      clientMessageId: clientMessageId,
+      createdAt: now,
+      expiresAt: now.add(Duration(seconds: ttlSeconds)),
+      integrityOk: true,
+      text: text,
+      pending: true,
+    );
+  }
+
+  static AnonymousRoomMessage pendingMediaMessage({
+    required String roomId,
+    required String senderMemberId,
+    required String clientMessageId,
+    required String kind,
+    required String label,
+    required String localMediaPath,
+    required int ttlSeconds,
+  }) {
+    final now = DateTime.now().toUtc();
+    return AnonymousRoomMessage(
+      id: 'pending-$clientMessageId',
+      roomId: roomId,
+      senderMemberId: senderMemberId,
+      kind: kind,
+      clientMessageId: clientMessageId,
+      createdAt: now,
+      expiresAt: now.add(Duration(seconds: ttlSeconds)),
+      integrityOk: true,
+      text: label,
+      localMediaPath: localMediaPath,
+      pending: true,
+    );
   }
 
   static String buildShareLink(String inviteCode, String roomKey) {
@@ -408,12 +664,23 @@ class AnonymousSecureRoomService {
     final ciphertext = row['ciphertext'] as String? ?? '';
     final clientCreatedAt = row['client_created_at'] as String? ?? '';
     final signature = row['signature'] as String? ?? '';
+    final mediaPath = row['media_path'] as String?;
+    final mediaNonce = row['media_nonce'] as String?;
+    final mediaMac = row['media_mac'] as String?;
+    final signedCiphertext = _isMediaKind(row['kind'] as String? ?? 'text')
+        ? _signedCiphertextForMedia(
+            ciphertext: ciphertext,
+            mediaPath: mediaPath,
+            mediaNonce: mediaNonce,
+            mediaMac: mediaMac,
+          )
+        : ciphertext;
     final integrityOk = SecureRoomCrypto.verifyMessage(
       roomKey: roomKey,
       roomId: roomId,
       clientMessageId: clientMessageId,
       nonce: nonce,
-      ciphertext: ciphertext,
+      ciphertext: signedCiphertext,
       createdAt: clientCreatedAt,
       signature: signature,
     );
@@ -442,6 +709,11 @@ class AnonymousSecureRoomService {
       clientMessageId: clientMessageId,
       integrityOk: integrityOk && text != null,
       text: text,
+      mediaPath: mediaPath,
+      mediaNonce: mediaNonce,
+      mediaMac: mediaMac,
+      mediaSizeBytes: (row['media_size_bytes'] as num?)?.toInt(),
+      mediaContentType: row['media_content_type'] as String?,
       createdAt:
           DateTime.tryParse(row['created_at'] as String? ?? '') ??
           DateTime.now(),
@@ -449,6 +721,55 @@ class AnonymousSecureRoomService {
           DateTime.tryParse(row['expires_at'] as String? ?? '') ??
           DateTime.now(),
     );
+  }
+
+  String _messageKindFor(MediaFileValidationResult validation) {
+    if (validation.kind == MediaFileKind.video) return 'video';
+    return validation.extension.toLowerCase() == 'gif' ? 'gif' : 'image';
+  }
+
+  static bool _isMediaKind(String kind) =>
+      kind == 'image' || kind == 'gif' || kind == 'video';
+
+  static String _signedCiphertextForMedia({
+    required String ciphertext,
+    required String? mediaPath,
+    required String? mediaNonce,
+    required String? mediaMac,
+  }) {
+    // media bytes live outside the message row, so the signature binds the
+    // encrypted text label to the exact encrypted object metadata
+    return [
+      ciphertext,
+      mediaPath ?? '',
+      mediaNonce ?? '',
+      mediaMac ?? '',
+    ].join(':');
+  }
+
+  void _cachePlaintextMedia(String path, List<int> bytes) {
+    // anonymous media is short lived, but caching the last few previews keeps
+    // scrolling smooth and avoids a signed-url round trip for just-sent files
+    if (bytes.length > maxAnonymousVideoBytes) return;
+    final existing = _mediaPlaintextCache.remove(path);
+    if (existing != null) {
+      _mediaPlaintextCacheBytes = (_mediaPlaintextCacheBytes - existing.length)
+          .clamp(0, 1 << 31)
+          .toInt();
+    }
+    final copy = Uint8List.fromList(bytes);
+    _mediaPlaintextCache[path] = copy;
+    _mediaPlaintextCacheBytes += copy.length;
+    while (_mediaPlaintextCacheBytes > 10 * 1024 * 1024 &&
+        _mediaPlaintextCache.isNotEmpty) {
+      final oldestKey = _mediaPlaintextCache.keys.first;
+      final oldest = _mediaPlaintextCache.remove(oldestKey);
+      if (oldest != null) {
+        _mediaPlaintextCacheBytes = (_mediaPlaintextCacheBytes - oldest.length)
+            .clamp(0, 1 << 31)
+            .toInt();
+      }
+    }
   }
 
   AnonymousSecureRoomSummary _mapRoom(dynamic raw) {

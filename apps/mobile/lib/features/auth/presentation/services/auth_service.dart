@@ -46,10 +46,18 @@ class AuthService extends ChangeNotifier {
     'AUTH_REDIRECT_URL',
     defaultValue: 'echoproof://auth-callback',
   );
+  // the web oauth client id is public configuration, but keeping the
+  // project value here prevents a release build from silently using an
+  // empty client id when the dart define was omitted
+  static const _googleWebClientId = String.fromEnvironment(
+    'GOOGLE_WEB_CLIENT_ID',
+    defaultValue:
+        '405829575296-vijr9j76j0ur0b4uk70v9igdrids87i5.apps.googleusercontent.com',
+  );
 
   final _client = Supabase.instance.client;
   final _google = GoogleSignIn(
-    serverClientId: const String.fromEnvironment('GOOGLE_WEB_CLIENT_ID'),
+    serverClientId: _googleWebClientId,
     scopes: ['email', 'profile'],
   );
   late final StreamSubscription<AuthState> _authSub;
@@ -82,6 +90,10 @@ class AuthService extends ChangeNotifier {
 
   AuthService() {
     _authSub = _client.auth.onAuthStateChange.listen((data) {
+      AppLogger.info(
+        'auth: state=${data.event.name} session=${data.session != null} '
+        'user=${data.session?.user.id ?? "none"}',
+      );
       if (data.event == AuthChangeEvent.signedIn ||
           data.event == AuthChangeEvent.initialSession ||
           data.event == AuthChangeEvent.userUpdated) {
@@ -164,14 +176,8 @@ class AuthService extends ChangeNotifier {
       // create a minimal stub row so the app can proceed to onboarding
       // the full row gets created in completeonboarding() via upsert
       if (row == null) {
-        if (!accountStatus.isProfilePending) {
-          AppLogger.warn('auth: profile row missing for established account');
-          await signOut(enforceCooldown: false);
-          return;
-        }
-
         AppLogger.warn(
-          'auth: trigger row missing after 5 retries, creating stub',
+          'auth: profile row missing after 5 retries, keeping session and creating stub',
         );
         try {
           await _client.from('users_public').insert({
@@ -314,11 +320,19 @@ class AuthService extends ChangeNotifier {
     _setLoading(true);
     _error = null;
     try {
+      final normalizedEmail = email.trim().toLowerCase();
       final res = await _verifyEmailOtpWithSignupFallback(
-        email: email,
-        otp: otp,
+        email: normalizedEmail,
+        otp: otp.trim(),
       );
-      if (res.user == null) {
+      AppLogger.info(
+        'auth: OTP response user=${res.user?.id ?? "none"} '
+        'responseSession=${res.session != null} '
+        'currentSession=${_client.auth.currentSession != null}',
+      );
+      if (res.user == null ||
+          (res.session == null && _client.auth.currentSession == null)) {
+        AppLogger.warn('auth: OTP verification returned no session');
         _error = 'Verification failed. Try again.';
         _setLoading(false);
         return false;
@@ -453,9 +467,9 @@ class AuthService extends ChangeNotifier {
       final idToken = auth.idToken;
       final accessToken = auth.accessToken;
 
-      if (idToken == null) {
+      if (idToken == null || accessToken == null) {
         AppLogger.error(
-          'auth: Google idToken is null — serverClientId may be wrong',
+          'auth: Google token response is incomplete — check serverClientId and OAuth configuration',
         );
         _error = 'Google sign in failed. Please try again.';
         _setLoading(false);
@@ -464,11 +478,18 @@ class AuthService extends ChangeNotifier {
 
       AppLogger.info('auth: Got Google idToken, signing in with Supabase');
 
-      await _client.auth.signInWithIdToken(
+      final response = await _client.auth.signInWithIdToken(
         provider: OAuthProvider.google,
         idToken: idToken,
         accessToken: accessToken,
       );
+
+      if (response.session == null && _client.auth.currentSession == null) {
+        AppLogger.error('auth: Google exchange returned no Supabase session');
+        _error = 'Google sign in could not create a session. Please try again.';
+        _setLoading(false);
+        return false;
+      }
 
       AppLogger.info(
         'auth: Supabase sign in successful, clearing stale state then checking',
@@ -581,7 +602,7 @@ class AuthService extends ChangeNotifier {
     if (combined.contains('10') ||
         combined.contains('developer_error') ||
         combined.contains('sign_in_failed')) {
-      return 'Google could not verify this app build. Update from Google Play or use email sign-in.';
+      return 'Google could not verify this build. Register the Play App Signing SHA-1 for com.echoproof.app in Firebase, then try again. Email sign-in is still available.';
     }
     if (combined.contains('network')) {
       return 'Google sign in needs a stable internet connection.';
@@ -964,6 +985,11 @@ class AuthService extends ChangeNotifier {
 
   String _friendly(String message) {
     final m = message.toLowerCase();
+    if (m.contains('invalid api key') ||
+        m.contains('invalid api_key') ||
+        m.contains('apikey is invalid')) {
+      return 'This build has an invalid Supabase public key. Rebuild with the current anon or publishable key from the linked Supabase project.';
+    }
     if (m.contains('otp') && m.contains('invalid')) {
       return 'Incorrect code. Try again.';
     }

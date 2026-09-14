@@ -2,15 +2,16 @@
 // signed-out guests use this isolated flow so anonymous rooms never create accounts
 
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../app/theme/typography.dart';
+import '../../../../core/utils/media_file_safety.dart';
 import '../../../../core/utils/snack.dart';
 import '../../../../shared/widgets/app_bottom_nav.dart';
 import '../../data/anonymous_secure_room_service.dart';
@@ -39,6 +40,8 @@ class _AnonymousRoomEntryScreenState extends State<AnonymousRoomEntryScreen>
   late final AnimationController _motionCtrl;
   bool _creating = false;
   bool _joining = false;
+  int _ttlSeconds = 120;
+  int _maxMembers = 2;
   String? _resumableRoomId;
 
   @override
@@ -115,7 +118,11 @@ class _AnonymousRoomEntryScreenState extends State<AnonymousRoomEntryScreen>
     if (_creating || _joining) return;
     setState(() => _creating = true);
     try {
-      final created = await _service.createRoom(displayName: _nameCtrl.text);
+      final created = await _service.createRoom(
+        displayName: _nameCtrl.text,
+        ttlSeconds: _ttlSeconds,
+        maxMembers: _maxMembers,
+      );
       if (!mounted) return;
       await _showCreatedSheet(created);
       if (!mounted) return;
@@ -269,6 +276,12 @@ class _AnonymousRoomEntryScreenState extends State<AnonymousRoomEntryScreen>
                           creating: _creating,
                           joining: _joining,
                           hasInvite: hasInvite,
+                          ttlSeconds: _ttlSeconds,
+                          maxMembers: _maxMembers,
+                          onTtlChanged: (value) =>
+                              setState(() => _ttlSeconds = value),
+                          onMaxMembersChanged: (value) =>
+                              setState(() => _maxMembers = value),
                           onPaste: _pasteInvite,
                           onCreate: _createRoom,
                           onJoin: _joinRoom,
@@ -307,8 +320,10 @@ class _AnonymousRoomChatScreenState extends State<AnonymousRoomChatScreen>
   static const _peerMissingGrace = Duration(seconds: 90);
 
   final _service = AnonymousSecureRoomService.instance;
+  final _picker = ImagePicker();
   final _textCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
+  final _pendingMessages = <AnonymousRoomMessage>[];
   Timer? _pollTimer;
   AnonymousRoomState? _state;
   bool _loading = true;
@@ -367,8 +382,15 @@ class _AnonymousRoomChatScreenState extends State<AnonymousRoomChatScreen>
       if (!mounted) return;
       final shouldScroll =
           _state == null ||
-          state.messages.length > (_state?.messages.length ?? 0);
+          state.messages.length + _pendingMessages.length >
+              (_state?.messages.length ?? 0);
       setState(() {
+        final serverIds = state.messages
+            .map((message) => message.clientMessageId)
+            .toSet();
+        _pendingMessages.removeWhere(
+          (message) => serverIds.contains(message.clientMessageId),
+        );
         _state = state;
         _loading = false;
         _error = null;
@@ -459,23 +481,158 @@ class _AnonymousRoomChatScreenState extends State<AnonymousRoomChatScreen>
 
   Future<void> _send() async {
     if (_sending) return;
-    final text = _textCtrl.text.trim();
+    final state = _state;
+    if (state == null || !state.room.isActive) return;
+    final rawText = _textCtrl.text;
+    final text = AnonymousSecureRoomService.sanitizeAnonymousText(rawText);
     if (text.isEmpty) return;
-    setState(() => _sending = true);
+    final clientMessageId = AnonymousSecureRoomService.newClientMessageId();
+    setState(() {
+      _sending = true;
+      _pendingMessages.add(
+        AnonymousSecureRoomService.pendingTextMessage(
+          roomId: widget.roomId,
+          senderMemberId: state.currentMember.id,
+          clientMessageId: clientMessageId,
+          text: text,
+          ttlSeconds: state.room.messageTtlSeconds,
+        ),
+      );
+    });
+    _scrollToEnd();
     try {
       _textCtrl.clear();
-      await _service.sendText(
+      final sent = await _service.sendText(
         roomId: widget.roomId,
         text: text,
         ttlSeconds: _state?.room.messageTtlSeconds ?? 120,
+        clientMessageId: clientMessageId,
       );
-      await _load(silent: true);
+      _replacePendingMessage(clientMessageId, sent);
+      unawaited(_load(silent: true));
     } catch (e) {
-      if (mounted) showErrorSnack(context, _friendlyError(e));
-      _textCtrl.text = text;
+      if (mounted) {
+        _removePendingMessage(clientMessageId);
+        showErrorSnack(context, _friendlyError(e));
+        _textCtrl.text = rawText;
+      }
     } finally {
       if (mounted) setState(() => _sending = false);
     }
+  }
+
+  Future<void> _pickMedia(MediaFileKind kind) async {
+    final state = _state;
+    if (state == null || !state.room.isActive || _sending) return;
+    String? clientMessageId;
+    try {
+      final picked = kind == MediaFileKind.image
+          // image_picker re-encodes photos before validation, while videos
+          // stay untouched so we never hide a slow transcoding step behind
+          // the composer or damage a user's original clip
+          ? await _picker.pickImage(
+              source: ImageSource.gallery,
+              maxWidth: 1280,
+              maxHeight: 1280,
+              imageQuality: 72,
+            )
+          : await _picker.pickVideo(
+              source: ImageSource.gallery,
+              maxDuration: const Duration(seconds: 20),
+            );
+      if (picked == null) return;
+      final validation = await MediaFileSafety.validateLocalFile(
+        picked.path,
+        expectedKind: kind,
+      );
+      if (!validation.isValid) {
+        if (mounted) {
+          showErrorSnack(context, validation.error ?? 'Unsupported media.');
+        }
+        return;
+      }
+      final maxBytes = kind == MediaFileKind.video
+          ? AnonymousSecureRoomService.maxAnonymousVideoBytes
+          : AnonymousSecureRoomService.maxAnonymousImageBytes;
+      if (validation.sizeBytes > maxBytes) {
+        if (mounted) {
+          showErrorSnack(
+            context,
+            kind == MediaFileKind.video
+                ? 'Pick a video under 5 MB. Short clips upload fastest here.'
+                : 'Pick a photo under 1 MB. Large images are compressed before this check.',
+          );
+        }
+        return;
+      }
+
+      final messageKind = validation.kind == MediaFileKind.video
+          ? 'video'
+          : validation.extension.toLowerCase() == 'gif'
+          ? 'gif'
+          : 'image';
+      final label = switch (messageKind) {
+        'gif' => 'Encrypted GIF',
+        'video' => 'Encrypted video',
+        _ => 'Encrypted image',
+      };
+      clientMessageId = AnonymousSecureRoomService.newClientMessageId();
+      setState(() {
+        _sending = true;
+        _pendingMessages.add(
+          AnonymousSecureRoomService.pendingMediaMessage(
+            roomId: widget.roomId,
+            senderMemberId: state.currentMember.id,
+            clientMessageId: clientMessageId!,
+            kind: messageKind,
+            label: label,
+            localMediaPath: picked.path,
+            ttlSeconds: state.room.messageTtlSeconds,
+          ),
+        );
+      });
+      _scrollToEnd();
+
+      final sent = await _service.sendMedia(
+        roomId: widget.roomId,
+        localPath: picked.path,
+        kind: kind,
+        ttlSeconds: state.room.messageTtlSeconds,
+        clientMessageId: clientMessageId,
+      );
+      _replacePendingMessage(clientMessageId, sent);
+      unawaited(_load(silent: true));
+    } catch (e) {
+      if (!mounted) return;
+      if (clientMessageId != null) _removePendingMessage(clientMessageId);
+      showErrorSnack(context, _friendlyError(e));
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  void _replacePendingMessage(
+    String clientMessageId,
+    AnonymousRoomMessage sent,
+  ) {
+    if (!mounted) return;
+    setState(() {
+      final index = _pendingMessages.indexWhere(
+        (message) => message.clientMessageId == clientMessageId,
+      );
+      if (index >= 0) {
+        _pendingMessages[index] = sent;
+      }
+    });
+  }
+
+  void _removePendingMessage(String clientMessageId) {
+    if (!mounted) return;
+    setState(() {
+      _pendingMessages.removeWhere(
+        (message) => message.clientMessageId == clientMessageId,
+      );
+    });
   }
 
   Future<void> _leave() async {
@@ -534,6 +691,20 @@ class _AnonymousRoomChatScreenState extends State<AnonymousRoomChatScreen>
         lower.contains('credentials are missing');
   }
 
+  List<AnonymousRoomMessage> _mergedMessages(AnonymousRoomState state) {
+    final serverIds = state.messages
+        .map((message) => message.clientMessageId)
+        .toSet();
+    final merged = <AnonymousRoomMessage>[
+      ...state.messages,
+      ..._pendingMessages.where(
+        (message) => !serverIds.contains(message.clientMessageId),
+      ),
+    ];
+    merged.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return merged;
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = _state;
@@ -545,96 +716,202 @@ class _AnonymousRoomChatScreenState extends State<AnonymousRoomChatScreen>
         if (!didPop) context.go('/anonymous-room');
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFFF3F8F4),
-        appBar: AppBar(
-          backgroundColor: const Color(0xFFF3F8F4),
-          titleSpacing: 0,
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        backgroundColor: const Color(0xFFF7FBF6),
+        body: SafeArea(
+          bottom: false,
+          child: Column(
             children: [
-              Text(state?.room.inviteCode ?? 'Anonymous room'),
-              Text(
-                state == null
-                    ? 'Loading'
-                    : _offline
-                    ? 'Reconnecting • E2EE'
-                    : '${state.room.memberProgressLabel} • E2EE',
-                style: AppTypography.textTheme.labelMedium,
+              _AnonymousRoomTopBar(
+                state: state,
+                offline: _offline,
+                leaving: _leaving,
+                onBack: () => context.go('/anonymous-room'),
+                onCopy: state == null
+                    ? null
+                    : () {
+                        Clipboard.setData(
+                          ClipboardData(text: state.room.inviteCode),
+                        );
+                        showSuccessSnack(context, 'Code copied.');
+                      },
+                onLeave: _leave,
+              ),
+              Expanded(
+                child: _loading
+                    ? const _AnonymousRoomSkeleton()
+                    : _error != null
+                    ? _AnonymousRoomError(
+                        message: _error!,
+                        onBack: () => context.go('/anonymous-room'),
+                      )
+                    : Column(
+                        children: [
+                          _AnonymousSecurityStrip(state: state!),
+                          Expanded(
+                            child: Builder(
+                              builder: (context) {
+                                final messages = _mergedMessages(state);
+                                return ListView.builder(
+                                  controller: _scrollCtrl,
+                                  keyboardDismissBehavior:
+                                      ScrollViewKeyboardDismissBehavior.onDrag,
+                                  padding: const EdgeInsets.fromLTRB(
+                                    AppSpacing.lg,
+                                    AppSpacing.md,
+                                    AppSpacing.lg,
+                                    AppSpacing.lg,
+                                  ),
+                                  itemCount: messages.length,
+                                  itemBuilder: (context, index) {
+                                    final message = messages[index];
+                                    final sender = state.members.firstWhere(
+                                      (m) => m.id == message.senderMemberId,
+                                      orElse: () => AnonymousRoomMember(
+                                        id: message.senderMemberId,
+                                        role: 'member',
+                                        displayName: 'Guest',
+                                        avatarSeed: message.senderMemberId,
+                                        joinedAt: message.createdAt,
+                                      ),
+                                    );
+                                    return _AnonymousMessageBubble(
+                                      message: message,
+                                      sender: sender,
+                                      mine:
+                                          message.senderMemberId ==
+                                          state.currentMember.id,
+                                    );
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                          _AnonymousComposer(
+                            controller: _textCtrl,
+                            sending: _sending,
+                            enabled: state.room.isActive,
+                            onSend: _send,
+                            onPickImage: () => _pickMedia(MediaFileKind.image),
+                            onPickVideo: () => _pickMedia(MediaFileKind.video),
+                            bottomPadding: bottom,
+                          ),
+                        ],
+                      ),
               ),
             ],
           ),
-          actions: [
-            IconButton(
-              tooltip: 'Copy invite code',
-              onPressed: state == null
-                  ? null
-                  : () {
-                      Clipboard.setData(
-                        ClipboardData(text: state.room.inviteCode),
-                      );
-                      showSuccessSnack(context, 'Code copied.');
-                    },
-              icon: const Icon(Icons.copy_rounded),
-            ),
-            IconButton(
-              tooltip: 'Leave room',
-              onPressed: _leaving ? null : _leave,
-              icon: const Icon(Icons.logout_rounded),
-            ),
-          ],
         ),
-        body: _loading
-            ? const _AnonymousRoomSkeleton()
-            : _error != null
-            ? _AnonymousRoomError(
-                message: _error!,
-                onBack: () => context.go('/anonymous-room'),
-              )
-            : Column(
-                children: [
-                  _AnonymousSecurityStrip(state: state!),
-                  Expanded(
-                    child: ListView.builder(
-                      controller: _scrollCtrl,
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      padding: const EdgeInsets.fromLTRB(
-                        AppSpacing.lg,
-                        AppSpacing.md,
-                        AppSpacing.lg,
-                        AppSpacing.lg,
+      ),
+    );
+  }
+}
+
+class _AnonymousRoomTopBar extends StatelessWidget {
+  const _AnonymousRoomTopBar({
+    required this.state,
+    required this.offline,
+    required this.leaving,
+    required this.onBack,
+    required this.onCopy,
+    required this.onLeave,
+  });
+
+  final AnonymousRoomState? state;
+  final bool offline;
+  final bool leaving;
+  final VoidCallback onBack;
+  final VoidCallback? onCopy;
+  final VoidCallback onLeave;
+
+  @override
+  Widget build(BuildContext context) {
+    final room = state?.room;
+    final status = room == null
+        ? 'Opening'
+        : offline
+        ? 'Reconnecting'
+        : room.friendlyPresenceLabel;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.sm,
+        AppSpacing.sm,
+        AppSpacing.sm,
+        AppSpacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7FBF6).withValues(alpha: 0.96),
+        border: Border(
+          bottom: BorderSide(
+            color: AppColors.fernGreen.withValues(alpha: 0.10),
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: 'Back',
+            onPressed: onBack,
+            icon: const Icon(Icons.arrow_back_rounded),
+          ),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  room?.inviteCode ?? 'Anonymous room',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    color: const Color(0xFF173B34),
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        '$status • E2EE',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.textTheme.labelSmall?.copyWith(
+                          color: offline
+                              ? AppColors.sunsetCoralDark
+                              : AppColors.textSecondary,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                      itemCount: state.messages.length,
-                      itemBuilder: (context, index) {
-                        final message = state.messages[index];
-                        final sender = state.members.firstWhere(
-                          (m) => m.id == message.senderMemberId,
-                          orElse: () => AnonymousRoomMember(
-                            id: message.senderMemberId,
-                            role: 'member',
-                            displayName: 'Guest',
-                            avatarSeed: message.senderMemberId,
-                            joinedAt: message.createdAt,
-                          ),
-                        );
-                        return _AnonymousMessageBubble(
-                          message: message,
-                          sender: sender,
-                          mine:
-                              message.senderMemberId == state.currentMember.id,
-                        );
-                      },
                     ),
-                  ),
-                  _AnonymousComposer(
-                    controller: _textCtrl,
-                    sending: _sending,
-                    enabled: state.room.isActive,
-                    onSend: _send,
-                    bottomPadding: bottom,
-                  ),
-                ],
-              ),
+                    if (room != null) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: offline
+                              ? AppColors.sunsetCoral
+                              : AppColors.fernGreen,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Copy code',
+            onPressed: onCopy,
+            icon: const Icon(Icons.copy_rounded),
+          ),
+          IconButton(
+            tooltip: 'Leave room',
+            onPressed: leaving ? null : onLeave,
+            icon: const Icon(Icons.logout_rounded),
+          ),
+        ],
       ),
     );
   }
@@ -648,6 +925,10 @@ class _AnonymousEntryPanel extends StatelessWidget {
     required this.creating,
     required this.joining,
     required this.hasInvite,
+    required this.ttlSeconds,
+    required this.maxMembers,
+    required this.onTtlChanged,
+    required this.onMaxMembersChanged,
     required this.onPaste,
     required this.onCreate,
     required this.onJoin,
@@ -662,6 +943,10 @@ class _AnonymousEntryPanel extends StatelessWidget {
   final bool creating;
   final bool joining;
   final bool hasInvite;
+  final int ttlSeconds;
+  final int maxMembers;
+  final ValueChanged<int> onTtlChanged;
+  final ValueChanged<int> onMaxMembersChanged;
   final VoidCallback onPaste;
   final VoidCallback onCreate;
   final VoidCallback onJoin;
@@ -731,11 +1016,38 @@ class _AnonymousEntryPanel extends StatelessWidget {
             _AnonTextField(
               controller: nameCtrl,
               label: 'Temporary name',
-              hint: 'Nischal',
+              hint: 'display name',
               icon: Icons.badge_outlined,
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: AppSpacing.md),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              child: hasInvite
+                  ? const SizedBox.shrink(key: ValueKey('join-settings'))
+                  : Column(
+                      key: const ValueKey('create-settings'),
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _AnonChoiceRow(
+                          label: 'Messages live for',
+                          value: ttlSeconds,
+                          options: const {120: '2 min', 300: '5 min'},
+                          onChanged: creating || joining ? null : onTtlChanged,
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        _AnonChoiceRow(
+                          label: 'Room size',
+                          value: maxMembers,
+                          options: const {2: '2 guests', 3: '3 guests'},
+                          onChanged: creating || joining
+                              ? null
+                              : onMaxMembersChanged,
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                      ],
+                    ),
+            ),
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 220),
               child: hasInvite
@@ -843,7 +1155,7 @@ class _AnonymousSecurityStrip extends StatelessWidget {
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: Text(
-              '${state.currentMember.displayName} • ${state.room.memberProgressLabel} • messages expire in ${state.room.messageTtlSeconds ~/ 60} min',
+              '${state.currentMember.displayName} • ${state.room.friendlyPresenceLabel} • expires in ${state.room.messageTtlSeconds ~/ 60} min',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: AppTypography.textTheme.bodySmall?.copyWith(
@@ -865,6 +1177,8 @@ class _AnonymousComposer extends StatelessWidget {
     required this.sending,
     required this.enabled,
     required this.onSend,
+    required this.onPickImage,
+    required this.onPickVideo,
     required this.bottomPadding,
   });
 
@@ -872,6 +1186,8 @@ class _AnonymousComposer extends StatelessWidget {
   final bool sending;
   final bool enabled;
   final VoidCallback onSend;
+  final VoidCallback onPickImage;
+  final VoidCallback onPickVideo;
   final double bottomPadding;
 
   @override
@@ -896,10 +1212,18 @@ class _AnonymousComposer extends StatelessWidget {
         ),
         child: Row(
           children: [
+            IconButton.filledTonal(
+              tooltip: 'Attach media',
+              onPressed: enabled && !sending
+                  ? () => _showAttachSheet(context)
+                  : null,
+              icon: const Icon(Icons.add_photo_alternate_rounded),
+            ),
+            const SizedBox(width: AppSpacing.sm),
             Expanded(
               child: TextField(
                 controller: controller,
-                enabled: enabled && !sending,
+                enabled: enabled,
                 minLines: 1,
                 maxLines: 5,
                 textInputAction: TextInputAction.newline,
@@ -937,6 +1261,55 @@ class _AnonymousComposer extends StatelessWidget {
                   : const Icon(Icons.arrow_upward_rounded),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showAttachSheet(BuildContext context) {
+    return showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      backgroundColor: AppColors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) => Center(
+        heightFactor: 1,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              AppSpacing.sm,
+              AppSpacing.lg,
+              AppSpacing.lg + MediaQuery.paddingOf(sheetContext).bottom,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.image_rounded),
+                  title: const Text('Photo'),
+                  subtitle: const Text('Encrypted, 1 MB max'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    onPickImage();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.movie_creation_outlined),
+                  title: const Text('Short video'),
+                  subtitle: const Text('Encrypted, 5 MB max'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    onPickVideo();
+                  },
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -1015,17 +1388,36 @@ class _AnonymousMessageBubble extends StatelessWidget {
                             fontWeight: FontWeight.w800,
                           ),
                         ),
+                      if (message.hasMedia) ...[
+                        if (!mine) const SizedBox(height: 4),
+                        _AnonymousMediaPreview(message: message, mine: mine),
+                        const SizedBox(height: 6),
+                      ],
                       Text(
                         message.integrityOk
                             ? message.text ?? ''
                             : 'Message could not be verified',
                         style: AppTypography.textTheme.bodyMedium?.copyWith(
                           color: message.integrityOk
-                              ? textColor
+                              ? textColor.withValues(
+                                  alpha: message.pending ? 0.72 : 1,
+                                )
                               : AppColors.sunsetCoralDark,
                           height: 1.32,
                         ),
                       ),
+                      if (message.pending)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 3),
+                          child: Text(
+                            'sending...',
+                            style: AppTypography.textTheme.labelSmall?.copyWith(
+                              color: mine
+                                  ? AppColors.white.withValues(alpha: 0.68)
+                                  : AppColors.textSecondary,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -1044,6 +1436,161 @@ class _AnonymousMessageBubble extends StatelessWidget {
       ),
     );
   }
+}
+
+class _AnonymousMediaPreview extends StatefulWidget {
+  const _AnonymousMediaPreview({required this.message, required this.mine});
+
+  final AnonymousRoomMessage message;
+  final bool mine;
+
+  @override
+  State<_AnonymousMediaPreview> createState() => _AnonymousMediaPreviewState();
+}
+
+class _AnonymousMediaPreviewState extends State<_AnonymousMediaPreview> {
+  Future<Uint8List>? _future;
+  String? _futureKey;
+
+  @override
+  void initState() {
+    super.initState();
+    _prepareFuture();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AnonymousMediaPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldKey = _mediaKey(oldWidget.message);
+    if (oldKey != _mediaKey(widget.message)) _prepareFuture();
+  }
+
+  String _mediaKey(AnonymousRoomMessage message) =>
+      message.localMediaPath ?? message.mediaPath ?? message.id;
+
+  void _prepareFuture() {
+    final message = widget.message;
+    if (message.isVideo) return;
+    final key = _mediaKey(message);
+    if (_futureKey == key && _future != null) return;
+    _futureKey = key;
+    _future = AnonymousSecureRoomService.instance.decryptMedia(message);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final message = widget.message;
+    final mine = widget.mine;
+    if (message.isVideo) {
+      return _AnonymousVideoTile(message: message, mine: mine);
+    }
+    return FutureBuilder<Uint8List>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return _AnonymousMediaShell(
+            mine: mine,
+            child: const Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        }
+        final bytes = snapshot.data;
+        if (bytes == null || snapshot.hasError) {
+          return _AnonymousMediaShell(
+            mine: mine,
+            child: const Center(child: Icon(Icons.broken_image_rounded)),
+          );
+        }
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 260, maxHeight: 220),
+            child: Image.memory(
+              bytes,
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+              filterQuality: FilterQuality.medium,
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _AnonymousVideoTile extends StatelessWidget {
+  const _AnonymousVideoTile({required this.message, required this.mine});
+
+  final AnonymousRoomMessage message;
+  final bool mine;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = message.mediaSizeBytes == null
+        ? null
+        : _formatBytes(message.mediaSizeBytes!);
+    return _AnonymousMediaShell(
+      mine: mine,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.play_circle_fill_rounded, size: 30),
+          const SizedBox(width: AppSpacing.sm),
+          Flexible(
+            child: Text(
+              size == null ? 'Encrypted video' : 'Encrypted video • $size',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AnonymousMediaShell extends StatelessWidget {
+  const _AnonymousMediaShell({required this.mine, required this.child});
+
+  final bool mine;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 220,
+      height: 132,
+      decoration: BoxDecoration(
+        color: mine
+            ? AppColors.white.withValues(alpha: 0.14)
+            : AppColors.fernGreenLight.withValues(alpha: 0.42),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: mine
+              ? AppColors.white.withValues(alpha: 0.16)
+              : AppColors.fernGreen.withValues(alpha: 0.12),
+        ),
+      ),
+      alignment: Alignment.center,
+      child: child,
+    );
+  }
+}
+
+String _formatBytes(int bytes) {
+  if (bytes >= 1024 * 1024) {
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+  if (bytes >= 1024) return '${(bytes / 1024).round()} KB';
+  return '$bytes B';
 }
 
 class _AnonAvatar extends StatelessWidget {
@@ -1165,6 +1712,69 @@ class _AnonymousPulsePainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _AnonymousPulsePainter oldDelegate) =>
       progress != oldDelegate.progress;
+}
+
+class _AnonChoiceRow extends StatelessWidget {
+  const _AnonChoiceRow({
+    required this.label,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+  });
+
+  final String label;
+  final int value;
+  final Map<int, String> options;
+  final ValueChanged<int>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 380;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: AppTypography.textTheme.labelMedium?.copyWith(
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: compact ? 6 : AppSpacing.sm,
+              runSpacing: 6,
+              children: options.entries.map((entry) {
+                final selected = value == entry.key;
+                return ChoiceChip(
+                  selected: selected,
+                  label: Text(entry.value),
+                  onSelected: onChanged == null
+                      ? null
+                      : (_) => onChanged!(entry.key),
+                  selectedColor: AppColors.fernGreenLight,
+                  checkmarkColor: AppColors.fernGreenDark,
+                  labelStyle: AppTypography.textTheme.labelMedium?.copyWith(
+                    color: selected
+                        ? AppColors.fernGreenDark
+                        : AppColors.textSecondary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  side: BorderSide(
+                    color: selected
+                        ? AppColors.fernGreen.withValues(alpha: 0.32)
+                        : AppColors.borderSubtle,
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
 
 class _AnonTextField extends StatelessWidget {
