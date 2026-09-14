@@ -535,7 +535,6 @@ class AuthService extends ChangeNotifier {
     } on PlatformException catch (e) {
       AppLogger.error(
         'auth: google platform sign in failed - ${_googlePlatformFailureLabel(e)}',
-        e,
       );
       _error = _friendlyGooglePlatformError(e);
       _setLoading(false);
@@ -602,7 +601,7 @@ class AuthService extends ChangeNotifier {
     if (combined.contains('10') ||
         combined.contains('developer_error') ||
         combined.contains('sign_in_failed')) {
-      return 'Google could not verify this build. Register the Play App Signing SHA-1 for com.echoproof.app in Firebase, then try again. Email sign-in is still available.';
+      return 'Google could not verify this app build. Update from Google Play or use email sign-in.';
     }
     if (combined.contains('network')) {
       return 'Google sign in needs a stable internet connection.';

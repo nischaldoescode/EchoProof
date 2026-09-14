@@ -437,10 +437,10 @@ packages:
     dependency: "direct main"
     description:
       name: didit_sdk
-      sha256: "937bc11123c015e49ec3130e4955c2a98309466578c201427c96394a681027ac"
+      sha256: "6d094e1f0589f2fa8b9355301c7218be74c60de344d4620868d06d9bd02abddb"
       url: "https://pub.dev"
     source: hosted
-    version: "4.5.3"
+    version: "4.0.9"
   diff_match_patch:
     dependency: transitive
     description:

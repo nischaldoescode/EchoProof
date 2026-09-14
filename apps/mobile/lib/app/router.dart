@@ -558,23 +558,6 @@ GoRouter createRouter({
         ),
       ),
       GoRoute(
-        path: '/anonymous-room',
-        pageBuilder: (_, s) => _slidePage(
-          AnonymousRoomEntryScreen(
-            initialInviteCode: s.uri.queryParameters['code'],
-            initialRoomKey: _secureRoomKeyFromUri(s.uri),
-          ),
-        ),
-      ),
-      GoRoute(
-        path: '/anonymous-room/:id',
-        pageBuilder: (_, s) => _slidePage(
-          SecureScreen(
-            child: AnonymousRoomChatScreen(roomId: s.pathParameters['id']!),
-          ),
-        ),
-      ),
-      GoRoute(
         path: '/settings',
         pageBuilder: (_, _) => _slidePage(const SettingsScreen()),
       ),

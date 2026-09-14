@@ -185,7 +185,6 @@ class _LoginScreenState extends State<LoginScreen>
                                       setState(() => _agreedToTerms = value),
                                   onSubmit: _submit,
                                   onGoogle: _googleSignIn,
-                                  onAnonymousRoom: _openAnonymousRoom,
                                 ),
                               ),
                               const SizedBox(height: AppSpacing.xl),
