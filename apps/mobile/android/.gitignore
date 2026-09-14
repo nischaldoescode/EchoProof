@@ -21,3 +21,4 @@ key.properties
 *.jks
 android/app/key.properties
 android/app/release-keystore.jks
+echoproof_android.iml

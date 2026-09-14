@@ -147,6 +147,28 @@ apps/mobile/.sentryclirc
 supabase/
 Echoproof/supabase/
 **/supabase/
+
+# Keep the production billing functions and migration under version control.
+# Other local Supabase files, including .env and config.toml, remain ignored.
+!supabase/
+supabase/*
+!supabase/migrations/
+supabase/migrations/*
+!supabase/migrations/20260910120000_billing_rtdn_events.sql
+!supabase/functions/
+supabase/functions/*
+!supabase/functions/_shared/
+supabase/functions/_shared/*
+!supabase/functions/_shared/google_play.ts
+!supabase/functions/verify-purchase/
+supabase/functions/verify-purchase/*
+!supabase/functions/verify-purchase/index.ts
+!supabase/functions/check-subscription/
+supabase/functions/check-subscription/*
+!supabase/functions/check-subscription/index.ts
+!supabase/functions/rtdn-handler/
+supabase/functions/rtdn-handler/*
+!supabase/functions/rtdn-handler/index.ts
 docs/
 modeltrain/
 modeltrain/**

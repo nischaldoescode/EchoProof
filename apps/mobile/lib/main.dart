@@ -766,9 +766,16 @@ String _normalizedRouteLocation(String rawLocation) {
 String _roomInviteLocation(Uri uri) {
   final fragmentParams = _safeFragmentParams(uri);
   final rawCode = uri.queryParameters['code'] ?? fragmentParams['code'] ?? '';
-  final code = _normalizedRoomCode(rawCode);
+  final anonCode = _normalizedAnonymousRoomCode(rawCode);
   final key = (uri.queryParameters['key'] ?? fragmentParams['key'] ?? '')
       .trim();
+  if (anonCode != null) {
+    final query = <String, String>{'code': anonCode};
+    if (key.isNotEmpty) query['key'] = key;
+    return Uri(path: '/anonymous-room', queryParameters: query).toString();
+  }
+
+  final code = _normalizedRoomCode(rawCode);
   final query = <String, String>{};
   if (code != null) query['code'] = code;
   if (key.isNotEmpty) query['key'] = key;
@@ -791,6 +798,12 @@ Map<String, String> _safeFragmentParams(Uri uri) {
 
 String? _normalizedRoomCode(String raw) {
   final code = raw.trim().toUpperCase();
+  if (code.toLowerCase().startsWith('anon-')) {
+    AppLogger.warn(
+      'deep link: anonymous room code routed outside account rooms',
+    );
+    return null;
+  }
   if (RegExp(r'^[A-Z2-9]{8}$').hasMatch(code)) return code;
   if (code.isNotEmpty) {
     AppLogger.warn('deep link: invalid room code ignored');
@@ -798,9 +811,26 @@ String? _normalizedRoomCode(String raw) {
   return null;
 }
 
+String? _normalizedAnonymousRoomCode(String raw) {
+  final code = raw.trim().toLowerCase();
+  if (RegExp(r'^anon-[a-z2-9]{10}$').hasMatch(code)) return code;
+  if (code.startsWith('anon-')) {
+    AppLogger.warn('deep link: invalid anonymous room code ignored');
+  }
+  return null;
+}
+
+bool _isAnonymousRoomLocation(String location) {
+  return location == '/anonymous-room' ||
+      location.startsWith('/anonymous-room?') ||
+      location.startsWith('/anonymous-room/');
+}
+
 void _safeGo(GoRouter router, String location, {AuthService? auth}) {
   final normalized = _normalizedRouteLocation(location);
-  if (auth != null && !auth.isLoggedIn) {
+  if (auth != null &&
+      !auth.isLoggedIn &&
+      !_isAnonymousRoomLocation(normalized)) {
     _pendingDeepLinkLocation = normalized;
     router.go('/login?continue=1');
     return;

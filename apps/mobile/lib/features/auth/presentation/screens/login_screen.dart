@@ -103,6 +103,14 @@ class _LoginScreenState extends State<LoginScreen>
     // router redirect handles navigation after the auth state updates
   }
 
+  void _openAnonymousRoom() {
+    if (!_agreedToTerms) {
+      _showAgreementSnack();
+      return;
+    }
+    context.push('/anonymous-room');
+  }
+
   @override
   Widget build(BuildContext context) {
     final isLoading = context.select<AuthService, bool>((a) => a.isLoading);
@@ -536,6 +544,7 @@ class _LoginPanel extends StatelessWidget {
     required this.onAgreementChanged,
     required this.onSubmit,
     required this.onGoogle,
+    required this.onAnonymousRoom,
   });
 
   final GlobalKey<FormState> formKey;
@@ -545,6 +554,7 @@ class _LoginPanel extends StatelessWidget {
   final ValueChanged<bool> onAgreementChanged;
   final VoidCallback onSubmit;
   final VoidCallback onGoogle;
+  final VoidCallback onAnonymousRoom;
 
   @override
   Widget build(BuildContext context) {
@@ -631,7 +641,73 @@ class _LoginPanel extends StatelessWidget {
               enabled: agreed,
               onTap: onGoogle,
             ),
+            const SizedBox(height: 12),
+            _AnonymousRoomButton(isLoading: isLoading, onTap: onAnonymousRoom),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AnonymousRoomButton extends StatelessWidget {
+  const _AnonymousRoomButton({required this.isLoading, required this.onTap});
+
+  final bool isLoading;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.translate(
+            offset: Offset(0, (1 - value) * 6),
+            child: child,
+          ),
+        );
+      },
+      child: Material(
+        color: AppColors.fernGreenLight.withValues(alpha: 0.62),
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          onTap: isLoading ? null : onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.md,
+              vertical: 12,
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.visibility_off_rounded,
+                  color: AppColors.fernGreenDark,
+                  size: 20,
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Text(
+                    'Open anonymous encrypted room',
+                    style: GoogleFonts.josefinSans(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.fernGreenDark,
+                    ),
+                  ),
+                ),
+                const Icon(
+                  Icons.arrow_forward_rounded,
+                  color: AppColors.fernGreenDark,
+                  size: 18,
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

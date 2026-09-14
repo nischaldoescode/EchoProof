@@ -130,13 +130,14 @@ abstract final class SecureRoomCrypto {
   }
 
   static Future<({String privateKey, String publicKey})>
-      generateSigningKeyPair() async {
+  generateSigningKeyPair() async {
     final keyPair = await _ed25519.newKeyPair();
     final privateData = await keyPair.extract();
     return (
       privateKey: base64UrlEncode(privateData.bytes).replaceAll('=', ''),
-      publicKey:
-          base64UrlEncode(privateData.publicKey.bytes).replaceAll('=', ''),
+      publicKey: base64UrlEncode(
+        privateData.publicKey.bytes,
+      ).replaceAll('=', ''),
     );
   }
 
@@ -229,6 +230,11 @@ abstract final class SecureRoomCrypto {
         .toUpperCase()
         .replaceAllMapped(RegExp('.{4}'), (m) => '${m.group(0)} ')
         .trim();
+  }
+
+  static String sha256Base64Url(String value) {
+    final digest = crypto.sha256.convert(utf8.encode(value)).bytes;
+    return base64UrlEncode(digest).replaceAll('=', '');
   }
 
   static List<int> _decodeKey(String roomKey) {
