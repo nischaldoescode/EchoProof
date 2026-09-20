@@ -59,6 +59,7 @@ android/app/proguard-rules.pro
 android/app/src/main/AndroidManifest.xml
 sentry.properties
 .sentryclirc
+.agents
 
 ad_service.dart
 *.txt

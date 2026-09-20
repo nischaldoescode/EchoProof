@@ -438,8 +438,7 @@ class _AnonymousRoomChatScreenState extends State<AnonymousRoomChatScreen>
     });
     if (!connectedPeer) {
       _showRoomEndedDialog(
-        'The other guest left or went offline, so this anonymous room was closed.',
-        closeServerRoom: true,
+        'The other guest left or went offline, so this anonymous room was closed.'
       );
     }
   }
