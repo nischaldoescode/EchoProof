@@ -173,3 +173,35 @@ supabase/functions/rtdn-handler/*
 docs/
 modeltrain/
 modeltrain/**
+
+# generated video previews and temporary media checks.
+# keep the authored remotion project under remotion/echoproof-meme-reel,
+# while preventing old exports, test images, and one-off render helpers from
+# returning to the repository or appearing as untracked working-tree noise.
+/brag-output-2026-09-21-224324/
+/brag-output-2026-09-22-233526/
+/test-large.jpg
+/test-small.jpg
+/scripts/render-composition.mjs
+/remotion/**/node_modules/
+/remotion/**/out/
+/remotion/**/.remotion/
+
+# generated logs, crash reports, preview images, and local tool metadata.
+# these files are useful on the developer machine but should never become
+# repository content or be accidentally committed with a release change.
+*.log
+**/hs_err_pid*.log
+**/reports/problems/
+**/out/
+**/dist/
+**/coverage/
+**/.next/
+**/.remotion/
+**/qa-*.png
+**/qa-*.jpg
+**/test-*.png
+**/test-*.jpg
+/.agents/
+/skills-lock.json
+.log

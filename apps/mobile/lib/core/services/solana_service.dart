@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:crypto/crypto.dart';
 import '../constants/storage_keys.dart';
 import '../utils/logger.dart';
+import '../config/runtime_config.dart';
 
 const _rpcUrl = String.fromEnvironment(
   'SOLANA_RPC_URL',
@@ -81,7 +82,7 @@ class SolanaService {
       'SUPABASE_URL',
       defaultValue: 'http://127.0.0.1:54321',
     );
-    const anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+    const anonKey = RuntimeConfig.supabasePublishableKey;
 
     try {
       final response = await http.post(

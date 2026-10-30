@@ -1,6 +1,7 @@
 // identity verification screen
 // @params none
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -9,6 +10,7 @@ import 'package:didit_sdk/sdk_flutter.dart';
 import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../core/localization/app_copy.dart';
+import '../../../../core/utils/link_launcher.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../core/utils/snack.dart';
 import '../services/verification_error_parser.dart';
@@ -27,6 +29,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
     'DIDIT_WORKFLOW_ID',
     defaultValue: '',
   );
+  static const _diditPrivacyUrl = 'https://didit.me/terms/privacy-policy/';
 
   RealtimeChannel? _verificationChannel;
 
@@ -176,7 +179,9 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
         // use session token (recommended)
         result = await DiditSdk.startVerification(
           sessionToken,
-          config: const DiditConfig(loggingEnabled: true),
+          // keep provider diagnostics out of release logs; the provider flow
+          // still reports its result through the sdk and signed webhook.
+          config: const DiditConfig(loggingEnabled: kDebugMode),
         );
       } else {
         if (_diditWorkflowId.isEmpty) {
@@ -187,7 +192,7 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
         result = await DiditSdk.startVerificationWithWorkflow(
           _diditWorkflowId,
           vendorData: userId,
-          config: const DiditConfig(loggingEnabled: true),
+          config: const DiditConfig(loggingEnabled: kDebugMode),
         );
       }
 
@@ -535,36 +540,19 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
 
                   const SizedBox(height: AppSpacing.lg),
 
-                  // privacy note
-                  Container(
-                    padding: const EdgeInsets.all(AppSpacing.lg),
-                    decoration: BoxDecoration(
-                      color: AppColors.softSand,
-                      borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-                      border: Border.all(color: AppColors.borderSubtle),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.lock_outline,
-                          size: 18,
-                          color: AppColors.textTertiary,
-                        ),
-                        const SizedBox(width: AppSpacing.sm),
-                        Expanded(
-                          child: Text(
-                            context.l(
-                              'Your identity is verified by Didit and stays private. Only your trust level is visible to others.',
-                            ),
-                            style: GoogleFonts.josefinSans(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                              height: 1.5,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                  // this disclosure is part of our preflight screen only. the
+                  // link is disabled while the didit activity is launching, so
+                  // our chooser cannot remain over the provider ui.
+                  _DiditPrivacyDisclosure(
+                    enabled: !_isLoading,
+                    onOpenPrivacyPolicy: () {
+                      if (_isLoading || !mounted) return;
+                      showOpenLinkSheet(
+                        context,
+                        url: _diditPrivacyUrl,
+                        title: "Didit's privacy policy",
+                      );
+                    },
                   ),
 
                   const SizedBox(height: AppSpacing.lg),
@@ -661,6 +649,126 @@ class _IdentityVerificationScreenState extends State<IdentityVerificationScreen>
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _DiditPrivacyDisclosure extends StatelessWidget {
+  const _DiditPrivacyDisclosure({
+    required this.enabled,
+    required this.onOpenPrivacyPolicy,
+  });
+
+  final bool enabled;
+  final VoidCallback onOpenPrivacyPolicy;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.softSand,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.verified_user_outlined,
+                size: 19,
+                color: AppColors.fernGreenDark,
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  context.l('Identity verification is provided by Didit'),
+                  style: GoogleFonts.josefinSans(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.charcoal,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            context.l(
+              'Didit performs the identity check and handles the documents, selfies, and biometric processing. EchoProof does not own or control those materials or Didit\'s verification decision. We receive the verification outcome and a derived trust result for your account, together with limited session and abuse-prevention records needed to operate the flow.',
+            ),
+            style: GoogleFonts.josefinSans(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            context.l('Please read Didit\'s privacy policy before continuing.'),
+            style: GoogleFonts.josefinSans(
+              fontSize: 12,
+              color: AppColors.charcoal,
+              fontWeight: FontWeight.w600,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Semantics(
+            button: true,
+            enabled: enabled,
+            label: context.l("Read Didit's privacy policy"),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: enabled ? onOpenPrivacyPolicy : null,
+                borderRadius: BorderRadius.circular(10),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.policy_outlined,
+                        size: 18,
+                        color: AppColors.fernGreenDark,
+                      ),
+                      const SizedBox(width: AppSpacing.sm),
+                      Expanded(
+                        child: Text(
+                          context.l("Read Didit's privacy policy"),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.josefinSans(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: enabled
+                                ? AppColors.fernGreenDark
+                                : AppColors.textTertiary,
+                            decoration: TextDecoration.underline,
+                            decorationThickness: 1.2,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: AppSpacing.xs),
+                      Icon(
+                        Icons.open_in_new_rounded,
+                        size: 17,
+                        color: enabled
+                            ? AppColors.fernGreenDark
+                            : AppColors.textTertiary,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

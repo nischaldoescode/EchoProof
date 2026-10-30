@@ -156,76 +156,144 @@ abstract final class DeviceSecurity {
   }
 
   static Future<DeviceSecurityReport> inspect() async {
-    if (kDebugMode || !_strictDeviceSecurity) {
-      return const DeviceSecurityReport(compromised: false);
+    // collect diagnostics even when enforcement is disabled. this lets sentry
+    // explain a suspicious device during qa without turning a diagnostic flag
+    // into an accidental production lockout.
+    final enforcementEnabled = kReleaseMode && _strictDeviceSecurity;
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      return DeviceSecurityReport(
+        compromised: false,
+        enforcementEnabled: enforcementEnabled,
+        verdict: DeviceSecurityVerdict.clear,
+      );
     }
 
-    final reasons = <String>[];
     final native = Platform.isAndroid ? await _androidSignals() : const {};
+    final observedReasons = _reasonsFor(native);
+    final observedDeviceReasons = observedReasons
+        .where(_isDeviceIntegrityReason)
+        .toSet();
 
-    if (Platform.isAndroid) {
-      final packageName = _asString(native['packageName']);
-      if (packageName.isNotEmpty && packageName != 'com.echoproof.app') {
-        reasons.add('package_mismatch');
-      }
-
-      if (_asBool(native['debuggable'])) {
-        reasons.add('debuggable_release');
-      }
-      if (_asBool(native['debuggerConnected'])) {
-        reasons.add('debugger_attached');
-      }
-
-      final installer = _asString(native['installerPackageName']);
-      if (_requirePlayInstaller && !_trustedPlayInstaller(installer)) {
-        reasons.add(
-          installer.isEmpty ? 'installer_missing' : 'installer_untrusted',
-        );
-      }
-
-      final hooks = _asStringList(native['hookIndicators']);
-      if (hooks.isNotEmpty) reasons.add('runtime_hook_${hooks.join("_")}');
-
-      final nativeRoots = _asStringList(native['rootIndicators']);
-      if (nativeRoots.isNotEmpty) reasons.add('native_root_indicator');
-
-      final mounts = _asStringList(native['mountIndicators']);
-      if (mounts.isNotEmpty) reasons.add('modified_mount_state');
-
-      final buildTags = _asStringList(native['dangerousBuildTags']);
-      if (buildTags.isNotEmpty) reasons.add('unsafe_android_build');
-
-      if (_asBool(native['suProbe'])) {
-        reasons.add('su_binary_available');
-      }
-
-      final tracerPid = _asInt(native['tracerPid']);
-      if (tracerPid > 0) {
-        reasons.add('native_tracer_attached');
-      }
-
-      final expected = _normalizeHash(_expectedAndroidCertSha256);
-      if (expected.isNotEmpty) {
-        final actual = _asStringList(
-          native['signingCertificateSha256'],
-        ).map(_normalizeHash).toSet();
-        if (!actual.contains(expected)) {
-          reasons.add('signature_mismatch');
-        }
-      }
+    // proc, mount, and package-manager reads can race with app startup or be
+    // temporarily restricted by the os. repeat only when a device signal was
+    // observed, then require the same signal to appear twice before blocking.
+    var confirmedDeviceReasons = <String>{};
+    if (observedDeviceReasons.isNotEmpty) {
+      await Future<void>.delayed(const Duration(milliseconds: 90));
+      final secondNative = Platform.isAndroid
+          ? await _androidSignals()
+          : const <Object?, Object?>{};
+      final secondReasons = _reasonsFor(
+        secondNative,
+      ).where(_isDeviceIntegrityReason).toSet();
+      confirmedDeviceReasons = observedDeviceReasons
+          .intersection(secondReasons)
+          .toSet();
     }
 
-    if (isCompromised) reasons.add('device_compromised');
+    final installReasons = observedReasons
+        .where(_isInstallIntegrityReason)
+        .toSet();
+    final reasons = <String>{...installReasons, ...confirmedDeviceReasons};
+    final hasConfirmedDeviceIssue = confirmedDeviceReasons.isNotEmpty;
+    final hasInstallIssue = installReasons.isNotEmpty;
+    final compromised =
+        enforcementEnabled && (hasInstallIssue || hasConfirmedDeviceIssue);
+    final verdict = hasConfirmedDeviceIssue
+        ? DeviceSecurityVerdict.confirmedCompromise
+        : hasInstallIssue
+        ? DeviceSecurityVerdict.installIssue
+        : observedDeviceReasons.isNotEmpty
+        ? DeviceSecurityVerdict.suspectedCompromise
+        : DeviceSecurityVerdict.clear;
 
-    if (reasons.isNotEmpty) {
-      AppLogger.warn('security: blocked device reasons=${reasons.join(",")}');
+    if (reasons.isNotEmpty || observedDeviceReasons.isNotEmpty) {
+      AppLogger.warn(
+        'security: verdict=${verdict.name} '
+        'confirmed=${confirmedDeviceReasons.join(",")} '
+        'observed=${observedDeviceReasons.join(",")}',
+      );
     }
 
     return DeviceSecurityReport(
-      compromised: reasons.isNotEmpty,
-      reasons: reasons,
+      compromised: compromised,
+      reasons: reasons.toList(growable: false),
+      observedReasons: observedReasons,
+      confirmedReasons: confirmedDeviceReasons.toList(growable: false),
+      enforcementEnabled: enforcementEnabled,
+      verdict: verdict,
       nativeSignals: Map<String, Object?>.from(native),
     );
+  }
+
+  static List<String> _reasonsFor(Map<Object?, Object?> native) {
+    if (!Platform.isAndroid) {
+      return isCompromised ? const ['device_compromised'] : const [];
+    }
+
+    final reasons = <String>[];
+    final packageName = _asString(native['packageName']);
+    if (packageName.isNotEmpty && packageName != 'com.echoproof.app') {
+      reasons.add('package_mismatch');
+    }
+
+    if (_asBool(native['debuggable'])) reasons.add('debuggable_release');
+    if (_asBool(native['debuggerConnected'])) {
+      reasons.add('debugger_attached');
+    }
+
+    final installer = _asString(native['installerPackageName']);
+    if (_requirePlayInstaller && !_trustedPlayInstaller(installer)) {
+      reasons.add(
+        installer.isEmpty ? 'installer_missing' : 'installer_untrusted',
+      );
+    }
+
+    final hooks = _asStringList(native['hookIndicators']);
+    if (hooks.isNotEmpty) reasons.add('runtime_hook_${hooks.join("_")}');
+    if (_asStringList(native['rootIndicators']).isNotEmpty) {
+      reasons.add('native_root_indicator');
+    }
+    if (_asStringList(native['mountIndicators']).isNotEmpty) {
+      reasons.add('modified_mount_state');
+    }
+    if (_asStringList(native['dangerousBuildTags']).isNotEmpty) {
+      reasons.add('unsafe_android_build');
+    }
+    if (_asBool(native['suProbe'])) reasons.add('su_binary_available');
+    if (_asInt(native['tracerPid']) > 0) {
+      reasons.add('native_tracer_attached');
+    }
+
+    final expected = _normalizeHash(_expectedAndroidCertSha256);
+    if (expected.isNotEmpty) {
+      final actual = _asStringList(
+        native['signingCertificateSha256'],
+      ).map(_normalizeHash).toSet();
+      if (!actual.contains(expected)) reasons.add('signature_mismatch');
+    }
+
+    if (isCompromised) reasons.add('device_compromised');
+    return reasons;
+  }
+
+  static bool _isDeviceIntegrityReason(String reason) {
+    return reason == 'device_compromised' ||
+        reason == 'native_root_indicator' ||
+        reason == 'modified_mount_state' ||
+        reason == 'su_binary_available' ||
+        reason == 'unsafe_android_build' ||
+        reason == 'native_tracer_attached' ||
+        reason == 'debugger_attached' ||
+        reason == 'debuggable_release' ||
+        reason.startsWith('runtime_hook_');
+  }
+
+  static bool _isInstallIntegrityReason(String reason) {
+    return reason == 'installer_missing' ||
+        reason == 'installer_untrusted' ||
+        reason == 'signature_mismatch' ||
+        reason == 'package_mismatch';
   }
 
   static Future<Map<Object?, Object?>> _androidSignals() async {
@@ -270,22 +338,37 @@ class DeviceSecurityReport {
   const DeviceSecurityReport({
     required this.compromised,
     this.reasons = const [],
+    this.observedReasons = const [],
+    this.confirmedReasons = const [],
+    this.enforcementEnabled = false,
+    this.verdict = DeviceSecurityVerdict.clear,
     this.nativeSignals = const {},
   });
 
   final bool compromised;
   final List<String> reasons;
+  final List<String> observedReasons;
+  final List<String> confirmedReasons;
+  final bool enforcementEnabled;
+  final DeviceSecurityVerdict verdict;
   final Map<String, Object?> nativeSignals;
 
-  bool get hasInstallIntegrityIssue => reasons.any(_installIntegrityReasons);
+  bool get hasInstallIntegrityIssue =>
+      reasons.any(DeviceSecurity._isInstallIntegrityReason);
 
   bool get hasDeviceIntegrityIssue =>
-      reasons.any((reason) => !_installIntegrityReasons(reason));
+      reasons.any(DeviceSecurity._isDeviceIntegrityReason);
 
-  static bool _installIntegrityReasons(String reason) {
-    return reason == 'installer_missing' ||
-        reason == 'installer_untrusted' ||
-        reason == 'signature_mismatch' ||
-        reason == 'package_mismatch';
-  }
+  bool get isJailbreakOrRootConfirmed =>
+      confirmedReasons.any(DeviceSecurity._isDeviceIntegrityReason);
+
+  bool get isJailbreakOrRootSuspected =>
+      observedReasons.any(DeviceSecurity._isDeviceIntegrityReason);
+}
+
+enum DeviceSecurityVerdict {
+  clear,
+  installIssue,
+  suspectedCompromise,
+  confirmedCompromise,
 }

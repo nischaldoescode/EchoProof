@@ -891,6 +891,16 @@ class AuthService extends ChangeNotifier {
     if (lower.contains('network') || lower.contains('socket')) {
       return 'network';
     }
+    // a revoked or mismatched public key is an app configuration problem, not
+    // evidence that google issued a bad identity token. classify it first so
+    // sentry points to the build configuration instead of the user account.
+    if (lower.contains('api key') ||
+        lower.contains('api_key') ||
+        lower.contains('apikey') ||
+        lower.contains('unauthorized') ||
+        lower.contains('401')) {
+      return 'supabase configuration';
+    }
     if (lower.contains('invalid') || lower.contains('token')) {
       return 'provider token';
     }

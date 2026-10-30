@@ -9,6 +9,7 @@ import '../../features/echo/domain/entities/echo_entity.dart';
 import '../../features/echo/domain/entities/echo_status.dart';
 import 'connectivity_service.dart';
 import '../utils/logger.dart';
+import '../config/runtime_config.dart';
 
 class EchoInteractionResult {
   const EchoInteractionResult({required this.updatedEcho});
@@ -33,7 +34,7 @@ class EchoInteractionService {
         ? _supabaseUrl
         : _supabaseUrl;
     final url = '$supabaseUrl/functions/v1/on-interaction';
-    const anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+    const anonKey = RuntimeConfig.supabasePublishableKey;
 
     AppLogger.debug('interaction: posting $type on $echoId');
 
@@ -44,10 +45,7 @@ class EchoInteractionService {
         'Authorization': 'Bearer $jwtToken',
         'Content-Type': 'application/json',
       },
-      body: jsonEncode({
-        'echo_id': echoId,
-        'type': type,
-      }),
+      body: jsonEncode({'echo_id': echoId, 'type': type}),
     );
 
     if (response.statusCode == 200) {
@@ -56,9 +54,7 @@ class EchoInteractionService {
 
       AppLogger.info('interaction: success $type on $echoId');
 
-      return EchoInteractionResult(
-        updatedEcho: _echoFromMap(echoId, echoMap),
-      );
+      return EchoInteractionResult(updatedEcho: _echoFromMap(echoId, echoMap));
     }
 
     if (response.statusCode == 429) {
@@ -94,14 +90,14 @@ class EchoInteractionService {
   }
 
   EchoStatus _parseStatus(String v) => switch (v) {
-        'pending_verification' => EchoStatus.pendingVerification,
-        'active' => EchoStatus.active,
-        'under_review' => EchoStatus.underReview,
-        'verified' => EchoStatus.verified,
-        'controversial' => EchoStatus.controversial,
-        'disputed' => EchoStatus.disputed,
-        'hidden' => EchoStatus.hidden,
-        'rejected' => EchoStatus.rejected,
-        _ => EchoStatus.pendingVerification,
-      };
+    'pending_verification' => EchoStatus.pendingVerification,
+    'active' => EchoStatus.active,
+    'under_review' => EchoStatus.underReview,
+    'verified' => EchoStatus.verified,
+    'controversial' => EchoStatus.controversial,
+    'disputed' => EchoStatus.disputed,
+    'hidden' => EchoStatus.hidden,
+    'rejected' => EchoStatus.rejected,
+    _ => EchoStatus.pendingVerification,
+  };
 }

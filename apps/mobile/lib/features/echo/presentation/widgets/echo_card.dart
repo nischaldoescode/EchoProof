@@ -12,6 +12,7 @@ import '../../../../shared/widgets/verified_badges.dart';
 import '../../../../shared/widgets/rich_text_display.dart';
 import '../../../../shared/widgets/social_action_button.dart';
 import '../../../../core/utils/media_file_safety.dart';
+import '../../../../core/config/runtime_config.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
@@ -122,7 +123,7 @@ class _EchoCardState extends State<EchoCard> {
       final session = client.auth.currentSession;
       if (session == null) return;
       final supabaseUrl = const String.fromEnvironment('SUPABASE_URL');
-      final anonKey = const String.fromEnvironment('SUPABASE_ANON_KEY');
+      final anonKey = RuntimeConfig.supabasePublishableKey;
       final res = await http.post(
         Uri.parse('$supabaseUrl/functions/v1/translate'),
         headers: {

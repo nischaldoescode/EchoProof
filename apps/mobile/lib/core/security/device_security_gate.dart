@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 
 import '../../app/theme/colors.dart';
 import '../../app/theme/spacing.dart';
+import '../services/error_monitoring_service.dart';
 import 'device_security.dart';
 import 'secure_screen.dart';
 
@@ -62,6 +63,12 @@ class _DeviceSecurityGateState extends State<DeviceSecurityGate>
     try {
       final report = await DeviceSecurity.inspect();
       if (!mounted) return;
+      ErrorMonitoringService.captureDeviceSecurityDiagnostic(
+        verdict: report.verdict.name,
+        enforcementEnabled: report.enforcementEnabled,
+        observedReasons: report.observedReasons,
+        confirmedReasons: report.confirmedReasons,
+      );
       if (report.compromised) {
         setState(() => _blockedReport = report);
       }

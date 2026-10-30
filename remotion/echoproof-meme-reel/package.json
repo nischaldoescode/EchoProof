@@ -1,0 +1,19 @@
+{
+  "name": "echoproof-meme-reel",
+  "private": true,
+  "scripts": {
+    "start": "remotion studio",
+    "preview": "remotion studio --no-open",
+    "render": "remotion render src/index.jsx EchoProofMemeReel out/echoproof-meme-reel.mp4",
+    "render:narrative": "remotion render src/index.jsx EchoProofNarrativeReel out/echoproof-narrative-reel.mp4",
+    "render:apple": "remotion render src/index.jsx EchoProofAppleLaunchFilm out/echoproof-apple-launch-film.mp4",
+    "generate:apple-audio": "node tools/generate-apple-launch-soundstage.mjs"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.530",
+    "@remotion/media": "^4.0.530",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "remotion": "^4.0.530"
+  }
+}
