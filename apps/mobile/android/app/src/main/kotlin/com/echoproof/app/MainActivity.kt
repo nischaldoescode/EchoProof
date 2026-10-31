@@ -491,13 +491,25 @@ class MainActivity : FlutterFragmentActivity() {
             File("/proc/self/mountinfo").useLines { lines ->
                 lines.take(1200).forEach { line ->
                     val lower = line.lowercase(Locale.US)
+<<<<<<< HEAD
+=======
+                    // android uses mount namespaces, dynamic partitions, and
+                    // vendor overlay mounts on legitimate production builds.
+                    // a generic overlay mounted near /system is therefore not
+                    // proof of root and must not block a user by itself.
+                    // only explicit tool-specific mount names remain strong
+                    // enough to enter the integrity signal set.
+>>>>>>> master
                     if (lower.contains("/data/adb")) indicators += "data_adb_mount"
                     if (lower.contains("magisk")) indicators += "magisk_mount"
                     if (lower.contains("kernelsu")) indicators += "kernelsu_mount"
                     if (lower.contains("apatch")) indicators += "apatch_mount"
+<<<<<<< HEAD
                     if (lower.contains("overlay") && lower.contains("/system")) {
                         indicators += "system_overlay"
                     }
+=======
+>>>>>>> master
                 }
             }
         } catch (_: Throwable) {

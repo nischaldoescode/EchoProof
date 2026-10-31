@@ -22,3 +22,7 @@ key.properties
 android/app/key.properties
 android/app/release-keystore.jks
 echoproof_android.iml
+<<<<<<< HEAD
+=======
+build/reports/problems/problems-report.html
+>>>>>>> master

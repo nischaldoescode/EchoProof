@@ -236,6 +236,11 @@ void main() {
     expect(deviceSecurity, contains('server-verified play integrity verdict'));
     expect(mainActivity, contains('"installerPackageName"'));
     expect(mainActivity, contains('mountIndicators()'));
+<<<<<<< HEAD
+=======
+    expect(mainActivity, contains('generic overlay mounted near /system'));
+    expect(mainActivity, isNot(contains('indicators += "system_overlay"')));
+>>>>>>> master
     expect(mainActivity, contains('suProbe()'));
     expect(mainActivity, contains('tracerPid()'));
     expect(grantMigration, contains('service_only_rpc'));
@@ -257,6 +262,12 @@ void main() {
     ).readAsStringSync();
     final logger = File('lib/core/utils/logger.dart').readAsStringSync();
     final main = File('lib/main.dart').readAsStringSync();
+<<<<<<< HEAD
+=======
+    final runtimeConfig = File(
+      'lib/core/config/runtime_config.dart',
+    ).readAsStringSync();
+>>>>>>> master
     final analyticsService = File(
       'lib/core/services/app_analytics_service.dart',
     ).readAsStringSync();
@@ -297,6 +308,14 @@ void main() {
     expect(monitor, contains('anrEnabled = true'));
     expect(monitor, contains('maxRequestBodySize = MaxRequestBodySize.never'));
     expect(monitor, contains('beforeSend = _beforeSend'));
+<<<<<<< HEAD
+=======
+    expect(monitor, contains("setContexts('device_security'"));
+    expect(monitor, contains('mount_indicators'));
+    expect(monitor, contains('installer_class'));
+    expect(monitor, contains('signing_certificate_count'));
+    expect(monitor, contains('raw native signal payloads'));
+>>>>>>> master
     expect(monitor, contains('_isTransientNetworkEvent'));
     expect(monitor, contains('_sanitizeText'));
     expect(monitor, contains('access_token'));
@@ -309,6 +328,14 @@ void main() {
     expect(logger, contains('transient network skipped'));
     expect(main, contains('ErrorMonitoringService.initialize'));
     expect(main, contains('appRunner: _bootstrap'));
+<<<<<<< HEAD
+=======
+    expect(main, contains('BootstrapFailureApp'));
+    expect(main, contains("'app bootstrap failed'"));
+    expect(main, contains('RuntimeConfig.supabasePublishableKey'));
+    expect(runtimeConfig, contains('SUPABASE_PUBLISHABLE_KEY'));
+    expect(runtimeConfig, contains('SUPABASE_ANON_KEY'));
+>>>>>>> master
     expect(main, contains('AppAnalyticsService.instance.attachRouter'));
     expect(
       analyticsService,
@@ -325,6 +352,10 @@ void main() {
     expect(networkLogger, isNot(contains(', err')));
     expect(authService, contains('build not verified'));
     expect(authService, contains('provider token'));
+<<<<<<< HEAD
+=======
+    expect(authService, contains('supabase configuration'));
+>>>>>>> master
     expect(authService, contains('profile check skipped transient network'));
     expect(authService, contains('_restoreProfileStateFromLocalCache'));
     expect(authService, isNot(contains('build_not_verified')));
@@ -342,4 +373,32 @@ void main() {
     expect(terms, contains('We do not sell your personal data'));
     expect(terms, contains('Security and diagnostics'));
   });
+<<<<<<< HEAD
+=======
+
+  test(
+    'identity verification discloses didit ownership and scoped privacy link',
+    () {
+      final verification = File(
+        'lib/features/auth/presentation/screens/identity_verification_screen.dart',
+      ).readAsStringSync();
+
+      expect(verification, contains("https://didit.me/terms/privacy-policy/"));
+      expect(
+        verification,
+        contains('Identity verification is provided by Didit'),
+      );
+      expect(
+        verification,
+        contains('documents, selfies, and biometric processing'),
+      );
+      expect(verification, contains('verification outcome'));
+      expect(verification, contains('abuse-prevention records'));
+      expect(verification, contains(r"Please read Didit\'s privacy policy"));
+      expect(verification, contains('showOpenLinkSheet'));
+      expect(verification, contains('enabled: !_isLoading'));
+      expect(verification, contains('loggingEnabled: kDebugMode'));
+    },
+  );
+>>>>>>> master
 }

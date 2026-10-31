@@ -546,6 +546,8 @@ GoRouter createRouter({
               initialInviteCode: s.uri.queryParameters['code'],
               initialRoomKey: _secureRoomKeyFromUri(s.uri),
             ),
+<<<<<<< HEAD
+=======
           ),
         ),
       ),
@@ -554,6 +556,31 @@ GoRouter createRouter({
         pageBuilder: (_, s) => _slidePage(
           SecureScreen(
             child: SecureRoomChatScreen(roomId: s.pathParameters['id']!),
+          ),
+        ),
+      ),
+      GoRoute(
+        path: '/anonymous-room',
+        pageBuilder: (_, s) => _slidePage(
+          AnonymousRoomEntryScreen(
+            initialInviteCode: s.uri.queryParameters['code'],
+            initialRoomKey: _secureRoomKeyFromUri(s.uri),
+>>>>>>> master
+          ),
+        ),
+      ),
+      GoRoute(
+<<<<<<< HEAD
+        path: '/rooms/:id',
+        pageBuilder: (_, s) => _slidePage(
+          SecureScreen(
+            child: SecureRoomChatScreen(roomId: s.pathParameters['id']!),
+=======
+        path: '/anonymous-room/:id',
+        pageBuilder: (_, s) => _slidePage(
+          SecureScreen(
+            child: AnonymousRoomChatScreen(roomId: s.pathParameters['id']!),
+>>>>>>> master
           ),
         ),
       ),

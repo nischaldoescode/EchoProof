@@ -535,6 +535,10 @@ class AuthService extends ChangeNotifier {
     } on PlatformException catch (e) {
       AppLogger.error(
         'auth: google platform sign in failed - ${_googlePlatformFailureLabel(e)}',
+<<<<<<< HEAD
+=======
+        e,
+>>>>>>> master
       );
       _error = _friendlyGooglePlatformError(e);
       _setLoading(false);
@@ -601,7 +605,11 @@ class AuthService extends ChangeNotifier {
     if (combined.contains('10') ||
         combined.contains('developer_error') ||
         combined.contains('sign_in_failed')) {
+<<<<<<< HEAD
       return 'Google could not verify this app build. Update from Google Play or use email sign-in.';
+=======
+      return 'Google could not verify this build. Register the Play App Signing SHA-1 for com.echoproof.app in Firebase, then try again. Email sign-in is still available.';
+>>>>>>> master
     }
     if (combined.contains('network')) {
       return 'Google sign in needs a stable internet connection.';
@@ -890,6 +898,19 @@ class AuthService extends ChangeNotifier {
     if (lower.contains('network') || lower.contains('socket')) {
       return 'network';
     }
+<<<<<<< HEAD
+=======
+    // a revoked or mismatched public key is an app configuration problem, not
+    // evidence that google issued a bad identity token. classify it first so
+    // sentry points to the build configuration instead of the user account.
+    if (lower.contains('api key') ||
+        lower.contains('api_key') ||
+        lower.contains('apikey') ||
+        lower.contains('unauthorized') ||
+        lower.contains('401')) {
+      return 'supabase configuration';
+    }
+>>>>>>> master
     if (lower.contains('invalid') || lower.contains('token')) {
       return 'provider token';
     }

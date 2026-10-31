@@ -16,6 +16,7 @@ import 'firebase_options.dart';
 import 'app/app.dart';
 import 'app/router.dart';
 import 'core/network/certificate_pinning.dart';
+import 'core/config/runtime_config.dart';
 import 'core/security/device_security.dart';
 import 'core/security/device_security_gate.dart';
 import 'core/security/secure_screen.dart';
@@ -51,6 +52,24 @@ Future<void> main() async {
 
 Future<void> _bootstrap() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await ErrorMonitoringService.initialize(appRunner: _bootstrap);
+  } catch (error, stack) {
+    // bootstrap runs before the normal navigator exists, so an unexpected
+    // startup failure must render a recovery screen instead of leaving the
+    // launch surface black. sentry receives the error when its sdk started;
+    // the fallback still works when sentry itself or a native dependency fails.
+    ErrorMonitoringService.captureError(
+      'app bootstrap failed',
+      error: error,
+      stack: stack,
+    );
+    runApp(const BootstrapFailureApp());
+  }
+}
+
+Future<void> _bootstrap() async {
+  WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       systemNavigationBarColor: Colors.white,
@@ -74,6 +93,13 @@ Future<void> _bootstrap() async {
 
   // block rooted hooked repackaged or sideloaded release builds before app state loads
   final securityReport = await DeviceSecurity.inspect();
+  ErrorMonitoringService.captureDeviceSecurityDiagnostic(
+    verdict: securityReport.verdict.name,
+    enforcementEnabled: securityReport.enforcementEnabled,
+    observedReasons: securityReport.observedReasons,
+    confirmedReasons: securityReport.confirmedReasons,
+    nativeSignals: securityReport.nativeSignals,
+  );
   if (securityReport.compromised && kReleaseMode) {
     runApp(SecurityWarningApp(report: securityReport));
     return;
@@ -87,8 +113,8 @@ Future<void> _bootstrap() async {
   tz.setLocalLocation(tz.getLocation('Asia/Kolkata'));
 
   await Supabase.initialize(
-    url: const String.fromEnvironment('SUPABASE_URL'),
-    publishableKey: const String.fromEnvironment('SUPABASE_ANON_KEY'),
+    url: RuntimeConfig.supabaseUrl,
+    publishableKey: RuntimeConfig.supabasePublishableKey,
     httpClient: createPinnedClient(),
     authOptions: const FlutterAuthClientOptions(
       authFlowType: AuthFlowType.pkce,
@@ -966,6 +992,68 @@ class SecurityWarningApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       navigatorKey: HyperSnackbar.navigatorKey,
       home: SecureScreen(child: SecurityLockdownScreen(report: report)),
+<<<<<<< HEAD
+=======
+    );
+  }
+}
+
+class BootstrapFailureApp extends StatelessWidget {
+  const BootstrapFailureApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: const BootstrapFailureScreen(),
+    );
+  }
+}
+
+class BootstrapFailureScreen extends StatelessWidget {
+  const BootstrapFailureScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final padding = MediaQuery.paddingOf(context);
+    return Scaffold(
+      body: SafeArea(
+        minimum: EdgeInsets.fromLTRB(
+          24,
+          padding.top > 0 ? 8 : 24,
+          24,
+          padding.bottom > 0 ? 8 : 24,
+        ),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.cloud_off_outlined, size: 48),
+                const SizedBox(height: 20),
+                const Text(
+                  'Echoproof could not start',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Please close and open the app again. If this continues, check your connection and update the app.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                FilledButton.icon(
+                  onPressed: () => SystemNavigator.pop(animated: true),
+                  icon: const Icon(Icons.close),
+                  label: const Text('close app'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+>>>>>>> master
     );
   }
 }

@@ -15,6 +15,10 @@ import '../../domain/entities/echo_status.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../core/utils/formatters.dart';
 import '../../../../core/services/app_analytics_service.dart';
+<<<<<<< HEAD
+=======
+import '../../../../core/config/runtime_config.dart';
+>>>>>>> master
 
 const _kPageSize = 20;
 
@@ -551,7 +555,7 @@ class EchoFeedService extends ChangeNotifier {
     }
 
     final supabaseUrl = const String.fromEnvironment('SUPABASE_URL');
-    final anonKey = const String.fromEnvironment('SUPABASE_ANON_KEY');
+    final anonKey = RuntimeConfig.supabasePublishableKey;
     final refreshParam = forceRefresh ? '&refresh=1' : '';
     final cursorParam = cursor == null
         ? ''

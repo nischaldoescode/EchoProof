@@ -11,6 +11,7 @@ import '../../../../app/theme/colors.dart';
 import '../../../../app/theme/spacing.dart';
 import '../../../../core/utils/link_launcher.dart';
 import '../../../../core/utils/logger.dart';
+import '../../../../core/config/runtime_config.dart';
 
 String? extractFirstUrl(String text) {
   final urlPattern = RegExp(
@@ -61,7 +62,7 @@ class _LinkPreviewCardState extends State<LinkPreviewCard> {
       if (session == null) return;
 
       final supabaseUrl = const String.fromEnvironment('SUPABASE_URL');
-      final anonKey = const String.fromEnvironment('SUPABASE_ANON_KEY');
+      final anonKey = RuntimeConfig.supabasePublishableKey;
       final res = await http.post(
         Uri.parse('$supabaseUrl/functions/v1/fetch-link-preview'),
         headers: {
@@ -332,7 +333,7 @@ class _EchoLinkPreviewState extends State<EchoLinkPreview> {
       }
 
       final supabaseUrl = const String.fromEnvironment('SUPABASE_URL');
-      final anonKey = const String.fromEnvironment('SUPABASE_ANON_KEY');
+      final anonKey = RuntimeConfig.supabasePublishableKey;
       final res = await http.post(
         Uri.parse('$supabaseUrl/functions/v1/fetch-link-preview'),
         headers: {
